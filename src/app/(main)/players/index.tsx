@@ -1,13 +1,6 @@
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import {
-  Alert,
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { useCallback, useState, type ReactNode } from 'react';
+import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { Button } from '@/features/home/components/Button';
@@ -15,7 +8,7 @@ import { Screen } from '@/features/home/components/Screen';
 import { TextField } from '@/features/home/components/TextField';
 import * as playersService from '@/features/players/services/players.service';
 import { toUserMessage } from '@/shared/errors/app-error';
-import { subscribeStore } from '@/shared/storage/local-store';
+import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { Player } from '@/shared/types/domain';
 import { colors, spacing, typography } from '@/theme/tokens';
 
@@ -23,23 +16,17 @@ export default function PlayersScreen(): ReactNode {
   const { league } = useSession();
   const [players, setPlayers] = useState<Player[]>([]);
   const [guestName, setGuestName] = useState('');
-  const [tick, setTick] = useState(0);
+
+  const leagueId = league?.id;
 
   const reload = useCallback(async () => {
-    if (!league) {
+    if (!leagueId) {
       return;
     }
-    setPlayers(await playersService.listPlayers(league.id));
-  }, [league]);
+    setPlayers(await playersService.listPlayers(leagueId));
+  }, [leagueId]);
 
-  useEffect(() => {
-    void reload();
-    return subscribeStore(() => setTick((t) => t + 1));
-  }, [reload]);
-
-  useEffect(() => {
-    void reload();
-  }, [tick, reload]);
+  useStoreReload(reload, leagueId ?? null);
 
   async function addGuest(): Promise<void> {
     if (!league) {
@@ -59,9 +46,7 @@ export default function PlayersScreen(): ReactNode {
 
   return (
     <Screen scroll={false}>
-      <Text style={typography.subtitle}>
-        Add everyone at the table. Guests don’t need the app.
-      </Text>
+      <Text style={typography.subtitle}>Add everyone at the table. Guests don’t need the app.</Text>
       <View style={styles.addRow}>
         <View style={styles.fieldGrow}>
           <TextField
@@ -85,10 +70,7 @@ export default function PlayersScreen(): ReactNode {
           <Text style={typography.subtitle}>No players yet — add your friends above.</Text>
         }
         renderItem={({ item }) => (
-          <Pressable
-            style={styles.row}
-            onPress={() => router.push(`/(main)/players/${item.id}`)}
-          >
+          <Pressable style={styles.row} onPress={() => router.push(`/(main)/players/${item.id}`)}>
             <View>
               <Text style={styles.name}>{item.displayName}</Text>
               <Text style={styles.meta}>

@@ -5,6 +5,7 @@ import { AppError } from '@/shared/errors/app-error';
 import { logger } from '@/shared/logging/logger';
 import { createId, nowIso } from '@/shared/utils/id';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
+import { scheduleSync, type ScheduleItem } from '@/shared/sync';
 import type { FeedEvent, Race, RaceEntrant, RaceKing, RacePlace } from '@/shared/types/domain';
 
 const createRaceSchema = z.object({
@@ -72,22 +73,32 @@ export async function createRace(input: {
   };
 
   await updateStore((s) => ({ ...s, races: [...s.races, race] }));
+  await scheduleSync([
+    {
+      entity: 'race',
+      docId: race.id,
+      leagueId: race.leagueId,
+      action: 'upsert',
+      payload: race,
+      updatedAt: race.updatedAt,
+    },
+  ]);
   logger.info('race.service', 'Race created', { raceId: race.id });
   return race;
 }
 
 function nextPlace(entrants: RaceEntrant[]): number {
-  const taken = entrants
-    .map((e) => e.place)
-    .filter((p): p is number => typeof p === 'number');
+  const taken = entrants.map((e) => e.place).filter((p): p is number => typeof p === 'number');
   return taken.length === 0 ? 1 : Math.max(...taken) + 1;
 }
 
 async function persistRace(race: Race, event?: FeedEvent): Promise<Race> {
+  let eventId: string | null = null;
+
   await updateStore((s) => {
     const races = s.races.map((r) => (r.id === race.id ? race : r));
     let leagues = s.leagues;
-    let events = event ? [...s.events, event] : s.events;
+    let events = s.events;
 
     if (race.status === 'completed' && race.crownsRaceChampion) {
       const winner = race.entrants.find((e) => e.place === 1);
@@ -99,14 +110,76 @@ async function persistRace(race: Race, event?: FeedEvent): Promise<Race> {
           crownedAt: race.updatedAt,
         };
         leagues = s.leagues.map((l) =>
-          l.id === race.leagueId ? { ...l, raceKing: king } : l,
+          l.id === race.leagueId ? { ...l, raceKing: king, updatedAt: nowIso() } : l,
         );
       }
     }
 
-    const players = applyPlayerStats(s.players, race.leagueId, s.matches, races);
+    if (event) {
+      const withTs: FeedEvent = {
+        ...event,
+        updatedAt: event.updatedAt ?? event.createdAt,
+      };
+      eventId = withTs.id;
+      events = [...events, withTs];
+    }
+
+    const players = applyPlayerStats(s.players, race.leagueId, s.matches, races).map((p) =>
+      p.leagueId === race.leagueId ? { ...p, updatedAt: nowIso() } : p,
+    );
+
     return { ...s, races, leagues, events, players };
   });
+
+  const store = getStore();
+  const syncedLeague =
+    race.status === 'completed' && race.crownsRaceChampion
+      ? (store.leagues.find((l) => l.id === race.leagueId) ?? null)
+      : null;
+  const syncedEvent = eventId ? store.events.find((e) => e.id === eventId) : undefined;
+  const syncedPlayers = store.players.filter((p) => p.leagueId === race.leagueId);
+
+  const items: ScheduleItem[] = [
+    {
+      entity: 'race',
+      docId: race.id,
+      leagueId: race.leagueId,
+      action: 'upsert',
+      payload: race,
+      updatedAt: race.updatedAt,
+    },
+  ];
+  if (syncedLeague) {
+    items.push({
+      entity: 'league',
+      docId: syncedLeague.id,
+      leagueId: null,
+      action: 'upsert',
+      payload: syncedLeague,
+      updatedAt: syncedLeague.updatedAt,
+    });
+  }
+  if (syncedEvent) {
+    items.push({
+      entity: 'event',
+      docId: syncedEvent.id,
+      leagueId: syncedEvent.leagueId,
+      action: 'upsert',
+      payload: syncedEvent,
+      updatedAt: syncedEvent.updatedAt,
+    });
+  }
+  for (const player of syncedPlayers) {
+    items.push({
+      entity: 'player',
+      docId: player.id,
+      leagueId: player.leagueId,
+      action: 'upsert',
+      payload: player,
+      updatedAt: player.updatedAt,
+    });
+  }
+  await scheduleSync(items);
   return race;
 }
 
@@ -219,6 +292,7 @@ export async function completeRace(raceId: string): Promise<Race> {
     leagueId: race.leagueId,
     type: race.crownsRaceChampion ? 'race_king' : 'race_won',
     createdAt: now,
+    updatedAt: now,
     title: race.crownsRaceChampion ? 'New race king' : 'Race complete',
     body: race.namedLabel ?? `Race to ${race.targetScore}`,
     relatedIds: winner ? [winner.playerId, race.id] : [race.id],
@@ -266,6 +340,7 @@ export async function submitFinalStandings(
     leagueId: race.leagueId,
     type: race.crownsRaceChampion ? 'race_king' : 'race_won',
     createdAt: now,
+    updatedAt: now,
     title: race.crownsRaceChampion ? 'New race king' : 'Race logged',
     body: race.namedLabel ?? `Race to ${race.targetScore}`,
     relatedIds: [race.id],

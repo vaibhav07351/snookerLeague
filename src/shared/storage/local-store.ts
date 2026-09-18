@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { logger } from '@/shared/logging/logger';
-import type { AppDataStore } from '@/shared/types/domain';
+import type { AppDataStore, FeedEvent, League, Match, Player, Race } from '@/shared/types/domain';
 
 const STORAGE_KEY = 'snooker.v1.store';
 
@@ -14,6 +14,43 @@ export function emptyStore(): AppDataStore {
     matches: [],
     races: [],
     events: [],
+    pendingOps: [],
+  };
+}
+
+function withUpdatedAt<T extends { createdAt: string; updatedAt?: string }>(
+  row: T,
+): T & {
+  updatedAt: string;
+} {
+  return {
+    ...row,
+    updatedAt:
+      typeof row.updatedAt === 'string' && row.updatedAt.length > 0 ? row.updatedAt : row.createdAt,
+  };
+}
+
+/** Normalize older AsyncStorage blobs missing sync fields. */
+export function normalizeStore(raw: Partial<AppDataStore>): AppDataStore {
+  const base = emptyStore();
+  return {
+    ...base,
+    ...raw,
+    leagues: (raw.leagues ?? []).map((l) => withUpdatedAt(l as League)),
+    players: (raw.players ?? []).map((p) => withUpdatedAt(p as Player)),
+    matches: (raw.matches ?? []) as Match[],
+    races: (raw.races ?? []) as Race[],
+    events: (raw.events ?? []).map((e) => {
+      const event = e as FeedEvent;
+      return {
+        ...event,
+        updatedAt:
+          typeof event.updatedAt === 'string' && event.updatedAt.length > 0
+            ? event.updatedAt
+            : event.createdAt,
+      };
+    }),
+    pendingOps: Array.isArray(raw.pendingOps) ? raw.pendingOps : [],
   };
 }
 
@@ -28,7 +65,7 @@ export async function loadStore(): Promise<AppDataStore> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     if (raw) {
-      memory = { ...emptyStore(), ...(JSON.parse(raw) as AppDataStore) };
+      memory = normalizeStore(JSON.parse(raw) as Partial<AppDataStore>);
     }
   } catch (error) {
     logger.error('local-store', 'Failed to load store', {
@@ -60,6 +97,10 @@ export async function updateStore(
 ): Promise<AppDataStore> {
   await loadStore();
   const next = mutator(memory);
+  // Prevent subscribe → reload → write loops when mutators return unchanged data.
+  if (next === memory || JSON.stringify(next) === JSON.stringify(memory)) {
+    return memory;
+  }
   await saveStore(next);
   return next;
 }

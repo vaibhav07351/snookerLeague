@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
@@ -11,34 +11,113 @@ import { Button } from '@/features/home/components/Button';
 import { Screen } from '@/features/home/components/Screen';
 import * as playersService from '@/features/players/services/players.service';
 import { buildPlayerInsights } from '@/features/stats/services/insights.service';
-import { getStore, loadStore, subscribeStore } from '@/shared/storage/local-store';
+import { toUserMessage } from '@/shared/errors/app-error';
+import { isFirebaseEnabled } from '@/shared/firebase/app';
+import { useStoreReload } from '@/shared/hooks/use-store-reload';
+import { getStore, loadStore } from '@/shared/storage/local-store';
 import type { League, Player } from '@/shared/types/domain';
+import { confirmAction } from '@/shared/utils/confirm';
 import { formatDurationCompact } from '@/shared/utils/datetime';
 import { colors, fonts, radii, spacing, typography } from '@/theme/tokens';
 
 export default function ProfileScreen(): ReactNode {
   const { user, league, leagues, refresh, switchLeague } = useSession();
   const [player, setPlayer] = useState<Player | null>(null);
-  const [tick, setTick] = useState(0);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
+  const [linkingGoogle, setLinkingGoogle] = useState(false);
+  const [request, response, promptAsync] = authService.useGoogleAuthRequest();
+  const handledIdToken = useRef<string | null>(null);
+
+  const leagueId = league?.id;
+  const userId = user?.uid;
 
   const reload = useCallback(async () => {
-    if (!league || !user) {
+    if (!leagueId || !userId) {
       return;
     }
     await loadStore();
-    const me = await playersService.getPlayerByAuthUid(league.id, user.uid);
+    const me = await playersService.getPlayerByAuthUid(leagueId, userId);
     setPlayer(me);
-  }, [league, user]);
+  }, [leagueId, userId]);
+
+  useStoreReload(reload, leagueId && userId ? `${leagueId}:${userId}` : null);
+
+  async function completeGoogleLink(
+    result: Parameters<typeof authService.extractGoogleIdToken>[0],
+  ): Promise<void> {
+    if (!result || !user?.isDemo) {
+      return;
+    }
+    if (result.type === 'dismiss' || result.type === 'cancel') {
+      return;
+    }
+    if (result.type !== 'success') {
+      Alert.alert('Google sign-in failed', 'Something went wrong. Please try again.');
+      return;
+    }
+    const idToken = authService.extractGoogleIdToken(result);
+    if (!idToken) {
+      Alert.alert(
+        'Google sign-in failed',
+        'Google did not return an ID token. Check Firebase Authentication → Google.',
+      );
+      return;
+    }
+    if (handledIdToken.current === idToken) {
+      return;
+    }
+    handledIdToken.current = idToken;
+    setLinkingGoogle(true);
+    try {
+      await authService.linkDemoAccountWithGoogleIdToken(idToken);
+      await refresh();
+      Alert.alert(
+        'Google linked',
+        'Your leagues and matches stay on this device and will sync to the cloud when online.',
+      );
+    } catch (error) {
+      handledIdToken.current = null;
+      Alert.alert('Could not link Google', toUserMessage(error));
+    } finally {
+      setLinkingGoogle(false);
+    }
+  }
 
   useEffect(() => {
-    void reload();
-    return subscribeStore(() => setTick((t) => t + 1));
-  }, [reload]);
+    void completeGoogleLink(response);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when OAuth response changes
+  }, [response]);
 
-  useEffect(() => {
-    void reload();
-  }, [tick, reload]);
+  async function onLinkGoogle(): Promise<void> {
+    if (!isFirebaseEnabled()) {
+      Alert.alert(
+        'Cloud not set up',
+        'Add Firebase config and enable Google sign-in to link an account.',
+      );
+      return;
+    }
+    if (!request) {
+      Alert.alert('Please wait', 'Google sign-in is still loading. Try again in a moment.');
+      return;
+    }
+    const ok = await confirmAction(
+      'Link Google account?',
+      'Your local leagues and match history will move to this Google login and start syncing to the cloud.',
+      'Continue with Google',
+    );
+    if (!ok) {
+      return;
+    }
+    setLinkingGoogle(true);
+    try {
+      const result = await promptAsync();
+      await completeGoogleLink(result);
+    } catch (error) {
+      Alert.alert('Could not link Google', toUserMessage(error));
+    } finally {
+      setLinkingGoogle(false);
+    }
+  }
 
   async function onSwitch(target: League): Promise<void> {
     if (!league || target.id === league.id) {
@@ -59,9 +138,20 @@ export default function ProfileScreen(): ReactNode {
   }
 
   async function onSignOut(): Promise<void> {
-    await authService.signOut();
-    await refresh();
-    router.replace('/login');
+    const ok = await confirmAction('Log out?', 'You can sign back in anytime.', 'Log out');
+    if (!ok) {
+      return;
+    }
+    try {
+      await authService.signOut();
+      await refresh();
+      router.replace('/login');
+    } catch (error) {
+      Alert.alert(
+        'Could not log out',
+        error instanceof Error ? error.message : 'Something went wrong',
+      );
+    }
   }
 
   if (!user || !league) {
@@ -70,20 +160,35 @@ export default function ProfileScreen(): ReactNode {
 
   const store = getStore();
   const insights = player ? buildPlayerInsights(player, store.matches, store.races) : null;
+  const canLinkGoogle = user.isDemo && isFirebaseEnabled();
 
   return (
     <Screen>
       <View style={styles.hero}>
         <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {user.displayName.trim().charAt(0).toUpperCase()}
-          </Text>
+          <Text style={styles.avatarText}>{user.displayName.trim().charAt(0).toUpperCase()}</Text>
         </View>
         <Text style={typography.title}>{user.displayName}</Text>
         <Text style={styles.meta}>{league.name}</Text>
         {user.email ? <Text style={styles.meta}>{user.email}</Text> : null}
         <Text style={styles.badge}>{user.isDemo ? 'Local profile' : 'Google account'}</Text>
       </View>
+
+      {canLinkGoogle ? (
+        <View style={styles.linkCard}>
+          <Text style={typography.label}>Backup & sync</Text>
+          <Text style={styles.sectionHint}>
+            You started with a local name. Link Google to keep this data and sync it to the cloud.
+          </Text>
+          <Button
+            label="Continue with Google"
+            variant="secondary"
+            loading={linkingGoogle}
+            disabled={linkingGoogle || !request}
+            onPress={() => void onLinkGoogle()}
+          />
+        </View>
+      ) : null}
 
       <Text style={[typography.label, styles.section]}>Your leagues</Text>
       <Text style={styles.sectionHint}>
@@ -170,19 +275,22 @@ export default function ProfileScreen(): ReactNode {
           </View>
         </>
       ) : (
-        <Text style={typography.subtitle}>Your player card will appear once you’re in a league.</Text>
+        <Text style={typography.subtitle}>
+          Your player card will appear once you’re in a league.
+        </Text>
       )}
 
-      <Button label="Open full stats" variant="secondary" onPress={() => router.push('/(main)/stats')} />
+      <Button
+        label="Open full stats"
+        variant="secondary"
+        onPress={() => router.push('/(main)/stats')}
+      />
       <View style={styles.spacer} />
       <Button
         label="Log out"
         variant="danger"
         onPress={() => {
-          Alert.alert('Log out?', 'You can sign back in anytime.', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Log out', style: 'destructive', onPress: () => void onSignOut() },
-          ]);
+          void onSignOut();
         }}
       />
     </Screen>
@@ -225,6 +333,15 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: radii.pill,
     overflow: 'hidden',
+  },
+  linkCard: {
+    padding: spacing.lg,
+    borderRadius: radii.lg,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.lg,
+    gap: spacing.sm,
   },
   section: {
     marginBottom: spacing.xs,

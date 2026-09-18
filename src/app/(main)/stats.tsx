@@ -15,7 +15,8 @@ import {
   buildPlayerInsights,
 } from '@/features/stats/services/insights.service';
 import { refreshLeaguePlayerStats } from '@/features/stats/services/stats.service';
-import { getStore, loadStore, subscribeStore } from '@/shared/storage/local-store';
+import { useStoreReload } from '@/shared/hooks/use-store-reload';
+import { getStore, loadStore } from '@/shared/storage/local-store';
 import type { Player } from '@/shared/types/domain';
 import { formatDurationCompact } from '@/shared/utils/datetime';
 import { colors, fonts, radii, spacing, typography } from '@/theme/tokens';
@@ -24,28 +25,29 @@ export default function StatsScreen(): ReactNode {
   const { user, league } = useSession();
   const [players, setPlayers] = useState<Player[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
+
+  const leagueId = league?.id;
+  const userId = user?.uid;
 
   const reload = useCallback(async () => {
-    if (!league || !user) {
+    if (!leagueId || !userId) {
       return;
     }
     await loadStore();
-    await refreshLeaguePlayerStats(league.id);
-    const list = await playersService.listPlayers(league.id);
+    const list = await playersService.listPlayers(leagueId);
     setPlayers(list);
-    const me = list.find((p) => p.authUid === user.uid);
+    const me = list.find((p) => p.authUid === userId);
     setSelectedId((prev) => prev ?? me?.id ?? list[0]?.id ?? null);
-  }, [league, user]);
+  }, [leagueId, userId]);
 
   useEffect(() => {
-    void reload();
-    return subscribeStore(() => setTick((t) => t + 1));
-  }, [reload]);
+    if (!leagueId) {
+      return;
+    }
+    void refreshLeaguePlayerStats(leagueId);
+  }, [leagueId]);
 
-  useEffect(() => {
-    void reload();
-  }, [tick, reload]);
+  useStoreReload(reload, leagueId && userId ? `${leagueId}:${userId}` : null);
 
   if (!league || !user) {
     return null;
@@ -53,9 +55,7 @@ export default function StatsScreen(): ReactNode {
 
   const store = getStore();
   const selected = players.find((p) => p.id === selectedId) ?? null;
-  const insights = selected
-    ? buildPlayerInsights(selected, store.matches, store.races)
-    : null;
+  const insights = selected ? buildPlayerInsights(selected, store.matches, store.races) : null;
   const activity = buildLeagueActivity(players);
   const forfeitBoard = buildLeagueForfeitBoard(players);
   const paceBoard = buildLeaguePaceBoard(players);
@@ -198,9 +198,7 @@ export default function StatsScreen(): ReactNode {
           {insights.avgRacePlace != null ? (
             <Text style={styles.footer}>
               Avg race finish: #{insights.avgRacePlace}
-              {insights.lastPlayedAt
-                ? ` · Last played ${insights.lastPlayedAt.slice(0, 10)}`
-                : ''}
+              {insights.lastPlayedAt ? ` · Last played ${insights.lastPlayedAt.slice(0, 10)}` : ''}
             </Text>
           ) : null}
         </>
@@ -209,7 +207,11 @@ export default function StatsScreen(): ReactNode {
       <Text style={[styles.section, { marginTop: spacing.xl }]}>League hustle</Text>
       <View style={styles.card}>
         <Text style={typography.label}>Games by player</Text>
-        <BarChart data={activity} height={160} emptyLabel="No games logged yet — first one’s free glory." />
+        <BarChart
+          data={activity}
+          height={160}
+          emptyLabel="No games logged yet — first one’s free glory."
+        />
       </View>
 
       <View style={styles.card}>

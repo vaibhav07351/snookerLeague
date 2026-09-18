@@ -39,7 +39,7 @@ export function DonutChart({
     <View style={styles.wrap}>
       <View style={{ width: size, height: size }}>
         <Svg width={size} height={size}>
-          <G rotation={-90} origin={`${size / 2}, ${size / 2}`}>
+          <G transform={`rotate(-90 ${size / 2} ${size / 2})`}>
             <Circle
               cx={size / 2}
               cy={size / 2}

@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
@@ -7,31 +7,31 @@ import { Screen } from '@/features/home/components/Screen';
 import * as matchService from '@/features/match/services/match.service';
 import * as playersService from '@/features/players/services/players.service';
 import * as raceService from '@/features/race/services/race.service';
-import { subscribeStore } from '@/shared/storage/local-store';
+import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { Match, Player, Race } from '@/shared/types/domain';
 import { formatDateTimeSubtle } from '@/shared/utils/datetime';
 import { colors, fonts, spacing, typography } from '@/theme/tokens';
 
 type Filter = 'all' | 'match' | 'race';
 type HistoryItem =
-  | { kind: 'match'; at: string; match: Match }
-  | { kind: 'race'; at: string; race: Race };
+  { kind: 'match'; at: string; match: Match } | { kind: 'race'; at: string; race: Race };
 
 export default function HistoryScreen(): ReactNode {
   const { league } = useSession();
   const [filter, setFilter] = useState<Filter>('all');
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
-  const [tick, setTick] = useState(0);
+
+  const leagueId = league?.id;
 
   const reload = useCallback(async () => {
-    if (!league) {
+    if (!leagueId) {
       return;
     }
     const [matches, races, roster] = await Promise.all([
-      matchService.listMatches(league.id, { limit: 50 }),
-      raceService.listRaces(league.id, { limit: 50 }),
-      playersService.listPlayers(league.id),
+      matchService.listMatches(leagueId, { limit: 50 }),
+      raceService.listRaces(leagueId, { limit: 50 }),
+      playersService.listPlayers(leagueId),
     ]);
     setPlayers(roster);
     const combined: HistoryItem[] = [
@@ -41,19 +41,11 @@ export default function HistoryScreen(): ReactNode {
       .filter((row) => filter === 'all' || row.kind === filter)
       .sort((a, b) => b.at.localeCompare(a.at));
     setItems(combined);
-  }, [league, filter]);
+  }, [leagueId, filter]);
 
-  useEffect(() => {
-    void reload();
-    return subscribeStore(() => setTick((t) => t + 1));
-  }, [reload]);
+  useStoreReload(reload, leagueId ? `${leagueId}:${filter}` : null);
 
-  useEffect(() => {
-    void reload();
-  }, [tick, reload]);
-
-  const nameOf = (id: string): string =>
-    players.find((p) => p.id === id)?.displayName ?? 'Player';
+  const nameOf = (id: string): string => players.find((p) => p.id === id)?.displayName ?? 'Player';
 
   if (!league) {
     return null;

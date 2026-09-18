@@ -47,7 +47,8 @@ export function Screen({
     keyboardVerticalOffset ?? (Platform.OS === 'ios' ? Math.max(headerHeight, 12) : 0);
 
   function scrollFocusedInputIntoView(target: unknown): void {
-    if (!scroll || !scrollRef.current) {
+    // findNodeHandle / UIManager.measureLayout are native-only.
+    if (Platform.OS === 'web' || !scroll || !scrollRef.current) {
       return;
     }
     const handle = findNodeHandle(target as never);

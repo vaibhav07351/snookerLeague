@@ -12,6 +12,7 @@ import * as authService from '@/features/auth/services/auth.service';
 import * as leagueService from '@/features/league/services/league.service';
 import { refreshLeaguePlayerStats } from '@/features/stats/services/stats.service';
 import { loadStore, subscribeStore, getStore } from '@/shared/storage/local-store';
+import { startSyncRuntime } from '@/shared/sync';
 import type { League, SessionUser } from '@/shared/types/domain';
 
 interface SessionState {
@@ -57,29 +58,31 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactNod
     setReady(true);
   }, []);
 
-  const switchLeague = useCallback(
-    async (leagueId: string): Promise<void> => {
-      await loadStore();
-      const current = await authService.getCurrentUser();
-      if (!current) {
-        return;
-      }
-      if (getStore().activeLeagueId === leagueId) {
-        return;
-      }
-      const next = await leagueService.setActiveLeague(leagueId, current.uid);
-      await refreshLeaguePlayerStats(next.id);
-      setLeague(next);
-      setLeagues(leaguesForUser(current.uid));
-    },
-    [],
-  );
+  const switchLeague = useCallback(async (leagueId: string): Promise<void> => {
+    await loadStore();
+    const current = await authService.getCurrentUser();
+    if (!current) {
+      return;
+    }
+    if (getStore().activeLeagueId === leagueId) {
+      return;
+    }
+    const next = await leagueService.setActiveLeague(leagueId, current.uid);
+    await refreshLeaguePlayerStats(next.id);
+    setLeague(next);
+    setLeagues(leaguesForUser(current.uid));
+  }, []);
 
   useEffect(() => {
     void refresh();
-    return subscribeStore(() => {
+    const stopSync = startSyncRuntime();
+    const unsubStore = subscribeStore(() => {
       setTick((t) => t + 1);
     });
+    return () => {
+      stopSync();
+      unsubStore();
+    };
   }, [refresh]);
 
   useEffect(() => {
@@ -87,11 +90,16 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactNod
       return;
     }
     const store = getStore();
-    setUser(store.user);
-    const active =
-      store.leagues.find((l) => l.id === store.activeLeagueId) ?? null;
-    setLeague(active);
-    setLeagues(leaguesForUser(store.user?.uid));
+    const nextUser = store.user;
+    const active = store.leagues.find((l) => l.id === store.activeLeagueId) ?? null;
+    const nextLeagues = leaguesForUser(nextUser?.uid);
+    setUser((prev) => (prev === nextUser ? prev : nextUser));
+    setLeague((prev) => (prev === active ? prev : active));
+    setLeagues((prev) =>
+      prev.length === nextLeagues.length && prev.every((l, i) => l === nextLeagues[i])
+        ? prev
+        : nextLeagues,
+    );
   }, [tick, ready]);
 
   const value = useMemo(

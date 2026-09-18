@@ -1,7 +1,7 @@
 /**
  * Persistence boundary for v1.
- * Local AsyncStorage is the active store. Firestore swap = new repository
- * implementations behind the same service APIs (see claude.md).
+ * Local AsyncStorage is always the UI source of truth.
+ * Google users sync to Firestore via `@/shared/sync` (online push + offline queue).
  */
 export {
   loadStore,

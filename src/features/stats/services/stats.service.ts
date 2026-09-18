@@ -8,6 +8,7 @@ import type {
 } from '@/shared/types/domain';
 import { emptyRaceStats, emptyStandardStats } from '@/shared/types/domain';
 import { updateStore } from '@/shared/storage/local-store';
+import { nowIso } from '@/shared/utils/id';
 
 function pct(part: number, whole: number): number {
   if (whole <= 0) {
@@ -188,8 +189,14 @@ export function applyPlayerStats(
     return {
       ...player,
       stats: {
-        standard: recomputeStandardStats(player.id, matches.filter((m) => m.leagueId === leagueId)),
-        race: recomputeRaceStats(player.id, races.filter((r) => r.leagueId === leagueId)),
+        standard: recomputeStandardStats(
+          player.id,
+          matches.filter((m) => m.leagueId === leagueId),
+        ),
+        race: recomputeRaceStats(
+          player.id,
+          races.filter((r) => r.leagueId === leagueId),
+        ),
       },
     };
   });
@@ -238,10 +245,27 @@ export function listFeed(events: FeedEvent[], leagueId: string, limit = 20): Fee
     .slice(0, limit);
 }
 
-/** Recompute cached player aggregates (e.g. after schema adds forfeit fields). */
+/** Recompute cached player aggregates locally. No-ops if nothing changed. */
 export async function refreshLeaguePlayerStats(leagueId: string): Promise<void> {
-  await updateStore((s) => ({
-    ...s,
-    players: applyPlayerStats(s.players, leagueId, s.matches, s.races),
-  }));
+  await updateStore((s) => {
+    const nextPlayers = applyPlayerStats(s.players, leagueId, s.matches, s.races);
+    const prevById = new Map(s.players.map((p) => [p.id, p]));
+    const changed = nextPlayers.some((p) => {
+      if (p.leagueId !== leagueId) {
+        return false;
+      }
+      const prev = prevById.get(p.id);
+      return !prev || JSON.stringify(prev.stats) !== JSON.stringify(p.stats);
+    });
+    if (!changed && nextPlayers.length === s.players.length) {
+      return s;
+    }
+    const stamp = nowIso();
+    return {
+      ...s,
+      players: nextPlayers.map((p) =>
+        p.leagueId === leagueId ? { ...p, updatedAt: stamp } : p,
+      ),
+    };
+  });
 }

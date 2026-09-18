@@ -5,6 +5,7 @@ import { AppError } from '@/shared/errors/app-error';
 import { logger } from '@/shared/logging/logger';
 import { createId, nowIso } from '@/shared/utils/id';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
+import { scheduleSync, type ScheduleItem } from '@/shared/sync';
 import type {
   FeedEvent,
   FrameScore,
@@ -42,16 +43,14 @@ function sideCanStillWin(
   return own + remaining >= need;
 }
 
-function validateSides(
-  format: 'singles' | 'doubles',
-  teamA: string[],
-  teamB: string[],
-): void {
+function validateSides(format: 'singles' | 'doubles', teamA: string[], teamB: string[]): void {
   const expected = format === 'singles' ? 1 : 2;
   if (teamA.length !== expected || teamB.length !== expected) {
     throw new AppError(
       'VALIDATION',
-      format === 'singles' ? 'Singles needs one player per side' : 'Doubles needs two players per side',
+      format === 'singles'
+        ? 'Singles needs one player per side'
+        : 'Doubles needs two players per side',
     );
   }
   const all = [...teamA, ...teamB];
@@ -124,6 +123,16 @@ export async function createMatch(input: {
   };
 
   await updateStore((s) => ({ ...s, matches: [...s.matches, match] }));
+  await scheduleSync([
+    {
+      entity: 'match',
+      docId: match.id,
+      leagueId: match.leagueId,
+      action: 'upsert',
+      payload: match,
+      updatedAt: match.updatedAt,
+    },
+  ]);
   logger.info('match.service', 'Match created', { matchId: match.id });
   return match;
 }
@@ -138,10 +147,7 @@ function tallyFromFrames(frames: FrameScore[]): { framesA: number; framesB: numb
   );
 }
 
-function maybeComplete(
-  match: Match,
-  frames: FrameScore[],
-): MatchOutcome {
+function maybeComplete(match: Match, frames: FrameScore[]): MatchOutcome {
   const tally = tallyFromFrames(frames);
   const need = framesToWin(match.bestOf);
   if (tally.framesA >= need) {
@@ -185,15 +191,10 @@ function outcomeAfterFrameChange(match: Match, frames: FrameScore[]): MatchOutco
   return { status: 'completed', winner, ...tally };
 }
 
-function latestTeamChampions(
-  matches: Match[],
-  leagueId: string,
-): TeamChampions | null {
+function latestTeamChampions(matches: Match[], leagueId: string): TeamChampions | null {
   const crowned = matches
     .filter((m) => m.leagueId === leagueId && m.crownsChampion)
-    .filter(
-      (m) => m.outcome.status === 'completed' || m.outcome.status === 'forfeited',
-    )
+    .filter((m) => m.outcome.status === 'completed' || m.outcome.status === 'forfeited')
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
   if (!crowned || crowned.outcome.status === 'in_progress') {
     return null;
@@ -207,6 +208,8 @@ function latestTeamChampions(
 }
 
 async function persistMatchResult(match: Match, event?: FeedEvent): Promise<Match> {
+  let eventId: string | null = null;
+
   await updateStore((s) => {
     const matches = s.matches.map((m) => (m.id === match.id ? match : m));
     let events = s.events;
@@ -218,29 +221,76 @@ async function persistMatchResult(match: Match, event?: FeedEvent): Promise<Matc
       return {
         ...l,
         reigningTeam: latestTeamChampions(matches, l.id),
+        updatedAt: nowIso(),
       };
     });
 
     if (event) {
-      events = [...events, event];
+      const withTs: FeedEvent = {
+        ...event,
+        updatedAt: event.updatedAt ?? event.createdAt,
+      };
+      eventId = withTs.id;
+      events = [...events, withTs];
     }
 
-    const players = applyPlayerStats(
-      s.players,
-      match.leagueId,
-      matches,
-      s.races,
+    const players = applyPlayerStats(s.players, match.leagueId, matches, s.races).map((p) =>
+      p.leagueId === match.leagueId ? { ...p, updatedAt: nowIso() } : p,
     );
 
     return { ...s, matches, leagues, events, players };
   });
+
+  const store = getStore();
+  const syncedLeague = store.leagues.find((l) => l.id === match.leagueId) ?? null;
+  const syncedEvent = eventId ? store.events.find((e) => e.id === eventId) : undefined;
+  const syncedPlayers = store.players.filter((p) => p.leagueId === match.leagueId);
+
+  const items: ScheduleItem[] = [
+    {
+      entity: 'match',
+      docId: match.id,
+      leagueId: match.leagueId,
+      action: 'upsert',
+      payload: match,
+      updatedAt: match.updatedAt,
+    },
+  ];
+  if (syncedLeague) {
+    items.push({
+      entity: 'league',
+      docId: syncedLeague.id,
+      leagueId: null,
+      action: 'upsert',
+      payload: syncedLeague,
+      updatedAt: syncedLeague.updatedAt,
+    });
+  }
+  if (syncedEvent) {
+    items.push({
+      entity: 'event',
+      docId: syncedEvent.id,
+      leagueId: syncedEvent.leagueId,
+      action: 'upsert',
+      payload: syncedEvent,
+      updatedAt: syncedEvent.updatedAt,
+    });
+  }
+  for (const player of syncedPlayers) {
+    items.push({
+      entity: 'player',
+      docId: player.id,
+      leagueId: player.leagueId,
+      action: 'upsert',
+      payload: player,
+      updatedAt: player.updatedAt,
+    });
+  }
+  await scheduleSync(items);
   return match;
 }
 
-async function applyFrameListChange(
-  match: Match,
-  frames: FrameScore[],
-): Promise<Match> {
+async function applyFrameListChange(match: Match, frames: FrameScore[]): Promise<Match> {
   const outcome = outcomeAfterFrameChange(match, frames);
   const stillInProgress = outcome.status === 'in_progress';
   const updated: Match = {
@@ -249,9 +299,7 @@ async function applyFrameListChange(
     outcome,
     timingEnabled: stillInProgress ? match.timingEnabled === true : false,
     frameStartedAt:
-      stillInProgress && match.timingEnabled === true
-        ? (match.frameStartedAt ?? nowIso())
-        : null,
+      stillInProgress && match.timingEnabled === true ? (match.frameStartedAt ?? nowIso()) : null,
     updatedAt: nowIso(),
   };
   await persistMatchResult(updated);
@@ -269,7 +317,10 @@ function durationFromTimer(match: Match): number | undefined {
   return Math.max(0, Math.floor((Date.now() - started) / 1000));
 }
 
-function nextFrameTimer(match: Match, stillInProgress: boolean): {
+function nextFrameTimer(
+  match: Match,
+  stillInProgress: boolean,
+): {
   timingEnabled: boolean;
   frameStartedAt: string | null;
 } {
@@ -310,15 +361,22 @@ export async function setMatchTiming(matchId: string, enabled: boolean): Promise
     ...s,
     matches: s.matches.map((m) => (m.id === matchId ? updated : m)),
   }));
+  await scheduleSync([
+    {
+      entity: 'match',
+      docId: updated.id,
+      leagueId: updated.leagueId,
+      action: 'upsert',
+      payload: updated,
+      updatedAt: updated.updatedAt,
+    },
+  ]);
   logger.info('match.service', 'Timing toggled', { matchId, enabled });
   return updated;
 }
 
 /** Remove auto-saved duration from a frame (keep the frame result). */
-export async function clearFrameDuration(
-  matchId: string,
-  frameIndex: number,
-): Promise<Match> {
+export async function clearFrameDuration(matchId: string, frameIndex: number): Promise<Match> {
   await loadStore();
   const match = getStore().matches.find((m) => m.id === matchId);
   if (!match) {
@@ -344,9 +402,32 @@ export async function clearFrameDuration(
 
   await updateStore((s) => {
     const matches = s.matches.map((m) => (m.id === matchId ? updated : m));
-    const players = applyPlayerStats(s.players, match.leagueId, matches, s.races);
+    const players = applyPlayerStats(s.players, match.leagueId, matches, s.races).map((p) =>
+      p.leagueId === match.leagueId ? { ...p, updatedAt: nowIso() } : p,
+    );
     return { ...s, matches, players };
   });
+  const store = getStore();
+  await scheduleSync([
+    {
+      entity: 'match',
+      docId: updated.id,
+      leagueId: updated.leagueId,
+      action: 'upsert',
+      payload: updated,
+      updatedAt: updated.updatedAt,
+    },
+    ...store.players
+      .filter((p) => p.leagueId === match.leagueId)
+      .map((player) => ({
+        entity: 'player' as const,
+        docId: player.id,
+        leagueId: player.leagueId,
+        action: 'upsert' as const,
+        payload: player,
+        updatedAt: player.updatedAt,
+      })),
+  ]);
   logger.info('match.service', 'Frame duration cleared', { matchId, frameIndex });
   return updated;
 }
@@ -388,6 +469,7 @@ export async function addFrame(
       leagueId: match.leagueId,
       type: match.crownsChampion ? 'team_crowned' : 'match_won',
       createdAt: updated.updatedAt,
+      updatedAt: updated.updatedAt,
       title: match.crownsChampion ? 'New reigning champions' : 'Match complete',
       body: match.namedLabel ?? `Best of ${match.bestOf}`,
       relatedIds: [...match.teamA, ...match.teamB, match.id],
@@ -461,14 +543,13 @@ export async function forfeitFrame(
       },
     };
     const pointsPart =
-      framePointsA > 0 || framePointsB > 0
-        ? ` · frame ${framePointsA}–${framePointsB}`
-        : '';
+      framePointsA > 0 || framePointsB > 0 ? ` · frame ${framePointsA}–${framePointsB}` : '';
     event = {
       id: createId('ev'),
       leagueId: match.leagueId,
       type: match.crownsChampion ? 'team_crowned' : 'match_won',
       createdAt: updatedAt,
+      updatedAt,
       title: match.crownsChampion ? 'Champions by forfeit' : 'Win by forfeit',
       body: `Frame forfeit locked the match ${tally.framesA}–${tally.framesB}${pointsPart} · Team ${forfeitedBy.toUpperCase()} walked`,
       relatedIds: [...match.teamA, ...match.teamB, match.id],
@@ -535,10 +616,7 @@ export async function updateFrame(
 }
 
 /** Delete a frame. Reopens the match if the clinch is undone. */
-export async function deleteFrame(
-  matchId: string,
-  frameIndex: number,
-): Promise<Match> {
+export async function deleteFrame(matchId: string, frameIndex: number): Promise<Match> {
   await loadStore();
   const match = getStore().matches.find((m) => m.id === matchId);
   if (!match) {
@@ -573,10 +651,7 @@ export function playerNamesForMatch(
   };
 }
 
-export function describeForfeit(
-  match: Match,
-  nameOf: (id: string) => string,
-): string | null {
+export function describeForfeit(match: Match, nameOf: (id: string) => string): string | null {
   if (match.outcome.status !== 'forfeited') {
     return null;
   }
@@ -586,15 +661,11 @@ export function describeForfeit(
   const frames = `${match.outcome.scoreAtForfeit.framesA}–${match.outcome.scoreAtForfeit.framesB}`;
   const ptsA = match.outcome.scoreAtForfeit.framePointsA ?? 0;
   const ptsB = match.outcome.scoreAtForfeit.framePointsB ?? 0;
-  const pointsPart =
-    ptsA > 0 || ptsB > 0 ? ` (frame points ${ptsA}–${ptsB})` : '';
+  const pointsPart = ptsA > 0 || ptsB > 0 ? ` (frame points ${ptsA}–${ptsB})` : '';
   return `${quitters} forfeited a frame at ${frames}${pointsPart} · ${winners} win the match`;
 }
 
-export function describeChampions(
-  league: League,
-  nameOf: (id: string) => string,
-): string | null {
+export function describeChampions(league: League, nameOf: (id: string) => string): string | null {
   if (!league.reigningTeam || league.reigningTeam.playerIds.length === 0) {
     return null;
   }

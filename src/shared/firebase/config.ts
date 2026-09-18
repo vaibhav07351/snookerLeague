@@ -31,7 +31,7 @@ export function getFirebaseConfig(): FirebasePublicConfig | null {
   return config;
 }
 
-export function useLocalData(): boolean {
+export function preferLocalData(): boolean {
   if (env('EXPO_PUBLIC_USE_LOCAL_DATA') === 'true') {
     return true;
   }

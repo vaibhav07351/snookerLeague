@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
@@ -8,7 +8,7 @@ import {
   sortRaceLeaderboard,
   sortStandardLeaderboard,
 } from '@/features/stats/services/stats.service';
-import { subscribeStore } from '@/shared/storage/local-store';
+import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { Player } from '@/shared/types/domain';
 import { colors, spacing, typography } from '@/theme/tokens';
 
@@ -18,26 +18,18 @@ export default function LeaderboardScreen(): ReactNode {
   const { league } = useSession();
   const [tab, setTab] = useState<Tab>('standard');
   const [players, setPlayers] = useState<Player[]>([]);
-  const [tick, setTick] = useState(0);
+
+  const leagueId = league?.id;
 
   const reload = useCallback(async () => {
-    if (!league) {
+    if (!leagueId) {
       return;
     }
-    const list = await playersService.listPlayers(league.id);
-    setPlayers(
-      tab === 'standard' ? sortStandardLeaderboard(list) : sortRaceLeaderboard(list),
-    );
-  }, [league, tab]);
+    const list = await playersService.listPlayers(leagueId);
+    setPlayers(tab === 'standard' ? sortStandardLeaderboard(list) : sortRaceLeaderboard(list));
+  }, [leagueId, tab]);
 
-  useEffect(() => {
-    void reload();
-    return subscribeStore(() => setTick((t) => t + 1));
-  }, [reload]);
-
-  useEffect(() => {
-    void reload();
-  }, [tick, reload]);
+  useStoreReload(reload, leagueId ? `${leagueId}:${tab}` : null);
 
   if (!league) {
     return null;

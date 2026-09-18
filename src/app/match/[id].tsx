@@ -10,7 +10,7 @@ import { MatchFrameList } from '@/features/match/components/MatchFrameList';
 import * as matchService from '@/features/match/services/match.service';
 import * as playersService from '@/features/players/services/players.service';
 import { toUserMessage } from '@/shared/errors/app-error';
-import { subscribeStore } from '@/shared/storage/local-store';
+import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { Match, Player } from '@/shared/types/domain';
 import { formatDuration } from '@/shared/utils/datetime';
 import { colors, fonts, spacing, typography } from '@/theme/tokens';
@@ -45,7 +45,6 @@ export default function MatchDetailScreen(): ReactNode {
   const [players, setPlayers] = useState<Player[]>([]);
   const [aPts, setAPts] = useState('');
   const [bPts, setBPts] = useState('');
-  const [tick, setTick] = useState(0);
   const [timingBusy, setTimingBusy] = useState(false);
 
   const reload = useCallback(async () => {
@@ -59,14 +58,7 @@ export default function MatchDetailScreen(): ReactNode {
     }
   }, [id]);
 
-  useEffect(() => {
-    void reload();
-    return subscribeStore(() => setTick((t) => t + 1));
-  }, [reload]);
-
-  useEffect(() => {
-    void reload();
-  }, [tick, reload]);
+  useStoreReload(reload, id ?? null);
 
   const timingOn = match?.timingEnabled === true;
   const liveElapsed = useLiveElapsed(

@@ -1,5 +1,5 @@
 import { useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/features/home/components/Button';
@@ -8,7 +8,7 @@ import { TextField } from '@/features/home/components/TextField';
 import * as playersService from '@/features/players/services/players.service';
 import * as raceService from '@/features/race/services/race.service';
 import { toUserMessage } from '@/shared/errors/app-error';
-import { subscribeStore } from '@/shared/storage/local-store';
+import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { Player, Race } from '@/shared/types/domain';
 import { colors, spacing, typography } from '@/theme/tokens';
 
@@ -17,32 +17,43 @@ export default function RaceDetailScreen(): ReactNode {
   const [race, setRace] = useState<Race | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [draftScores, setDraftScores] = useState<Record<string, string>>({});
-  const [tick, setTick] = useState(0);
 
   const reload = useCallback(async () => {
     if (!id) {
       return;
     }
     const r = await raceService.getRace(id);
-    setRace(r);
+    setRace((prev) => {
+      if (prev && r && prev.id === r.id && prev.updatedAt === r.updatedAt) {
+        return prev;
+      }
+      return r;
+    });
     if (r) {
       setPlayers(await playersService.listPlayers(r.leagueId));
-      const drafts: Record<string, string> = {};
-      r.entrants.forEach((e) => {
-        drafts[e.playerId] = e.score > 0 ? String(e.score) : '';
+      setDraftScores((prev) => {
+        const drafts: Record<string, string> = {};
+        let same = true;
+        r.entrants.forEach((e) => {
+          const next = e.score > 0 ? String(e.score) : '';
+          drafts[e.playerId] = next;
+          if (prev[e.playerId] !== next) {
+            same = false;
+          }
+        });
+        if (same && Object.keys(prev).length === Object.keys(drafts).length) {
+          return prev;
+        }
+        // Preserve in-progress typing when server scores are still zero / unchanged keys.
+        if (Object.keys(prev).length > 0 && r.entrants.every((e) => e.score === 0)) {
+          return prev;
+        }
+        return drafts;
       });
-      setDraftScores(drafts);
     }
   }, [id]);
 
-  useEffect(() => {
-    void reload();
-    return subscribeStore(() => setTick((t) => t + 1));
-  }, [reload]);
-
-  useEffect(() => {
-    void reload();
-  }, [tick, reload]);
+  useStoreReload(reload, id ?? null);
 
   if (!race) {
     return (
@@ -97,9 +108,7 @@ export default function RaceDetailScreen(): ReactNode {
                 <TextField
                   label="Score"
                   value={draftScores[e.playerId] ?? ''}
-                  onChangeText={(t) =>
-                    setDraftScores((prev) => ({ ...prev, [e.playerId]: t }))
-                  }
+                  onChangeText={(t) => setDraftScores((prev) => ({ ...prev, [e.playerId]: t }))}
                   keyboardType="number-pad"
                   placeholder={e.score > 0 ? String(e.score) : 'Enter score'}
                 />

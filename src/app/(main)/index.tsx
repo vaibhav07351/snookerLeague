@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
@@ -9,7 +9,8 @@ import { Screen } from '@/features/home/components/Screen';
 import * as matchService from '@/features/match/services/match.service';
 import { listPlayers } from '@/features/players/services/players.service';
 import { listFeed } from '@/features/stats/services/stats.service';
-import { getStore, loadStore, subscribeStore } from '@/shared/storage/local-store';
+import { useStoreReload } from '@/shared/hooks/use-store-reload';
+import { getStore, loadStore } from '@/shared/storage/local-store';
 import type { FeedEvent, Player } from '@/shared/types/domain';
 import { formatLastMatchDay } from '@/shared/utils/datetime';
 import { colors, fonts, radii, spacing, typography } from '@/theme/tokens';
@@ -19,33 +20,26 @@ export default function HomeScreen(): ReactNode {
   const [players, setPlayers] = useState<Player[]>([]);
   const [events, setEvents] = useState<FeedEvent[]>([]);
   const [lastMatchAt, setLastMatchAt] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
+
+  const leagueId = league?.id;
 
   const reload = useCallback(async () => {
-    if (!league) {
+    if (!leagueId) {
       return;
     }
     await loadStore();
-    setPlayers(await listPlayers(league.id));
-    setEvents(listFeed(getStore().events, league.id, 8));
-    setLastMatchAt(await matchService.getLastMatchPlayedAt(league.id));
-  }, [league]);
+    setPlayers(await listPlayers(leagueId));
+    setEvents(listFeed(getStore().events, leagueId, 8));
+    setLastMatchAt(await matchService.getLastMatchPlayedAt(leagueId));
+  }, [leagueId]);
 
-  useEffect(() => {
-    void reload();
-    return subscribeStore(() => setTick((t) => t + 1));
-  }, [reload]);
-
-  useEffect(() => {
-    void reload();
-  }, [tick, reload]);
+  useStoreReload(reload, leagueId ?? null);
 
   if (!league || !user) {
     return null;
   }
 
-  const nameOf = (id: string): string =>
-    players.find((p) => p.id === id)?.displayName ?? 'Player';
+  const nameOf = (id: string): string => players.find((p) => p.id === id)?.displayName ?? 'Player';
 
   const me = players.find((p) => p.authUid === user.uid);
   const hasRoster = players.length >= 2;
@@ -72,28 +66,18 @@ export default function HomeScreen(): ReactNode {
 
       <View style={styles.champPanel}>
         <Text style={typography.label}>Reigning champions</Text>
-        <Text style={styles.champNames}>
-          {teamTitle ?? 'Waiting for a crowning match'}
-        </Text>
+        <Text style={styles.champNames}>{teamTitle ?? 'Waiting for a crowning match'}</Text>
         {league.reigningTeam?.namedLabel ? (
           <Text style={styles.meta}>{league.reigningTeam.namedLabel}</Text>
         ) : (
-          <Text style={styles.meta}>
-            Tip: turn on “Crowns champions” when you log a final
-          </Text>
+          <Text style={styles.meta}>Tip: turn on “Crowns champions” when you log a final</Text>
         )}
       </View>
 
       <View style={styles.statStrip}>
         <StatCell label="Race king" value={raceKing ?? '—'} />
-        <StatCell
-          label="Your doubles"
-          value={me ? `${me.stats.standard.winPct}%` : '—'}
-        />
-        <StatCell
-          label="Race 1sts"
-          value={me ? `${me.stats.race.firstPct}%` : '—'}
-        />
+        <StatCell label="Your doubles" value={me ? `${me.stats.standard.winPct}%` : '—'} />
+        <StatCell label="Race 1sts" value={me ? `${me.stats.race.firstPct}%` : '—'} />
       </View>
 
       {!hasRoster ? (

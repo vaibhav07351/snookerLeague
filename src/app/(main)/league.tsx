@@ -10,6 +10,7 @@ import { Screen } from '@/features/home/components/Screen';
 import { TextField } from '@/features/home/components/TextField';
 import { toUserMessage } from '@/shared/errors/app-error';
 import type { League } from '@/shared/types/domain';
+import { confirmAction } from '@/shared/utils/confirm';
 import { colors, fonts, radii, spacing, typography } from '@/theme/tokens';
 
 type AddMode = 'hidden' | 'create' | 'join';
@@ -43,8 +44,7 @@ export default function LeagueScreen(): ReactNode {
     });
   }, [leagues, league?.id]);
 
-  const selected: League | null =
-    leagues.find((l) => l.id === selectedId) ?? null;
+  const selected: League | null = leagues.find((l) => l.id === selectedId) ?? null;
 
   useEffect(() => {
     if (!selected) {
@@ -63,8 +63,7 @@ export default function LeagueScreen(): ReactNode {
 
   const sessionUser = user;
   const isCreator = selected != null && selected.createdByUid === sessionUser.uid;
-  const nameMatches =
-    selected != null && deleteTypedName.trim() === selected.name;
+  const nameMatches = selected != null && deleteTypedName.trim() === selected.name;
 
   async function save(): Promise<void> {
     if (!selected) {
@@ -173,65 +172,69 @@ export default function LeagueScreen(): ReactNode {
     if (!selected || !nameMatches) {
       return;
     }
-    Alert.alert(
-      'Final confirmation',
-      `Type-check passed. Delete "${selected.name}" forever now?`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-          onPress: () => {
-            setDeleteStep('idle');
-            setDeleteTypedName('');
-          },
+    Alert.alert('Final confirmation', `Type-check passed. Delete "${selected.name}" forever now?`, [
+      {
+        text: 'Cancel',
+        style: 'cancel',
+        onPress: () => {
+          setDeleteStep('idle');
+          setDeleteTypedName('');
         },
-        {
-          text: 'Delete forever',
-          style: 'destructive',
-          onPress: () => {
-            void (async () => {
-              setBusy(true);
-              try {
-                const result = await leagueService.deleteLeague({
-                  leagueId: selected.id,
-                  uid: sessionUser.uid,
-                  typedName: deleteTypedName,
-                });
-                await refresh();
-                setDeleteStep('idle');
-                setDeleteTypedName('');
-                if (result.nextActiveLeagueId) {
-                  setSelectedId(result.nextActiveLeagueId);
-                  Alert.alert('League deleted', 'Switched to another league you belong to.');
-                  router.replace('/(main)');
-                } else {
-                  setSelectedId(null);
-                  Alert.alert('League deleted', 'Create or join a league to continue.');
-                  router.replace('/onboarding');
-                }
-              } catch (error) {
-                Alert.alert('Could not delete', toUserMessage(error));
-              } finally {
-                setBusy(false);
+      },
+      {
+        text: 'Delete forever',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            setBusy(true);
+            try {
+              const result = await leagueService.deleteLeague({
+                leagueId: selected.id,
+                uid: sessionUser.uid,
+                typedName: deleteTypedName,
+              });
+              await refresh();
+              setDeleteStep('idle');
+              setDeleteTypedName('');
+              if (result.nextActiveLeagueId) {
+                setSelectedId(result.nextActiveLeagueId);
+                Alert.alert('League deleted', 'Switched to another league you belong to.');
+                router.replace('/(main)');
+              } else {
+                setSelectedId(null);
+                Alert.alert('League deleted', 'Create or join a league to continue.');
+                router.replace('/onboarding');
               }
-            })();
-          },
+            } catch (error) {
+              Alert.alert('Could not delete', toUserMessage(error));
+            } finally {
+              setBusy(false);
+            }
+          })();
         },
-      ],
-    );
+      },
+    ]);
   }
 
   async function onSignOut(): Promise<void> {
-    await authService.signOut();
-    await refresh();
-    router.replace('/login');
+    const ok = await confirmAction('Log out?', 'You can sign back in anytime.', 'Log out');
+    if (!ok) {
+      return;
+    }
+    try {
+      await authService.signOut();
+      await refresh();
+      router.replace('/login');
+    } catch (error) {
+      Alert.alert('Could not log out', toUserMessage(error));
+    }
   }
 
   return (
     <Screen>
       <Text style={typography.subtitle}>
-        All leagues you’re in. Open one for invite code, settings, or delete. Switch active
-        league from Profile.
+        All leagues you’re in. Open one for invite code, settings, or delete. Switch active league
+        from Profile.
       </Text>
 
       <Text style={[typography.label, styles.section]}>Your leagues</Text>
@@ -290,8 +293,8 @@ export default function LeagueScreen(): ReactNode {
             <View style={styles.dangerZone}>
               <Text style={typography.label}>Danger zone</Text>
               <Text style={styles.dangerHint}>
-                Deleting removes every match, race, player, and stat in this league on this
-                device. Only you (the creator) can do this.
+                Deleting removes every match, race, player, and stat in this league on this device.
+                Only you (the creator) can do this.
               </Text>
               {deleteStep === 'idle' ? (
                 <Button

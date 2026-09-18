@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
@@ -11,7 +11,7 @@ import {
   type TeamChampionRecord,
 } from '@/features/league/services/champions.service';
 import * as playersService from '@/features/players/services/players.service';
-import { subscribeStore } from '@/shared/storage/local-store';
+import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { Player } from '@/shared/types/domain';
 import { formatDateTimeSubtle } from '@/shared/utils/datetime';
 import { colors, fonts, radii, spacing, typography } from '@/theme/tokens';
@@ -24,43 +24,34 @@ export default function ChampionsHistoryScreen(): ReactNode {
   const [teams, setTeams] = useState<TeamChampionRecord[]>([]);
   const [races, setRaces] = useState<RaceChampionRecord[]>([]);
   const [tab, setTab] = useState<ChampTab>('match');
-  const [tick, setTick] = useState(0);
+
+  const leagueId = league?.id;
 
   const reload = useCallback(async () => {
-    if (!league) {
+    if (!leagueId) {
       return;
     }
     const [roster, teamHistory, raceHistory] = await Promise.all([
-      playersService.listPlayers(league.id),
-      listTeamChampionHistory(league.id),
-      listRaceChampionHistory(league.id),
+      playersService.listPlayers(leagueId),
+      listTeamChampionHistory(leagueId),
+      listRaceChampionHistory(leagueId),
     ]);
     setPlayers(roster);
     setTeams(teamHistory);
     setRaces(raceHistory);
-  }, [league]);
+  }, [leagueId]);
 
-  useEffect(() => {
-    void reload();
-    return subscribeStore(() => setTick((t) => t + 1));
-  }, [reload]);
-
-  useEffect(() => {
-    void reload();
-  }, [tick, reload]);
+  useStoreReload(reload, leagueId ?? null);
 
   if (!league) {
     return null;
   }
 
-  const nameOf = (id: string): string =>
-    players.find((p) => p.id === id)?.displayName ?? 'Player';
+  const nameOf = (id: string): string => players.find((p) => p.id === id)?.displayName ?? 'Player';
 
   return (
     <Screen>
-      <Text style={typography.subtitle}>
-        Crowning match titles and race kings — newest first.
-      </Text>
+      <Text style={typography.subtitle}>Crowning match titles and race kings — newest first.</Text>
 
       <View style={styles.tabs}>
         <Pressable
@@ -100,9 +91,7 @@ export default function ChampionsHistoryScreen(): ReactNode {
                 </Text>
                 <Text style={styles.when}>{formatDateTimeSubtle(row.crownedAt)}</Text>
               </View>
-              <Text style={styles.names}>
-                {row.playerIds.map((id) => nameOf(id)).join(' & ')}
-              </Text>
+              <Text style={styles.names}>{row.playerIds.map((id) => nameOf(id)).join(' & ')}</Text>
               <Text style={styles.meta}>
                 {row.namedLabel ? `${row.namedLabel} · ` : ''}
                 {row.scoreLine}

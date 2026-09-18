@@ -81,6 +81,7 @@ export interface Player {
   authUid: string | null;
   photoUrl: string | null;
   createdAt: string;
+  updatedAt: string;
   stats: {
     standard: StandardStats;
     race: RaceStats;
@@ -107,6 +108,7 @@ export interface League {
   name: string;
   inviteCode: string;
   createdAt: string;
+  updatedAt: string;
   createdByUid: string;
   memberUids: string[];
   defaultRaceTarget: number;
@@ -200,21 +202,46 @@ export interface Race {
 }
 
 export type FeedEventType =
-  | 'team_crowned'
-  | 'team_dethroned'
-  | 'race_king'
-  | 'match_won'
-  | 'race_won'
-  | 'streak';
+  'team_crowned' | 'team_dethroned' | 'race_king' | 'match_won' | 'race_won' | 'streak';
 
 export interface FeedEvent {
   id: string;
   leagueId: string;
   type: FeedEventType;
   createdAt: string;
+  updatedAt: string;
   title: string;
   body: string;
   relatedIds: string[];
+}
+
+export type SyncEntity = 'user' | 'league' | 'player' | 'match' | 'race' | 'event';
+
+export type SyncAction = 'upsert' | 'delete';
+
+/** Queued cloud mutation for local-first sync. */
+export interface PendingOp {
+  opId: string;
+  entity: SyncEntity;
+  docId: string;
+  /** Null for user docs. */
+  leagueId: string | null;
+  action: SyncAction;
+  /** Full document for upsert; null for delete. */
+  payload: unknown | null;
+  updatedAt: string;
+  attempts: number;
+}
+
+/** Cloud user profile (Firestore users/{uid}). */
+export interface CloudUserProfile {
+  uid: string;
+  displayName: string;
+  email: string | null;
+  photoUrl: string | null;
+  leagueIds: string[];
+  activeLeagueId: string | null;
+  updatedAt: string;
 }
 
 export interface SessionUser {
@@ -233,4 +260,5 @@ export interface AppDataStore {
   matches: Match[];
   races: Race[];
   events: FeedEvent[];
+  pendingOps: PendingOp[];
 }
