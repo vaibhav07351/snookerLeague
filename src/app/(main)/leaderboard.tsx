@@ -106,6 +106,7 @@ export default function LeaderboardScreen(): ReactNode {
             ))}
           </View>
           <FlatList
+            style={styles.listFlex}
             data={cityRows}
             keyExtractor={(item) => item.uid}
             ListEmptyComponent={
@@ -130,6 +131,7 @@ export default function LeaderboardScreen(): ReactNode {
         </>
       ) : (
         <FlatList
+          style={styles.listFlex}
           data={players}
           keyExtractor={(p) => p.id}
           ListEmptyComponent={
@@ -178,6 +180,9 @@ const styles = StyleSheet.create({
   },
   tabTextOn: {
     color: colors.felt,
+  },
+  listFlex: {
+    flex: 1,
   },
   divs: {
     flexDirection: 'row',

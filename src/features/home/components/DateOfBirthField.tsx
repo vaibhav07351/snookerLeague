@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import {
   divisionFromDob,
@@ -25,6 +25,17 @@ function partsFromIso(iso: string): { day: string; month: string; year: string }
     month: String(parsed.getMonth() + 1).padStart(2, '0'),
     year: String(parsed.getFullYear()),
   };
+}
+
+/** Web needs a deferred focus move; sync focus inside onChangeText often no-ops in browsers. */
+function focusNext(ref: RefObject<TextInput | null>): void {
+  if (Platform.OS === 'web') {
+    requestAnimationFrame(() => {
+      setTimeout(() => ref.current?.focus(), 0);
+    });
+    return;
+  }
+  ref.current?.focus();
 }
 
 export function DateOfBirthField({ value, onChange, error }: DateOfBirthFieldProps): ReactNode {
@@ -65,7 +76,7 @@ export function DateOfBirthField({ value, onChange, error }: DateOfBirthFieldPro
             setDay(next);
             emit(next, month, year);
             if (next.length === 2) {
-              monthRef.current?.focus();
+              focusNext(monthRef);
             }
           }}
           placeholder="DD"
@@ -83,12 +94,12 @@ export function DateOfBirthField({ value, onChange, error }: DateOfBirthFieldPro
             setMonth(next);
             emit(day, next, year);
             if (next.length === 2) {
-              yearRef.current?.focus();
+              focusNext(yearRef);
             }
           }}
           onKeyPress={({ nativeEvent }) => {
             if (nativeEvent.key === 'Backspace' && month.length === 0) {
-              dayRef.current?.focus();
+              focusNext(dayRef);
             }
           }}
           placeholder="MM"
@@ -108,7 +119,7 @@ export function DateOfBirthField({ value, onChange, error }: DateOfBirthFieldPro
           }}
           onKeyPress={({ nativeEvent }) => {
             if (nativeEvent.key === 'Backspace' && year.length === 0) {
-              monthRef.current?.focus();
+              focusNext(monthRef);
             }
           }}
           placeholder="YYYY"
@@ -135,9 +146,12 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: spacing.sm,
+    width: '100%',
+    maxWidth: '100%',
   },
   input: {
     flex: 1,
+    minWidth: 0,
     backgroundColor: colors.surface,
     borderWidth: 1.5,
     borderColor: colors.border,
@@ -145,10 +159,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 14,
     color: colors.chalk,
-    fontSize: 17,
+    // 16px on web avoids mobile Safari auto-zoom on focus (looks "zoomed in").
+    fontSize: Platform.OS === 'web' ? 16 : 17,
     fontFamily: fonts.body,
     minHeight: 52,
     textAlign: 'center',
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : {}),
   },
   year: {
     flex: 1.4,

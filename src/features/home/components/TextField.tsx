@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { StyleSheet, TextInput, View, Text, type TextInputProps } from 'react-native';
+import { Platform, StyleSheet, TextInput, View, Text, type TextInputProps } from 'react-native';
 
 import { colors, fonts, radii, spacing, typography } from '@/theme/tokens';
 
@@ -37,9 +37,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 14,
     color: colors.chalk,
-    fontSize: 17,
+    // 16px on web avoids mobile Safari auto-zoom on focus.
+    fontSize: Platform.OS === 'web' ? 16 : 17,
     fontFamily: fonts.body,
     minHeight: 52,
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : {}),
   },
   inputError: {
     borderColor: colors.danger,

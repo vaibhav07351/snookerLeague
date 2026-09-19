@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
 
 import { useGoogleSignIn } from '@/features/auth/hooks/use-google-sign-in';
 import { useSession } from '@/features/auth/hooks/use-session';
@@ -198,7 +198,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   form: {
-    marginTop: 'auto',
+    // On native, pin the form to the bottom of tall screens. On web that creates a
+    // huge empty gap before the fields — keep natural flow instead.
+    marginTop: Platform.OS === 'web' ? spacing.md : 'auto',
   },
   google: {
     marginTop: spacing.sm,

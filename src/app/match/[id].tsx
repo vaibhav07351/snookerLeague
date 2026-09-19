@@ -190,30 +190,25 @@ export default function MatchDetailScreen(): ReactNode {
       framePointsA > 0 || framePointsB > 0
         ? `\nCurrent frame points: ${framePointsA}–${framePointsB}`
         : '';
-
-    Alert.alert(
+    const confirmLabel = matchWouldEnd ? 'Forfeit & end match' : 'Forfeit frame';
+    const ok = await confirmAction(
       'Forfeit this frame?',
       matchWouldEnd
         ? `${quitting} forfeit this frame (${framesA}–${framesB}).${pointsNow}\n\nThey can no longer reach ${need} frames — ${winning} win the match. That counts as a forfeit loss in stats.`
         : `${quitting} forfeit this frame (${framesA}–${framesB}).${pointsNow}\n\n${winning} take the frame; the match continues.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: matchWouldEnd ? 'Forfeit & end match' : 'Forfeit frame',
-          style: 'destructive',
-          onPress: () => {
-            void matchService
-              .forfeitFrame(match!.id, side, {
-                teamAPoints: framePointsA,
-                teamBPoints: framePointsB,
-              })
-              .catch((error: unknown) => {
-                Alert.alert('Forfeit failed', toUserMessage(error));
-              });
-          },
-        },
-      ],
+      confirmLabel,
     );
+    if (!ok) {
+      return;
+    }
+    try {
+      await matchService.forfeitFrame(match!.id, side, {
+        teamAPoints: framePointsA,
+        teamBPoints: framePointsB,
+      });
+    } catch (error) {
+      Alert.alert('Forfeit failed', toUserMessage(error));
+    }
   }
 
   async function logManualFrame(frame: {

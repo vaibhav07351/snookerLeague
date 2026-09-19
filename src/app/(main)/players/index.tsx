@@ -121,6 +121,7 @@ export default function PlayersScreen(): ReactNode {
       <FlatList
         data={players}
         keyExtractor={(item) => item.id}
+        style={styles.listFlex}
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
@@ -171,6 +172,9 @@ const styles = StyleSheet.create({
   },
   addBtn: {
     marginBottom: spacing.md,
+  },
+  listFlex: {
+    flex: 1,
   },
   list: {
     paddingBottom: spacing.xl,

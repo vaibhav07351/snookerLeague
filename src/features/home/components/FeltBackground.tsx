@@ -6,7 +6,7 @@ import { colors } from '@/theme/tokens';
 /** Soft sunny felt atmosphere — cheerful, not gloomy. */
 export function FeltAtmosphere(): ReactNode {
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.clip]}>
       <View style={[StyleSheet.absoluteFill, styles.base]} />
       <View style={styles.sunBlob} />
       <View style={styles.mintBlob} />
@@ -20,6 +20,9 @@ export function FeltAtmosphere(): ReactNode {
 export const LinearGradientPlaceholder = FeltAtmosphere;
 
 const styles = StyleSheet.create({
+  clip: {
+    overflow: 'hidden',
+  },
   base: {
     backgroundColor: colors.felt,
   },

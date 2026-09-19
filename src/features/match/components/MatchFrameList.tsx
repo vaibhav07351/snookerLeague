@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/features/home/components/Button';
 import { TextField } from '@/features/home/components/TextField';
 import type { FrameScore } from '@/shared/types/domain';
+import { confirmAction } from '@/shared/utils/confirm';
 import { formatDuration } from '@/shared/utils/datetime';
 import { colors, fonts, radii, spacing } from '@/theme/tokens';
 
@@ -66,24 +67,19 @@ export function MatchFrameList({
     }
   }
 
-  function confirmDelete(index: number): void {
-    Alert.alert(
+  async function confirmDelete(index: number): Promise<void> {
+    const ok = await confirmAction(
       'Delete frame?',
       `Remove frame ${index + 1}? The match score will be recalculated.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            void onDelete(index);
-            if (editingIndex === index) {
-              setEditingIndex(null);
-            }
-          },
-        },
-      ],
+      'Delete',
     );
+    if (!ok) {
+      return;
+    }
+    await onDelete(index);
+    if (editingIndex === index) {
+      setEditingIndex(null);
+    }
   }
 
   if (frames.length === 0) {
@@ -175,7 +171,7 @@ export function MatchFrameList({
                   <Pressable onPress={() => startEdit(i)} hitSlop={8}>
                     <Text style={styles.actionEdit}>Edit</Text>
                   </Pressable>
-                  <Pressable onPress={() => confirmDelete(i)} hitSlop={8}>
+                  <Pressable onPress={() => void confirmDelete(i)} hitSlop={8}>
                     <Text style={styles.actionDelete}>Delete</Text>
                   </Pressable>
                   {typeof f.durationSeconds === 'number' ? (

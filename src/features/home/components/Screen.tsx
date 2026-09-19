@@ -74,7 +74,8 @@ export function Screen({
   const body = scroll ? (
     <ScrollView
       ref={scrollRef}
-      style={styles.flex}
+      // RN Web: flex:1 alone can disable scroll; a numeric height restores it.
+      style={[styles.flex, Platform.OS === 'web' ? styles.webScroll : null]}
       contentContainerStyle={[styles.scrollContent, contentStyle]}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
@@ -91,7 +92,10 @@ export function Screen({
   );
 
   return (
-    <SafeAreaView style={[theme.screen, style]} edges={[...resolvedEdges]}>
+    <SafeAreaView
+      style={[theme.screen, Platform.OS === 'web' ? styles.webClip : null, style]}
+      edges={[...resolvedEdges]}
+    >
       <FeltAtmosphere />
       <KeyboardAvoidingView
         style={styles.flex}
@@ -109,17 +113,28 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
+  webScroll: {
+    height: 0,
+  },
+  // Clip felt blobs so they don't expand document width on web.
+  webClip: {
+    overflow: 'hidden',
+    width: '100%',
+  },
   flexContent: {
     flex: 1,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.lg,
+    // Let nested FlatLists shrink/scroll inside the phone shell on web.
+    ...(Platform.OS === 'web' ? { minHeight: 0, overflow: 'hidden' as const } : {}),
   },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     // Extra room so bottom fields (e.g. match name) can scroll above the keyboard.
-    paddingBottom: spacing.xxl + 120,
+    // Web has no native keyboard inset — keep a modest bottom pad only.
+    paddingBottom: Platform.OS === 'web' ? spacing.xxl : spacing.xxl + 120,
   },
 });

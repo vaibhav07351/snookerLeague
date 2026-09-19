@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { colors, fonts, radii, spacing } from '@/theme/tokens';
 
@@ -167,13 +167,15 @@ const styles = StyleSheet.create({
   },
   input: {
     minHeight: 44,
+    minWidth: 0,
     borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     color: colors.chalk,
     fontFamily: fonts.bodyBold,
-    fontSize: 18,
+    // 16px on web avoids mobile Safari auto-zoom on focus.
+    fontSize: Platform.OS === 'web' ? 16 : 18,
     paddingHorizontal: 10,
     textAlign: 'center',
   },

@@ -68,6 +68,7 @@ export default function HistoryScreen(): ReactNode {
       </View>
 
       <FlatList
+        style={styles.listFlex}
         data={items}
         keyExtractor={(item) => (item.kind === 'match' ? item.match.id : item.race.id)}
         ListEmptyComponent={<Text style={typography.subtitle}>Nothing logged yet.</Text>}
@@ -152,6 +153,9 @@ const styles = StyleSheet.create({
   },
   tabTextOn: {
     color: colors.felt,
+  },
+  listFlex: {
+    flex: 1,
   },
   row: {
     paddingVertical: spacing.md,
