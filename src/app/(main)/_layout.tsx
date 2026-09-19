@@ -40,13 +40,12 @@ function CustomDrawer(props: DrawerContentComponentProps): ReactNode {
   const { matches: liveMatches, races: liveRaces, nameOf } = useLiveSessions(league?.id);
 
   const items: Array<{ label: string; route: string; hint: string }> = [
-    { label: 'Home', route: 'index', hint: 'Champs & quick play' },
+    { label: 'Home', route: '(tabs)', hint: 'Tabs · city & club' },
     { label: 'Game history', route: 'history', hint: 'Matches & races' },
     { label: 'Champion history', route: 'champions', hint: 'Titles & race kings' },
     { label: 'Stats', route: 'stats', hint: 'Charts & form' },
     { label: 'Leaderboard', route: 'leaderboard', hint: "Who's hot" },
     { label: 'Players', route: 'players/index', hint: 'Roster & guests' },
-    { label: 'Community', route: 'community', hint: 'City · live · challenge' },
     { label: 'League', route: 'league', hint: 'Invite · settings' },
   ];
 
@@ -61,6 +60,7 @@ function CustomDrawer(props: DrawerContentComponentProps): ReactNode {
         <BrandWordmark size="sm" />
         <Text style={styles.drawerLeague}>{league?.name ?? 'Your league'}</Text>
         <Text style={styles.drawerUser}>Hey {user?.displayName ?? 'player'}</Text>
+        <Text style={styles.drawerHint}>Club tools</Text>
       </View>
 
       {liveMatches.map((m) => {
@@ -135,7 +135,7 @@ export default function MainDrawerLayout(): ReactNode {
         headerRight: () => <ProfileButton />,
       }}
     >
-      <Drawer.Screen name="index" options={{ title: 'Home', drawerLabel: 'Home' }} />
+      <Drawer.Screen name="(tabs)" options={{ headerShown: false, title: 'Home' }} />
       <Drawer.Screen name="history" options={{ title: 'Game history' }} />
       <Drawer.Screen name="champions" options={{ title: 'Champion history' }} />
       <Drawer.Screen name="stats" options={{ title: 'Stats' }} />
@@ -146,13 +146,16 @@ export default function MainDrawerLayout(): ReactNode {
         options={{ title: 'Player', drawerItemStyle: { display: 'none' } }}
       />
       <Drawer.Screen
-        name="profile"
-        options={{ title: 'My profile', drawerItemStyle: { display: 'none' } }}
+        name="directory"
+        options={{ title: 'Directory', drawerItemStyle: { display: 'none' } }}
       />
-      <Drawer.Screen name="community" options={{ title: 'Community' }} />
       <Drawer.Screen
         name="city-player"
         options={{ title: 'Player', drawerItemStyle: { display: 'none' } }}
+      />
+      <Drawer.Screen
+        name="follows"
+        options={{ title: 'Follows', drawerItemStyle: { display: 'none' } }}
       />
       <Drawer.Screen name="league" options={{ title: 'League' }} />
     </Drawer>
@@ -177,12 +180,6 @@ const styles = StyleSheet.create({
   resumeWrap: {
     paddingHorizontal: spacing.sm,
   },
-  drawerBrand: {
-    fontFamily: fonts.display,
-    fontSize: 28,
-    color: colors.chalk,
-    marginTop: spacing.sm,
-  },
   drawerLeague: {
     fontFamily: fonts.bodyMedium,
     color: colors.goldSoft,
@@ -192,6 +189,14 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     color: colors.chalkMuted,
     marginTop: spacing.xs,
+  },
+  drawerHint: {
+    fontFamily: fonts.bodyBold,
+    fontSize: 11,
+    letterSpacing: 1,
+    color: colors.gold,
+    marginTop: spacing.sm,
+    textTransform: 'uppercase',
   },
   item: {
     borderRadius: radii.md,

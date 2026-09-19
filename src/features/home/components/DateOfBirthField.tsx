@@ -118,7 +118,11 @@ export function DateOfBirthField({ value, onChange, error }: DateOfBirthFieldPro
           style={[styles.input, styles.year, error ? styles.inputError : null]}
         />
       </View>
-      {error ? <Text style={styles.error}>{error}</Text> : <Text style={styles.hint}>{preview}</Text>}
+      {error ? (
+        <Text style={styles.error}>{error}</Text>
+      ) : (
+        <Text style={styles.hint}>{preview}</Text>
+      )}
     </View>
   );
 }

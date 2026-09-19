@@ -33,6 +33,9 @@ function syncPriority(op: PendingOp): number {
       race: 0,
       event: 0,
       challenge: 0,
+      looking: 0,
+      directory: 0,
+      follow: 0,
       profile: 0,
       league: 1,
       user: 2,
@@ -48,6 +51,9 @@ function syncPriority(op: PendingOp): number {
     race: 2,
     event: 2,
     challenge: 2,
+    looking: 2,
+    directory: 2,
+    follow: 2,
   };
   return upsertOrder[op.entity] ?? 9;
 }

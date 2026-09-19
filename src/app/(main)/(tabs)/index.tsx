@@ -1,11 +1,13 @@
 import { router } from 'expo-router';
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { BrandLogo } from '@/features/home/components/BrandLogo';
 import { BrandWordmark } from '@/features/home/components/BrandWordmark';
 import { Button } from '@/features/home/components/Button';
+import { HomeActivityList } from '@/features/home/components/HomeActivityList';
+import { HomeFilterChips } from '@/features/home/components/HomeFilterChips';
 import { LiveResumeCard } from '@/features/home/components/LiveResumeCard';
 import { Screen } from '@/features/home/components/Screen';
 import {
@@ -13,36 +15,67 @@ import {
   raceResumeCopy,
   useLiveSessions,
 } from '@/features/home/hooks/use-live-sessions';
+import {
+  filterLiveForHome,
+  homeActivityEmptyCopy,
+  listHomeActivity,
+  refreshHomeNetworkSources,
+  type HomeActivity,
+  type HomeFilter,
+} from '@/features/home/services/home-feed.service';
 import * as matchService from '@/features/match/services/match.service';
 import { listPlayers } from '@/features/players/services/players.service';
-import { listFeed } from '@/features/stats/services/stats.service';
 import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import { getStore, loadStore } from '@/shared/storage/local-store';
-import type { FeedEvent, Player } from '@/shared/types/domain';
+import type { Player } from '@/shared/types/domain';
 import { formatLastMatchDay } from '@/shared/utils/datetime';
 import { colors, fonts, radii, spacing, typography } from '@/theme/tokens';
 
 export default function HomeScreen(): ReactNode {
   const { user, league } = useSession();
   const [players, setPlayers] = useState<Player[]>([]);
-  const [events, setEvents] = useState<FeedEvent[]>([]);
+  const [activity, setActivity] = useState<HomeActivity[]>([]);
   const [lastMatchAt, setLastMatchAt] = useState<string | null>(null);
+  const [filter, setFilter] = useState<HomeFilter>('all');
 
   const leagueId = league?.id;
+  const userId = user?.uid;
+  const cityId = user?.cityId ?? null;
 
   const reload = useCallback(async () => {
-    if (!leagueId) {
+    if (!leagueId || !userId) {
       return;
     }
     await loadStore();
-    setPlayers(await listPlayers(leagueId));
-    setEvents(listFeed(getStore().events, leagueId, 8));
+    const roster = await listPlayers(leagueId);
+    setPlayers(roster);
+    const store = getStore();
+    const me = roster.find((p) => p.authUid === userId);
+    setActivity(
+      listHomeActivity({
+        filter,
+        leagueId,
+        myPlayerId: me?.id ?? null,
+        myUid: userId,
+        cityId,
+        events: store.events,
+        matches: store.matches,
+        races: store.races,
+      }),
+    );
     setLastMatchAt(await matchService.getLastMatchPlayedAt(leagueId));
-  }, [leagueId]);
+  }, [leagueId, userId, cityId, filter]);
 
-  useStoreReload(reload, leagueId ?? null);
+  useStoreReload(reload, leagueId && userId ? `${leagueId}:${userId}:${filter}:${cityId}` : null);
 
-  const { matches: liveMatches, races: liveRaces, nameOf } = useLiveSessions(leagueId);
+  useEffect(() => {
+    if (filter !== 'network' || !userId) {
+      return;
+    }
+    void refreshHomeNetworkSources({ myUid: userId, cityId });
+  }, [filter, userId, cityId]);
+
+  const live = useLiveSessions(leagueId);
 
   if (!league || !user) {
     return null;
@@ -50,7 +83,11 @@ export default function HomeScreen(): ReactNode {
 
   const me = players.find((p) => p.authUid === user.uid);
   const hasRoster = players.length >= 2;
-  const hasHistory = events.length > 0;
+  const hasHistory = lastMatchAt != null;
+  const filteredLive = filterLiveForHome(filter, live.matches, live.races, me?.id ?? null);
+  const liveMatches = filteredLive.matches;
+  const liveRaces = filteredLive.races;
+  const nameOf = live.nameOf;
   const teamTitle = league.reigningTeam
     ? league.reigningTeam.playerIds.map((id) => nameOf(id)).join(' & ')
     : null;
@@ -70,6 +107,8 @@ export default function HomeScreen(): ReactNode {
       <Text style={styles.lastPlayed}>
         Last match day · <Text style={styles.lastPlayedValue}>{lastMatchDay}</Text>
       </Text>
+
+      <HomeFilterChips value={filter} onChange={setFilter} />
 
       {liveMatches.map((m) => {
         const copy = matchResumeCopy(m, nameOf);
@@ -162,16 +201,7 @@ export default function HomeScreen(): ReactNode {
       </View>
 
       <Text style={[typography.label, styles.feedLabel]}>Recent</Text>
-      {events.length === 0 ? (
-        <Text style={typography.subtitle}>Nothing yet — your first result lands here.</Text>
-      ) : (
-        events.map((ev) => (
-          <View key={ev.id} style={styles.feedItem}>
-            <Text style={styles.feedTitle}>{ev.title}</Text>
-            <Text style={styles.feedBody}>{ev.body}</Text>
-          </View>
-        ))
-      )}
+      <HomeActivityList items={activity} empty={homeActivityEmptyCopy(filter)} />
     </Screen>
   );
 }
@@ -325,20 +355,5 @@ const styles = StyleSheet.create({
   feedLabel: {
     marginTop: spacing.xl,
     marginBottom: spacing.sm,
-  },
-  feedItem: {
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    gap: 2,
-  },
-  feedTitle: {
-    fontFamily: fonts.bodyBold,
-    color: colors.chalk,
-  },
-  feedBody: {
-    fontFamily: fonts.body,
-    color: colors.chalkMuted,
-    fontSize: 13,
   },
 });

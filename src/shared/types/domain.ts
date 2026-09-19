@@ -320,7 +320,17 @@ export interface FeedEvent {
 }
 
 export type SyncEntity =
-  'user' | 'league' | 'player' | 'match' | 'race' | 'event' | 'profile' | 'challenge';
+  | 'user'
+  | 'league'
+  | 'player'
+  | 'match'
+  | 'race'
+  | 'event'
+  | 'profile'
+  | 'challenge'
+  | 'looking'
+  | 'directory'
+  | 'follow';
 
 export type SyncAction = 'upsert' | 'delete';
 
@@ -431,6 +441,46 @@ export function emptyPlayerProfile(
   };
 }
 
+export type LookingKind = 'opponent' | 'player' | 'club' | 'table';
+
+export type LookingStatus = 'open' | 'closed';
+
+export interface LookingPost {
+  id: string;
+  cityId: string;
+  cityName: string;
+  createdByUid: string;
+  authorName: string;
+  kind: LookingKind;
+  title: string;
+  body: string;
+  status: LookingStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type DirectoryKind = 'club' | 'table' | 'referee' | 'organiser';
+
+export interface DirectoryListing {
+  id: string;
+  cityId: string;
+  cityName: string;
+  kind: DirectoryKind;
+  name: string;
+  detail: string;
+  createdByUid: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FollowEdge {
+  id: string;
+  followerUid: string;
+  followingUid: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AppDataStore {
   user: SessionUser | null;
   activeLeagueId: string | null;
@@ -442,4 +492,7 @@ export interface AppDataStore {
   pendingOps: PendingOp[];
   playerProfiles: PlayerProfile[];
   challenges: Challenge[];
+  lookingPosts: LookingPost[];
+  directoryListings: DirectoryListing[];
+  follows: FollowEdge[];
 }

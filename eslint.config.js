@@ -6,7 +6,16 @@ import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
 
 export default [
-  { ignores: ['node_modules/**', '.expo/**', 'dist/**'] },
+  {
+    ignores: [
+      'node_modules/**',
+      '.expo/**',
+      'dist/**',
+      'dist-web/**',
+      'app.config.js',
+      'babel.config.js',
+    ],
+  },
   js.configs.recommended,
   {
     files: ['**/*.{ts,tsx}'],

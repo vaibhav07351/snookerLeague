@@ -78,6 +78,30 @@ export function challengeDocRef(challengeId: string): DocumentReference {
   return doc(requireFirestore(), 'challenges', challengeId);
 }
 
+export function lookingPostsCol(): CollectionReference {
+  return collection(requireFirestore(), 'lookingPosts');
+}
+
+export function lookingPostDocRef(postId: string): DocumentReference {
+  return doc(requireFirestore(), 'lookingPosts', postId);
+}
+
+export function directoryListingsCol(): CollectionReference {
+  return collection(requireFirestore(), 'directoryListings');
+}
+
+export function directoryListingDocRef(listingId: string): DocumentReference {
+  return doc(requireFirestore(), 'directoryListings', listingId);
+}
+
+export function followsCol(): CollectionReference {
+  return collection(requireFirestore(), 'follows');
+}
+
+export function followDocRef(followId: string): DocumentReference {
+  return doc(requireFirestore(), 'follows', followId);
+}
+
 /** Strip undefined (Firestore rejects undefined field values). */
 export function stripUndefined<T extends Record<string, unknown>>(value: T): T {
   const out: Record<string, unknown> = {};

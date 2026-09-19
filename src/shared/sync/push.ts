@@ -5,7 +5,10 @@ import type { CloudUserProfile, PendingOp } from '@/shared/types/domain';
 import {
   eventDocRef,
   challengeDocRef,
+  directoryListingDocRef,
+  followDocRef,
   leagueDocRef,
+  lookingPostDocRef,
   matchDocRef,
   playerDocRef,
   playerProfileDocRef,
@@ -82,6 +85,15 @@ async function upsertRemote(op: PendingOp): Promise<void> {
     case 'challenge':
       await setDoc(challengeDocRef(op.docId), data, { merge: true });
       return;
+    case 'looking':
+      await setDoc(lookingPostDocRef(op.docId), data, { merge: true });
+      return;
+    case 'directory':
+      await setDoc(directoryListingDocRef(op.docId), data, { merge: true });
+      return;
+    case 'follow':
+      await setDoc(followDocRef(op.docId), data, { merge: true });
+      return;
     default:
       throw new Error(`Unknown entity ${op.entity as string}`);
   }
@@ -124,6 +136,15 @@ async function deleteRemote(op: PendingOp): Promise<void> {
       return;
     case 'challenge':
       await deleteDoc(challengeDocRef(op.docId));
+      return;
+    case 'looking':
+      await deleteDoc(lookingPostDocRef(op.docId));
+      return;
+    case 'directory':
+      await deleteDoc(directoryListingDocRef(op.docId));
+      return;
+    case 'follow':
+      await deleteDoc(followDocRef(op.docId));
       return;
     default:
       throw new Error(`Unknown entity ${op.entity as string}`);

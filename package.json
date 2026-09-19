@@ -1,6 +1,6 @@
 {
   "name": "snooker",
-  "version": "2.0.0",
+  "version": "4.0.0",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start --port 8082",
@@ -20,6 +20,7 @@
   "dependencies": {
     "@expo-google-fonts/dm-sans": "^0.4.2",
     "@expo-google-fonts/libre-baskerville": "^0.4.3",
+    "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-navigation/drawer": "^7.14.2",
     "babel-preset-expo": "~57.0.0",
@@ -42,6 +43,7 @@
     "react-native": "0.86.3",
     "react-native-drawer-layout": "^4.2.10",
     "react-native-gesture-handler": "~2.32.0",
+    "react-native-qrcode-svg": "^6.3.24",
     "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",

@@ -5,6 +5,9 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { divisionFromDob, divisionLabel } from '@/features/auth/services/division.service';
 import { useSession } from '@/features/auth/hooks/use-session';
 import * as authService from '@/features/auth/services/auth.service';
+import { ProfileGraph } from '@/features/community/components/ProfileGraph';
+import { useFollowGraph } from '@/features/community/hooks/use-follow-graph';
+import { profileCompleteness } from '@/features/community/services/profile-completeness';
 import { BarChart } from '@/features/home/components/charts/BarChart';
 import { DonutChart } from '@/features/home/components/charts/DonutChart';
 import { FormSpark, StatTile } from '@/features/home/components/charts/StatTile';
@@ -31,6 +34,7 @@ export default function ProfileScreen(): ReactNode {
 
   const leagueId = league?.id;
   const userId = user?.uid;
+  const graph = useFollowGraph(userId ?? null);
 
   const reload = useCallback(async () => {
     if (!leagueId || !userId) {
@@ -178,6 +182,14 @@ export default function ProfileScreen(): ReactNode {
         {user.email ? <Text style={styles.meta}>{user.email}</Text> : null}
         <Text style={styles.badge}>{user.isDemo ? 'Local profile' : 'Google account'}</Text>
       </View>
+
+      <ProfileGraph
+        uid={user.uid}
+        displayName={user.displayName}
+        completeness={profileCompleteness(user, player)}
+        followerCount={graph.followers.length}
+        followingCount={graph.following.length}
+      />
 
       {canLinkGoogle ? (
         <View style={styles.linkCard}>

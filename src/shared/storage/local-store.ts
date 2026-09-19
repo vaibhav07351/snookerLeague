@@ -4,8 +4,11 @@ import { logger } from '@/shared/logging/logger';
 import type {
   AppDataStore,
   Challenge,
+  DirectoryListing,
   FeedEvent,
+  FollowEdge,
   League,
+  LookingPost,
   Match,
   Player,
   PlayerProfile,
@@ -26,6 +29,9 @@ export function emptyStore(): AppDataStore {
     pendingOps: [],
     playerProfiles: [],
     challenges: [],
+    lookingPosts: [],
+    directoryListings: [],
+    follows: [],
   };
 }
 
@@ -73,6 +79,11 @@ export function normalizeStore(raw: Partial<AppDataStore>): AppDataStore {
       ? (raw.playerProfiles as PlayerProfile[])
       : [],
     challenges: Array.isArray(raw.challenges) ? (raw.challenges as Challenge[]) : [],
+    lookingPosts: Array.isArray(raw.lookingPosts) ? (raw.lookingPosts as LookingPost[]) : [],
+    directoryListings: Array.isArray(raw.directoryListings)
+      ? (raw.directoryListings as DirectoryListing[])
+      : [],
+    follows: Array.isArray(raw.follows) ? (raw.follows as FollowEdge[]) : [],
   };
 }
 

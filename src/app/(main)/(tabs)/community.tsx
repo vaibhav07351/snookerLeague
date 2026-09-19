@@ -3,6 +3,7 @@ import { useCallback, useState, type ReactNode } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
+import { CommunityHubTiles } from '@/features/community/components/CommunityHubTiles';
 import * as challengeService from '@/features/community/services/challenge.service';
 import * as profileService from '@/features/community/services/profile.service';
 import { Button } from '@/features/home/components/Button';
@@ -102,6 +103,36 @@ export default function CommunityScreen(): ReactNode {
     <Screen>
       <Text style={typography.label}>Snooker community in</Text>
       <Text style={typography.title}>{user.cityName}</Text>
+
+      <CommunityHubTiles
+        tiles={[
+          {
+            label: 'Looking',
+            hint: 'Opponent · table · club',
+            onPress: () => router.push('/(main)/looking'),
+          },
+          {
+            label: 'Clubs',
+            hint: 'Local clubs',
+            onPress: () => router.push('/(main)/directory?kind=club'),
+          },
+          {
+            label: 'Tables',
+            hint: 'Venues & tables',
+            onPress: () => router.push('/(main)/directory?kind=table'),
+          },
+          {
+            label: 'Referees',
+            hint: 'Officials',
+            onPress: () => router.push('/(main)/directory?kind=referee'),
+          },
+          {
+            label: 'Organisers',
+            hint: 'Events & leagues',
+            onPress: () => router.push('/(main)/directory?kind=organiser'),
+          },
+        ]}
+      />
 
       {best ? (
         <Pressable

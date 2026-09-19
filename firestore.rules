@@ -68,6 +68,28 @@ service cloud.firestore {
       allow delete: if signedIn() && request.auth.uid == resource.data.fromUid;
     }
 
+    match /lookingPosts/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.createdByUid == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.createdByUid == request.auth.uid;
+    }
+
+    match /directoryListings/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.createdByUid == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.createdByUid == request.auth.uid;
+    }
+
+    match /follows/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.followerUid == request.auth.uid
+        && request.resource.data.followingUid is string
+        && request.resource.data.followingUid != request.auth.uid;
+      allow delete: if signedIn() && resource.data.followerUid == request.auth.uid;
+      allow update: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

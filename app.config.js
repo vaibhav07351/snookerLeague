@@ -8,7 +8,7 @@ module.exports = ({ config }) => ({
   name: 'Snookit',
   slug: 'snooker-league',
   owner: 'vaibhav07351',
-  version: '2.0.0',
+  version: '4.0.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
   scheme: 'snooker',
