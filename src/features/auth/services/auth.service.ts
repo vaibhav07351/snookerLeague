@@ -1,15 +1,12 @@
-import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
-import { makeRedirectUri } from 'expo-auth-session';
 import {
   GoogleAuthProvider,
   signInWithCredential,
   signOut as firebaseSignOut,
 } from 'firebase/auth';
-import { Platform } from 'react-native';
 
+import { signOutGoogleNative } from '@/features/auth/services/google-sign-in.service';
 import { getFirebaseAuth, isFirebaseEnabled } from '@/shared/firebase/app';
-import { getGoogleWebClientId } from '@/shared/firebase/config';
 import { AppError } from '@/shared/errors/app-error';
 import { logger } from '@/shared/logging/logger';
 import { createId, nowIso } from '@/shared/utils/id';
@@ -158,6 +155,7 @@ export async function linkDemoAccountWithGoogleIdToken(idToken: string): Promise
 
 export async function signOut(): Promise<void> {
   stopWatchingActiveLeague();
+  await signOutGoogleNative();
   const auth = getFirebaseAuth();
   try {
     if (auth && isFirebaseEnabled() && auth.currentUser) {
@@ -191,27 +189,6 @@ export function extractGoogleIdToken(
     return fromAuth;
   }
   return null;
-}
-
-/**
- * Firebase needs a Google ID token. On web, useIdTokenAuthRequest requests
- * response_type=id_token (useAuthRequest alone defaults to access token only).
- */
-export function useGoogleAuthRequest(): ReturnType<typeof Google.useIdTokenAuthRequest> {
-  const clientId = getGoogleWebClientId() || 'demo.apps.googleusercontent.com';
-  // Google *Web* OAuth clients only accept http(s) redirects (e.g. localhost).
-  // Custom schemes like snooker:// are rejected — use those only with native iOS/Android clients.
-  const redirectUri =
-    Platform.OS === 'web'
-      ? makeRedirectUri({ preferLocalhost: true })
-      : makeRedirectUri({ scheme: 'snooker', path: 'oauth' });
-  return Google.useIdTokenAuthRequest({
-    webClientId: clientId,
-    iosClientId: clientId,
-    androidClientId: clientId,
-    redirectUri,
-    scopes: ['openid', 'profile', 'email'],
-  });
 }
 
 export { isFirebaseEnabled };

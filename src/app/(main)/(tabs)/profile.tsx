@@ -1,10 +1,11 @@
 import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { divisionFromDob, divisionLabel } from '@/features/auth/services/division.service';
+import { useGoogleSignIn } from '@/features/auth/hooks/use-google-sign-in';
 import { useSession } from '@/features/auth/hooks/use-session';
 import * as authService from '@/features/auth/services/auth.service';
+import { divisionFromDob, divisionLabel } from '@/features/auth/services/division.service';
 import { ProfileGraph } from '@/features/community/components/ProfileGraph';
 import { useFollowGraph } from '@/features/community/hooks/use-follow-graph';
 import { profileCompleteness } from '@/features/community/services/profile-completeness';
@@ -29,8 +30,7 @@ export default function ProfileScreen(): ReactNode {
   const [player, setPlayer] = useState<Player | null>(null);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [linkingGoogle, setLinkingGoogle] = useState(false);
-  const [request, response, promptAsync] = authService.useGoogleAuthRequest();
-  const handledIdToken = useRef<string | null>(null);
+  const { ready: googleReady, promptIdToken } = useGoogleSignIn();
 
   const leagueId = league?.id;
   const userId = user?.uid;
@@ -47,53 +47,10 @@ export default function ProfileScreen(): ReactNode {
 
   useStoreReload(reload, leagueId && userId ? `${leagueId}:${userId}` : null);
 
-  async function completeGoogleLink(
-    result: Parameters<typeof authService.extractGoogleIdToken>[0],
-  ): Promise<void> {
-    if (!result || !user?.isDemo) {
-      return;
-    }
-    if (result.type === 'dismiss' || result.type === 'cancel') {
-      return;
-    }
-    if (result.type !== 'success') {
-      Alert.alert('Google sign-in failed', 'Something went wrong. Please try again.');
-      return;
-    }
-    const idToken = authService.extractGoogleIdToken(result);
-    if (!idToken) {
-      Alert.alert(
-        'Google sign-in failed',
-        'Google did not return an ID token. Check Firebase Authentication → Google.',
-      );
-      return;
-    }
-    if (handledIdToken.current === idToken) {
-      return;
-    }
-    handledIdToken.current = idToken;
-    setLinkingGoogle(true);
-    try {
-      await authService.linkDemoAccountWithGoogleIdToken(idToken);
-      await refresh();
-      Alert.alert(
-        'Google linked',
-        'Your leagues and matches stay on this device and will sync to the cloud when online.',
-      );
-    } catch (error) {
-      handledIdToken.current = null;
-      Alert.alert('Could not link Google', toUserMessage(error));
-    } finally {
-      setLinkingGoogle(false);
-    }
-  }
-
-  useEffect(() => {
-    void completeGoogleLink(response);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when OAuth response changes
-  }, [response]);
-
   async function onLinkGoogle(): Promise<void> {
+    if (!user?.isDemo) {
+      return;
+    }
     if (!isFirebaseEnabled()) {
       Alert.alert(
         'Cloud not set up',
@@ -101,7 +58,7 @@ export default function ProfileScreen(): ReactNode {
       );
       return;
     }
-    if (!request) {
+    if (!googleReady) {
       Alert.alert('Please wait', 'Google sign-in is still loading. Try again in a moment.');
       return;
     }
@@ -115,8 +72,16 @@ export default function ProfileScreen(): ReactNode {
     }
     setLinkingGoogle(true);
     try {
-      const result = await promptAsync();
-      await completeGoogleLink(result);
+      const idToken = await promptIdToken();
+      if (!idToken) {
+        return;
+      }
+      await authService.linkDemoAccountWithGoogleIdToken(idToken);
+      await refresh();
+      Alert.alert(
+        'Google linked',
+        'Your leagues and matches stay on this device and will sync to the cloud when online.',
+      );
     } catch (error) {
       Alert.alert('Could not link Google', toUserMessage(error));
     } finally {
@@ -201,7 +166,7 @@ export default function ProfileScreen(): ReactNode {
             label="Continue with Google"
             variant="secondary"
             loading={linkingGoogle}
-            disabled={linkingGoogle || !request}
+            disabled={linkingGoogle || !googleReady}
             onPress={() => void onLinkGoogle()}
           />
         </View>

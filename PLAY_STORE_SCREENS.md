@@ -453,13 +453,12 @@ Wait until status is **Available to internal testers** (can take minutes to hour
 
 ### If Google sign-in fails
 
-Add your EAS upload keystore **SHA-1** to Firebase:
+The store build must use native Google Sign-In. Add **both** SHA-1 fingerprints to Firebase:
 
-```bash
-npx eas credentials -p android
-```
+1. EAS upload key: `npx eas credentials -p android`
+2. Play App Signing key: Play Console → Test and release → App integrity → App signing → **App signing key certificate** → SHA-1
 
-Firebase Console → Project settings → **Add Android app** → package `com.snooker.league` → paste **SHA-1**.
+Firebase Console → Project settings → Android app `com.snooker.league` → add both SHA-1s. Then ship a new AAB — a JS-only update is not enough.
 
 ---
 

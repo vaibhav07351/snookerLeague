@@ -49,15 +49,16 @@ First run creates an Android keystore on EAS (let Expo manage it). When the buil
 
 ### Google Sign-In on the store build
 
-After the first production build:
+Play Store builds use the **native** Google account picker (not a browser). Google rejects `snooker://` browser redirects (`Error 400: invalid_request`).
 
-```bash
-npx eas credentials -p android
-```
+You must register **both** signing certificates on the Firebase Android app (`com.snooker.league`):
 
-Copy the **SHA-1** of the upload/production keystore → Firebase Console → Project settings → Your apps → **Add Android app** (`com.snooker.league`) → paste SHA-1 → download if prompted. Also enable Google sign-in if not already.
+1. **EAS upload key** — `npx eas credentials -p android` → copy SHA-1
+2. **Play App Signing key** — Play Console → Test and release → App integrity → App signing → **App signing key certificate** → SHA-1
 
-Without this, Google login can fail in the Play build even though Expo Go / web worked.
+Firebase Console → Project settings → Your apps → Android app `com.snooker.league` → add both SHA-1 values. Enable Google sign-in under Authentication if it is not already.
+
+Then ship a **new EAS AAB** (native module). A JS-only update will not fix Google login.
 
 ## 4. Create the Play Console app
 

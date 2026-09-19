@@ -48,6 +48,7 @@ module.exports = ({ config }) => ({
     'expo-font',
     'expo-web-browser',
     'expo-splash-screen',
+    '@react-native-google-signin/google-signin',
     [
       'expo-location',
       {
@@ -67,6 +68,7 @@ module.exports = ({ config }) => ({
     EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
     EXPO_PUBLIC_FIREBASE_APP_ID: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
     EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    EXPO_PUBLIC_WEB_ORIGIN: process.env.EXPO_PUBLIC_WEB_ORIGIN,
     EXPO_PUBLIC_USE_LOCAL_DATA: process.env.EXPO_PUBLIC_USE_LOCAL_DATA,
   },
 });

@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 
+import { useGoogleSignIn } from '@/features/auth/hooks/use-google-sign-in';
 import { useSession } from '@/features/auth/hooks/use-session';
 import * as authService from '@/features/auth/services/auth.service';
 import { parseAndValidateDob } from '@/features/auth/services/division.service';
@@ -18,63 +19,12 @@ import { colors, fonts, radii, spacing, typography } from '@/theme/tokens';
 
 export default function LoginScreen(): ReactNode {
   const { refresh } = useSession();
+  const { ready: googleReady, promptIdToken } = useGoogleSignIn();
   const [name, setName] = useState('');
   const [dob, setDob] = useState('');
   const [busy, setBusy] = useState(false);
   const [nameError, setNameError] = useState<string | undefined>();
   const [dobError, setDobError] = useState<string | undefined>();
-  const [request, response, promptAsync] = authService.useGoogleAuthRequest();
-  const handledIdToken = useRef<string | null>(null);
-
-  async function completeGoogleWithResult(
-    result: Parameters<typeof authService.extractGoogleIdToken>[0],
-  ): Promise<void> {
-    if (!result) {
-      return;
-    }
-    if (result.type === 'dismiss' || result.type === 'cancel') {
-      return;
-    }
-    if (result.type !== 'success') {
-      Alert.alert('Google sign-in failed', 'Something went wrong. Please try again.');
-      return;
-    }
-    const idToken = authService.extractGoogleIdToken(result);
-    if (!idToken) {
-      Alert.alert(
-        'Google sign-in failed',
-        'Google did not return an ID token. Check that the Web client ID matches Firebase Authentication → Google.',
-      );
-      return;
-    }
-    if (handledIdToken.current === idToken) {
-      return;
-    }
-    handledIdToken.current = idToken;
-    setBusy(true);
-    try {
-      await authService.signInWithGoogleIdToken(idToken);
-      if (dob.trim()) {
-        try {
-          await profileService.setOwnDateOfBirth(parseAndValidateDob(dob));
-        } catch {
-          // Birthday onboarding collects a valid date after Google returns.
-        }
-      }
-      await refresh();
-      router.replace('/');
-    } catch (error) {
-      handledIdToken.current = null;
-      Alert.alert('Google sign-in failed', toUserMessage(error));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  useEffect(() => {
-    void completeGoogleWithResult(response);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when auth response changes
-  }, [response]);
 
   async function onDemo(): Promise<void> {
     const trimmed = name.trim();
@@ -112,14 +62,26 @@ export default function LoginScreen(): ReactNode {
       );
       return;
     }
-    if (!request) {
+    if (!googleReady) {
       Alert.alert('Google sign-in failed', 'Auth request is still loading. Try again in a moment.');
       return;
     }
     setBusy(true);
     try {
-      const result = await promptAsync();
-      await completeGoogleWithResult(result);
+      const idToken = await promptIdToken();
+      if (!idToken) {
+        return;
+      }
+      await authService.signInWithGoogleIdToken(idToken);
+      if (dob.trim()) {
+        try {
+          await profileService.setOwnDateOfBirth(parseAndValidateDob(dob));
+        } catch {
+          // Birthday onboarding collects a valid date after Google returns.
+        }
+      }
+      await refresh();
+      router.replace('/');
     } catch (error) {
       Alert.alert('Google sign-in failed', toUserMessage(error));
     } finally {
@@ -177,7 +139,7 @@ export default function LoginScreen(): ReactNode {
           label="Continue with Google"
           variant="secondary"
           onPress={() => void onGoogle()}
-          disabled={busy}
+          disabled={busy || !googleReady}
           style={styles.google}
         />
       </View>
