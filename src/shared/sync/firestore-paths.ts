@@ -117,3 +117,22 @@ export function stripUndefined<T extends Record<string, unknown>>(value: T): T {
   }
   return out as T;
 }
+
+/**
+ * User upserts use merge:true — never send null/empty membership fields or a
+ * fresh Google session will wipe DOB, city, and leagueIds on returning users.
+ */
+export function cloudUserWritePayload(
+  profile: Record<string, unknown>,
+): Record<string, unknown> {
+  const out = stripUndefined({ ...profile });
+  for (const key of ['cityId', 'cityName', 'dateOfBirth', 'activeLeagueId'] as const) {
+    if (out[key] == null || out[key] === '') {
+      delete out[key];
+    }
+  }
+  if (Array.isArray(out.leagueIds) && out.leagueIds.length === 0) {
+    delete out.leagueIds;
+  }
+  return out;
+}

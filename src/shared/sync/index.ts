@@ -22,7 +22,8 @@ let removeAuth: (() => void) | null = null;
 let wasOnline = true;
 
 /**
- * Upsert users/{uid}, push any local seed data, pull remote leagues, start watchers.
+ * Restore cloud profile first, then upsert. A blank fresh-session user must never
+ * be written before pull — merge:true would wipe DOB / city / leagueIds.
  */
 export async function syncAfterGoogleSignIn(user: SessionUser): Promise<void> {
   await waitForFirebaseAuth();
@@ -35,7 +36,17 @@ export async function syncAfterGoogleSignIn(user: SessionUser): Promise<void> {
   }
   await loadStore();
 
-  const profile = buildCloudUserPayload(user);
+  if (isOnline()) {
+    try {
+      await pullUserAndLeagues(user.uid);
+    } catch (error) {
+      logger.error('sync.runtime', 'Initial pull failed', firebaseErrorMeta(error));
+    }
+  }
+
+  // Prefer the store user after pull (restored DOB/city/leagues); fall back to sign-in shell.
+  const sessionUser = getStore().user?.uid === user.uid ? (getStore().user as SessionUser) : user;
+  const profile = buildCloudUserPayload(sessionUser);
   try {
     if (isOnline()) {
       await upsertCloudUser(profile);
@@ -43,7 +54,7 @@ export async function syncAfterGoogleSignIn(user: SessionUser): Promise<void> {
       await scheduleSync([
         {
           entity: 'user',
-          docId: user.uid,
+          docId: sessionUser.uid,
           leagueId: null,
           action: 'upsert',
           payload: profile,
@@ -56,7 +67,7 @@ export async function syncAfterGoogleSignIn(user: SessionUser): Promise<void> {
     await scheduleSync([
       {
         entity: 'user',
-        docId: user.uid,
+        docId: sessionUser.uid,
         leagueId: null,
         action: 'upsert',
         payload: profile,
@@ -66,14 +77,14 @@ export async function syncAfterGoogleSignIn(user: SessionUser): Promise<void> {
   }
 
   // Seed cloud with any local leagues this user already owns (first sync).
-  await seedLocalLeaguesToCloud(user);
+  await seedLocalLeaguesToCloud(sessionUser);
 
   if (isOnline()) {
     await flushPending();
     try {
-      await pullUserAndLeagues(user.uid);
+      await pullUserAndLeagues(sessionUser.uid);
     } catch (error) {
-      logger.error('sync.runtime', 'Initial pull failed', firebaseErrorMeta(error));
+      logger.error('sync.runtime', 'Post-seed pull failed', firebaseErrorMeta(error));
     }
   }
 

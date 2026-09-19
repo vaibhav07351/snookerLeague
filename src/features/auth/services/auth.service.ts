@@ -100,8 +100,10 @@ export async function signInWithGoogleIdToken(idToken: string): Promise<SessionU
       shape: error instanceof Error ? error.name : 'unknown',
     });
   }
+  // Sync pull restores DOB / city / leagues from Firestore for returning users.
+  const restored = getStore().user;
   logger.info('auth.service', 'Google sign-in', { uid: user.uid });
-  return user;
+  return restored?.uid === user.uid ? restored : user;
 }
 
 /**
@@ -149,8 +151,9 @@ export async function linkDemoAccountWithGoogleIdToken(idToken: string): Promise
       shape: error instanceof Error ? error.name : 'unknown',
     });
   }
+  const restored = getStore().user;
   logger.info('auth.service', 'Demo linked to Google', { fromUid: demoUid, uid: googleUid });
-  return user;
+  return restored?.uid === googleUid ? restored : user;
 }
 
 export async function signOut(): Promise<void> {

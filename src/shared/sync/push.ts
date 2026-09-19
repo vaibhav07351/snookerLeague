@@ -13,6 +13,7 @@ import {
   playerDocRef,
   playerProfileDocRef,
   raceDocRef,
+  cloudUserWritePayload,
   stripUndefined,
   userDocRef,
 } from '@/shared/sync/firestore-paths';
@@ -47,7 +48,8 @@ export async function pushPendingOp(op: PendingOp): Promise<void> {
 }
 
 async function upsertRemote(op: PendingOp): Promise<void> {
-  const data = stripUndefined(op.payload as Record<string, unknown>);
+  const raw = stripUndefined(op.payload as Record<string, unknown>);
+  const data = op.entity === 'user' ? cloudUserWritePayload(raw) : raw;
   switch (op.entity) {
     case 'user':
       await setDoc(userDocRef(op.docId), data, { merge: true });
@@ -154,7 +156,7 @@ async function deleteRemote(op: PendingOp): Promise<void> {
 export async function upsertCloudUser(profile: CloudUserProfile): Promise<void> {
   try {
     await withTimeout(
-      setDoc(userDocRef(profile.uid), stripUndefined({ ...profile }), { merge: true }),
+      setDoc(userDocRef(profile.uid), cloudUserWritePayload({ ...profile }), { merge: true }),
       `upsert user/${profile.uid}`,
     );
   } catch (error) {

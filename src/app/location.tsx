@@ -44,13 +44,6 @@ export default function LocationScreen(): ReactNode {
     setSuggesting(true);
     try {
       const city = await locationService.suggestCityFromDevice();
-      if (!city) {
-        Alert.alert(
-          'Pick a city',
-          'We could not match your location to a city. Search the list instead.',
-        );
-        return;
-      }
       await pick(city.id);
     } catch (error) {
       Alert.alert('Location unavailable', toUserMessage(error));
