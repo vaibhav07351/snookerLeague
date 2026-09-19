@@ -1,6 +1,6 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useState, type ReactNode } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/features/home/components/Button';
 import { Screen } from '@/features/home/components/Screen';
@@ -9,14 +9,26 @@ import * as playersService from '@/features/players/services/players.service';
 import * as raceService from '@/features/race/services/race.service';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { useStoreReload } from '@/shared/hooks/use-store-reload';
-import type { Player, Race } from '@/shared/types/domain';
+import type { Player, Race, RacePlace } from '@/shared/types/domain';
+import { confirmAction } from '@/shared/utils/confirm';
 import { colors, spacing, typography } from '@/theme/tokens';
+
+function formatRacePlace(place: RacePlace | null): string {
+  if (place === null) {
+    return '—';
+  }
+  if (place === 'dnf') {
+    return "Didn't finish";
+  }
+  return `#${place}`;
+}
 
 export default function RaceDetailScreen(): ReactNode {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [race, setRace] = useState<Race | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [draftScores, setDraftScores] = useState<Record<string, string>>({});
+  const [busyPlayerId, setBusyPlayerId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     if (!id) {
@@ -85,6 +97,36 @@ export default function RaceDetailScreen(): ReactNode {
     }
   }
 
+  async function markDidntFinish(playerId: string, playerName: string): Promise<void> {
+    const ok = await confirmAction(
+      "Mark as didn't finish?",
+      `${playerName} will drop out of this race. You can undo while the race is still in progress.`,
+      "Didn't finish",
+    );
+    if (!ok) {
+      return;
+    }
+    setBusyPlayerId(playerId);
+    try {
+      await raceService.markDnf(race!.id, playerId);
+    } catch (error) {
+      Alert.alert("Could not mark didn't finish", toUserMessage(error));
+    } finally {
+      setBusyPlayerId(null);
+    }
+  }
+
+  async function undoDidntFinish(playerId: string): Promise<void> {
+    setBusyPlayerId(playerId);
+    try {
+      await raceService.undoDnf(race!.id, playerId);
+    } catch (error) {
+      Alert.alert('Could not undo', toUserMessage(error));
+    } finally {
+      setBusyPlayerId(null);
+    }
+  }
+
   return (
     <Screen>
       {race.namedLabel ? <Text style={typography.label}>{race.namedLabel}</Text> : null}
@@ -94,38 +136,62 @@ export default function RaceDetailScreen(): ReactNode {
         {race.crownsRaceChampion ? ' · Crowns race king' : ''}
       </Text>
 
-      {sorted.map((e) => (
-        <View key={e.playerId} style={styles.row}>
-          <View style={styles.rowHead}>
-            <Text style={styles.name}>{nameOf(e.playerId)}</Text>
-            <Text style={styles.place}>
-              {e.place === null ? '—' : e.place === 'dnf' ? 'DNF' : `#${e.place}`}
-            </Text>
-          </View>
-          {race.status === 'in_progress' && e.place === null ? (
-            <View style={styles.scoreEdit}>
-              <View style={styles.scoreField}>
-                <TextField
-                  label="Score"
-                  value={draftScores[e.playerId] ?? ''}
-                  onChangeText={(t) => setDraftScores((prev) => ({ ...prev, [e.playerId]: t }))}
-                  keyboardType="number-pad"
-                  placeholder={e.score > 0 ? String(e.score) : 'Enter score'}
-                />
-              </View>
-              <Button label="Save" onPress={() => void saveScore(e.playerId)} style={styles.save} />
-              <Button
-                label="DNF"
-                variant="danger"
-                onPress={() => void raceService.markDnf(race.id, e.playerId)}
-                style={styles.dnf}
-              />
+      {sorted.map((e) => {
+        const playerName = nameOf(e.playerId);
+        const busy = busyPlayerId === e.playerId;
+        return (
+          <View key={e.playerId} style={styles.row}>
+            <View style={styles.rowHead}>
+              <Text style={styles.name}>{playerName}</Text>
+              <Text style={[styles.place, e.place === 'dnf' && styles.placeOut]}>
+                {formatRacePlace(e.place)}
+              </Text>
             </View>
-          ) : (
-            <Text style={styles.finalScore}>Score {e.score}</Text>
-          )}
-        </View>
-      ))}
+            {race.status === 'in_progress' && e.place === null ? (
+              <View style={styles.scoreEdit}>
+                <View style={styles.scoreField}>
+                  <TextField
+                    label="Score"
+                    value={draftScores[e.playerId] ?? ''}
+                    onChangeText={(t) =>
+                      setDraftScores((prev) => ({ ...prev, [e.playerId]: t }))
+                    }
+                    keyboardType="number-pad"
+                    placeholder={e.score > 0 ? String(e.score) : 'Enter score'}
+                  />
+                </View>
+                <Button
+                  label="Save"
+                  onPress={() => void saveScore(e.playerId)}
+                  style={styles.save}
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={busy}
+                  onPress={() => void markDidntFinish(e.playerId, playerName)}
+                  style={styles.outLink}
+                >
+                  <Text style={styles.outLinkText}>{busy ? '…' : 'Out'}</Text>
+                </Pressable>
+              </View>
+            ) : race.status === 'in_progress' && e.place === 'dnf' ? (
+              <View style={styles.outRow}>
+                <Text style={styles.finalScore}>Score {e.score}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={busy}
+                  onPress={() => void undoDidntFinish(e.playerId)}
+                  style={styles.outLink}
+                >
+                  <Text style={styles.undoLinkText}>{busy ? '…' : 'Undo'}</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Text style={styles.finalScore}>Score {e.score}</Text>
+            )}
+          </View>
+        );
+      })}
 
       {race.status === 'in_progress' ? (
         <Button
@@ -162,15 +228,20 @@ const styles = StyleSheet.create({
   rowHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: spacing.sm,
   },
   name: {
     color: colors.chalk,
     fontWeight: '700',
     fontSize: 16,
+    flex: 1,
   },
   place: {
     color: colors.gold,
     fontWeight: '800',
+  },
+  placeOut: {
+    color: colors.danger,
   },
   scoreEdit: {
     flexDirection: 'row',
@@ -183,8 +254,27 @@ const styles = StyleSheet.create({
   save: {
     marginBottom: spacing.md,
   },
-  dnf: {
+  outLink: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
     marginBottom: spacing.md,
+    justifyContent: 'center',
+  },
+  outLinkText: {
+    color: colors.danger,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  outRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  undoLinkText: {
+    color: colors.mint,
+    fontWeight: '700',
+    fontSize: 14,
   },
   finalScore: {
     color: colors.chalkMuted,

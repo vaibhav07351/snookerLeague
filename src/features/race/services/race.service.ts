@@ -247,7 +247,36 @@ export async function markDnf(raceId: string, playerId: string): Promise<Race> {
 
   const updated: Race = { ...race, entrants, updatedAt: nowIso() };
   await persistRace(updated);
-  logger.info('race.service', 'Entrant DNF', { raceId, playerId });
+  logger.info('race.service', 'Entrant marked did not finish', { raceId, playerId });
+  return updated;
+}
+
+/** Put a mistaken "didn't finish" entrant back into the race (in progress only). */
+export async function undoDnf(raceId: string, playerId: string): Promise<Race> {
+  await loadStore();
+  const race = getStore().races.find((r) => r.id === raceId);
+  if (!race) {
+    throw new AppError('NOT_FOUND', 'Race not found');
+  }
+  if (race.status !== 'in_progress') {
+    throw new AppError('INVALID_STATE', 'Race already finished — cannot undo');
+  }
+
+  const target = race.entrants.find((e) => e.playerId === playerId);
+  if (!target || target.place !== 'dnf') {
+    throw new AppError('INVALID_STATE', 'Player is not marked as did not finish');
+  }
+
+  const entrants = race.entrants.map((e) => {
+    if (e.playerId !== playerId) {
+      return e;
+    }
+    return { ...e, place: null, finishedAt: null };
+  });
+
+  const updated: Race = { ...race, entrants, updatedAt: nowIso() };
+  await persistRace(updated);
+  logger.info('race.service', 'Entrant did-not-finish undone', { raceId, playerId });
   return updated;
 }
 
