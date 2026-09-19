@@ -40,6 +40,8 @@ export async function addGuestPlayer(input: {
   if (!parsed.success) {
     throw new AppError('VALIDATION', 'Guest name must be at least 2 characters');
   }
+  await loadStore();
+  requireUniqueDisplayName(parsed.data.leagueId, parsed.data.displayName);
 
   const now = nowIso();
   const player: Player = {
@@ -67,4 +69,131 @@ export async function addGuestPlayer(input: {
   ]);
   logger.info('players.service', 'Guest added', { playerId: player.id, leagueId: player.leagueId });
   return player;
+}
+
+function normalizePlayerName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+export function isDisplayNameTaken(
+  leagueId: string,
+  displayName: string,
+  exceptPlayerId?: string,
+): boolean {
+  const needle = normalizePlayerName(displayName);
+  if (needle.length === 0) {
+    return false;
+  }
+  return getStore().players.some(
+    (p) =>
+      p.leagueId === leagueId &&
+      p.id !== exceptPlayerId &&
+      normalizePlayerName(p.displayName) === needle,
+  );
+}
+
+function requireUniqueDisplayName(
+  leagueId: string,
+  displayName: string,
+  exceptPlayerId?: string,
+): void {
+  if (isDisplayNameTaken(leagueId, displayName, exceptPlayerId)) {
+    throw new AppError('CONFLICT', 'That name is already on the roster. Use a different name.');
+  }
+}
+
+export function uniqueDisplayName(leagueId: string, desired: string): string {
+  const base = desired.trim();
+  if (base.length === 0 || !isDisplayNameTaken(leagueId, base)) {
+    return base;
+  }
+  for (let n = 2; n <= 99; n++) {
+    const candidate = `${base} ${n}`;
+    if (!isDisplayNameTaken(leagueId, candidate)) {
+      return candidate;
+    }
+  }
+  throw new AppError('CONFLICT', 'That name is already on the roster. Use a different name.');
+}
+
+function playerInLiveEvent(playerId: string): boolean {
+  const store = getStore();
+  const inMatch = store.matches.some(
+    (m) =>
+      m.outcome.status === 'in_progress' &&
+      (m.teamA.includes(playerId) || m.teamB.includes(playerId)),
+  );
+  if (inMatch) {
+    return true;
+  }
+  return store.races.some(
+    (r) => r.status === 'in_progress' && r.entrants.some((e) => e.playerId === playerId),
+  );
+}
+
+export async function renamePlayer(playerId: string, displayName: string): Promise<Player> {
+  const parsed = z.string().trim().min(2).max(40).safeParse(displayName);
+  if (!parsed.success) {
+    throw new AppError('VALIDATION', 'Name must be at least 2 characters');
+  }
+  await loadStore();
+  const player = getStore().players.find((p) => p.id === playerId);
+  if (!player) {
+    throw new AppError('NOT_FOUND', 'Player not found');
+  }
+  requireUniqueDisplayName(player.leagueId, parsed.data, playerId);
+  const updated: Player = {
+    ...player,
+    displayName: parsed.data,
+    updatedAt: nowIso(),
+  };
+  await updateStore((s) => ({
+    ...s,
+    players: s.players.map((p) => (p.id === playerId ? updated : p)),
+  }));
+  await scheduleSync([
+    {
+      entity: 'player',
+      docId: updated.id,
+      leagueId: updated.leagueId,
+      action: 'upsert',
+      payload: updated,
+      updatedAt: updated.updatedAt,
+    },
+  ]);
+  logger.info('players.service', 'Player renamed', { playerId });
+  return updated;
+}
+
+export async function deletePlayer(playerId: string, actorUid: string): Promise<void> {
+  await loadStore();
+  const player = getStore().players.find((p) => p.id === playerId);
+  if (!player) {
+    throw new AppError('NOT_FOUND', 'Player not found');
+  }
+  if (player.authUid && player.authUid === actorUid) {
+    throw new AppError('FORBIDDEN', 'You can’t delete your own player card');
+  }
+  const league = getStore().leagues.find((l) => l.id === player.leagueId);
+  if (!league || league.createdByUid !== actorUid) {
+    throw new AppError('FORBIDDEN', 'Only the league creator can delete players');
+  }
+  if (playerInLiveEvent(playerId)) {
+    throw new AppError('INVALID_STATE', 'Finish or undo their live match or race first');
+  }
+  await updateStore((s) => ({
+    ...s,
+    players: s.players.filter((p) => p.id !== playerId),
+  }));
+  await scheduleSync([
+    {
+      entity: 'player',
+      docId: player.id,
+      leagueId: player.leagueId,
+      action: 'delete',
+      payload: null,
+      updatedAt: nowIso(),
+    },
+  ]);
+  logger.info('players.service', 'Player deleted', { playerId, leagueId: player.leagueId });
 }

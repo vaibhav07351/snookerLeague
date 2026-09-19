@@ -9,8 +9,10 @@ import { Screen } from '@/features/home/components/Screen';
 import * as playersService from '@/features/players/services/players.service';
 import {
   buildLeagueActivity,
+  buildLeagueFoulBoard,
   buildLeagueForfeitBoard,
   buildLeaguePaceBoard,
+  buildLeaguePointsBoard,
   buildLeagueTableTimeBoard,
   buildPlayerInsights,
 } from '@/features/stats/services/insights.service';
@@ -58,6 +60,8 @@ export default function StatsScreen(): ReactNode {
   const insights = selected ? buildPlayerInsights(selected, store.matches, store.races) : null;
   const activity = buildLeagueActivity(players);
   const forfeitBoard = buildLeagueForfeitBoard(players);
+  const foulBoard = buildLeagueFoulBoard(players);
+  const pointsBoard = buildLeaguePointsBoard(players);
   const paceBoard = buildLeaguePaceBoard(players);
   const tableTimeBoard = buildLeagueTableTimeBoard(players);
 
@@ -111,6 +115,22 @@ export default function StatsScreen(): ReactNode {
               label="Titles"
               value={String(insights.titles)}
               hint={`Streak ${insights.currentDoublesStreak} · Race streak ${insights.currentRaceFirstStreak}`}
+              accent={colors.coral}
+            />
+            <StatTile
+              label="Points scored"
+              value={String(insights.pointsScored)}
+              hint={`Net ${insights.netPoints} after fouls`}
+              accent={colors.mint}
+            />
+            <StatTile
+              label="Fouls"
+              value={String(insights.fouls)}
+              hint={
+                insights.fouls > 0
+                  ? `${insights.foulPoints} pts conceded`
+                  : 'No fouls on the shot log'
+              }
               accent={colors.coral}
             />
             <StatTile
@@ -212,6 +232,22 @@ export default function StatsScreen(): ReactNode {
           height={160}
           emptyLabel="No games logged yet — first one’s free glory."
         />
+      </View>
+
+      <View style={styles.card}>
+        <Text style={typography.label}>Points scored</Text>
+        <Text style={styles.cardHint}>Pots and free balls from the shot log</Text>
+        <BarChart
+          data={pointsBoard}
+          height={140}
+          emptyLabel="No pot points logged yet — tap the balls in a live frame."
+        />
+      </View>
+
+      <View style={styles.card}>
+        <Text style={typography.label}>Foul board</Text>
+        <Text style={styles.cardHint}>Fouls committed · from the live shot log</Text>
+        <BarChart data={foulBoard} height={140} emptyLabel="No fouls logged yet." />
       </View>
 
       <View style={styles.card}>

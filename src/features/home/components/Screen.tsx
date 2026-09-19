@@ -43,8 +43,7 @@ export function Screen({
     (headerHeight > 0
       ? (['left', 'right', 'bottom'] as const)
       : (['top', 'left', 'right', 'bottom'] as const));
-  const offset =
-    keyboardVerticalOffset ?? (Platform.OS === 'ios' ? Math.max(headerHeight, 12) : 0);
+  const offset = keyboardVerticalOffset ?? (Platform.OS === 'ios' ? Math.max(headerHeight, 12) : 0);
 
   function scrollFocusedInputIntoView(target: unknown): void {
     // findNodeHandle / UIManager.measureLayout are native-only.

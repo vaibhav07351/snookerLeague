@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { nextActivePlayerId, netRaceScore } from '@/features/race/services/race-helpers';
 import { applyPlayerStats } from '@/features/stats/services/stats.service';
 import { AppError } from '@/shared/errors/app-error';
 import { logger } from '@/shared/logging/logger';
@@ -30,6 +31,14 @@ export async function listRaces(
     .slice(offset, offset + limit);
 }
 
+export async function listLiveRaces(leagueId: string): Promise<Race[]> {
+  await loadStore();
+  return getStore()
+    .races.filter((r) => r.leagueId === leagueId && r.status === 'in_progress')
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, 20);
+}
+
 export async function getRace(raceId: string): Promise<Race | null> {
   await loadStore();
   return getStore().races.find((r) => r.id === raceId) ?? null;
@@ -55,6 +64,7 @@ export async function createRace(input: {
   const entrants: RaceEntrant[] = parsed.data.playerIds.map((playerId) => ({
     playerId,
     score: 0,
+    foulPoints: 0,
     place: null,
     finishedAt: null,
   }));
@@ -70,6 +80,8 @@ export async function createRace(input: {
     crownsRaceChampion: parsed.data.crownsRaceChampion,
     entrants,
     status: 'in_progress',
+    atTablePlayerId: parsed.data.playerIds[0] ?? null,
+    liveShots: [],
   };
 
   await updateStore((s) => ({ ...s, races: [...s.races, race] }));
@@ -87,12 +99,12 @@ export async function createRace(input: {
   return race;
 }
 
-function nextPlace(entrants: RaceEntrant[]): number {
+export function nextPlace(entrants: RaceEntrant[]): number {
   const taken = entrants.map((e) => e.place).filter((p): p is number => typeof p === 'number');
   return taken.length === 0 ? 1 : Math.max(...taken) + 1;
 }
 
-async function persistRace(race: Race, event?: FeedEvent): Promise<Race> {
+export async function persistRace(race: Race, event?: FeedEvent): Promise<Race> {
   let eventId: string | null = null;
 
   await updateStore((s) => {
@@ -188,8 +200,8 @@ export async function setEntrantScore(
   playerId: string,
   score: number,
 ): Promise<Race> {
-  if (!Number.isFinite(score) || score < 0) {
-    throw new AppError('VALIDATION', 'Score must be a non-negative number');
+  if (!Number.isFinite(score)) {
+    throw new AppError('VALIDATION', 'Score must be a number');
   }
 
   await loadStore();
@@ -208,7 +220,7 @@ export async function setEntrantScore(
     if (e.place !== null) {
       return e;
     }
-    return { ...e, score: Math.floor(score) };
+    return { ...e, score: Math.max(0, Math.floor(score)), foulPoints: e.foulPoints ?? 0 };
   });
 
   const targetHit = entrants.find(
@@ -223,9 +235,34 @@ export async function setEntrantScore(
     );
   }
 
-  const updated: Race = { ...race, entrants, updatedAt: nowIso() };
+  const atTablePlayerId =
+    targetHit && race.atTablePlayerId === playerId
+      ? nextActivePlayerId(entrants, playerId)
+      : (race.atTablePlayerId ?? null);
+
+  const updated: Race = { ...race, entrants, atTablePlayerId, updatedAt: nowIso() };
   await persistRace(updated);
   return updated;
+}
+
+export async function adjustEntrantScore(
+  raceId: string,
+  playerId: string,
+  delta: number,
+): Promise<Race> {
+  if (!Number.isFinite(delta) || delta === 0) {
+    throw new AppError('VALIDATION', 'Score change must be a number');
+  }
+  await loadStore();
+  const race = getStore().races.find((r) => r.id === raceId);
+  if (!race) {
+    throw new AppError('NOT_FOUND', 'Race not found');
+  }
+  const current = race.entrants.find((e) => e.playerId === playerId);
+  if (!current) {
+    throw new AppError('NOT_FOUND', 'Player is not in this race');
+  }
+  return setEntrantScore(raceId, playerId, current.score + Math.trunc(delta));
 }
 
 export async function markDnf(raceId: string, playerId: string): Promise<Race> {
@@ -245,7 +282,12 @@ export async function markDnf(raceId: string, playerId: string): Promise<Race> {
     return { ...e, place: 'dnf' as RacePlace, finishedAt: nowIso() };
   });
 
-  const updated: Race = { ...race, entrants, updatedAt: nowIso() };
+  const atTablePlayerId =
+    race.atTablePlayerId === playerId
+      ? nextActivePlayerId(entrants, playerId)
+      : (race.atTablePlayerId ?? null);
+
+  const updated: Race = { ...race, entrants, atTablePlayerId, updatedAt: nowIso() };
   await persistRace(updated);
   logger.info('race.service', 'Entrant marked did not finish', { raceId, playerId });
   return updated;
@@ -291,7 +333,7 @@ export async function completeRace(raceId: string): Promise<Race> {
   }
 
   const unfinished = race.entrants.filter((e) => e.place === null);
-  const sorted = [...unfinished].sort((a, b) => b.score - a.score);
+  const sorted = [...unfinished].sort((a, b) => netRaceScore(b) - netRaceScore(a));
   let placeCursor = nextPlace(race.entrants);
   const placeMap = new Map<string, number>();
   for (const entrant of sorted) {

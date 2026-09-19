@@ -31,6 +31,10 @@ export interface PlayerInsights {
   slowestFrameSeconds: number | null;
   /** Seconds faster on win frames vs loss frames (null if N/A). */
   winPaceDeltaSeconds: number | null;
+  pointsScored: number;
+  fouls: number;
+  foulPoints: number;
+  netPoints: number;
   /** 1 = win, 0 = loss, -1 = forfeit loss */
   form: number[];
   placeBars: Array<{ label: string; value: number; color: string }>;
@@ -138,8 +142,7 @@ export function buildPlayerInsights(
   const cleanLosses = Math.max(doublesLosses - forfeits, 0);
   const podiums = r.firsts + r.seconds + r.thirds;
   const lastCandidates = [s.lastPlayedAt, r.lastPlayedAt].filter(Boolean) as string[];
-  const lastPlayedAt =
-    lastCandidates.length > 0 ? (lastCandidates.sort().at(-1) ?? null) : null;
+  const lastPlayedAt = lastCandidates.length > 0 ? (lastCandidates.sort().at(-1) ?? null) : null;
   const timing = timingFromStats(player);
 
   const paceBars: Array<{ label: string; value: number; color: string }> = [];
@@ -185,6 +188,10 @@ export function buildPlayerInsights(
     titles: s.titles + r.titles,
     lastPlayedAt,
     ...timing,
+    pointsScored: s.pointsScored ?? 0,
+    fouls: s.fouls ?? 0,
+    foulPoints: s.foulPoints ?? 0,
+    netPoints: s.netPoints ?? (s.pointsScored ?? 0) - (s.foulPoints ?? 0),
     form: clippedForm,
     placeBars: [
       { label: '1st', value: r.firsts, color: colors.gold },
@@ -242,6 +249,38 @@ export function buildLeagueForfeitBoard(
     .sort((a, b) => b.value - a.value)
     .slice(0, 6)
     .map((row) => ({ ...row, color: colors.coral }));
+}
+
+export function buildLeagueFoulBoard(
+  players: Player[],
+): Array<{ label: string; value: number; color: string }> {
+  return [...players]
+    .map((p) => ({
+      label: (p.displayName.split(' ')[0] ?? p.displayName).slice(0, 8),
+      value: p.stats.standard.fouls ?? 0,
+    }))
+    .filter((row) => row.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 6)
+    .map((row) => ({ ...row, color: colors.coral }));
+}
+
+export function buildLeaguePointsBoard(
+  players: Player[],
+): Array<{ label: string; value: number; color: string }> {
+  const palette = [colors.mint, colors.gold, colors.sky, colors.sun, colors.lavender, colors.coral];
+  return [...players]
+    .map((p) => ({
+      label: (p.displayName.split(' ')[0] ?? p.displayName).slice(0, 8),
+      value: p.stats.standard.pointsScored ?? 0,
+    }))
+    .filter((row) => row.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 6)
+    .map((row, i) => ({
+      ...row,
+      color: palette[i % palette.length]!,
+    }));
 }
 
 /** League pace: avg frame minutes (sorted quickest first). */

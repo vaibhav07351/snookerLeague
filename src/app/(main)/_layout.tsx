@@ -10,6 +10,13 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { BrandLogo } from '@/features/home/components/BrandLogo';
+import { BrandWordmark } from '@/features/home/components/BrandWordmark';
+import { LiveResumeCard } from '@/features/home/components/LiveResumeCard';
+import {
+  matchResumeCopy,
+  raceResumeCopy,
+  useLiveSessions,
+} from '@/features/home/hooks/use-live-sessions';
 import { colors, fonts, radii, spacing } from '@/theme/tokens';
 
 function ProfileButton(): ReactNode {
@@ -30,9 +37,10 @@ function ProfileButton(): ReactNode {
 function CustomDrawer(props: DrawerContentComponentProps): ReactNode {
   const { league, user } = useSession();
   const active = props.state.routes[props.state.index]?.name;
+  const { matches: liveMatches, races: liveRaces, nameOf } = useLiveSessions(league?.id);
 
   const items: Array<{ label: string; route: string; hint: string }> = [
-    { label: 'Home', route: 'index', hint: 'Champs & quick play' },
+    { label: 'Home', route: '(tabs)', hint: 'Tabs · city & club' },
     { label: 'Game history', route: 'history', hint: 'Matches & races' },
     { label: 'Champion history', route: 'champions', hint: 'Titles & race kings' },
     { label: 'Stats', route: 'stats', hint: 'Charts & form' },
@@ -49,10 +57,44 @@ function CustomDrawer(props: DrawerContentComponentProps): ReactNode {
     >
       <View style={styles.drawerHero}>
         <BrandLogo size={56} />
-        <Text style={styles.drawerBrand}>Snooker</Text>
+        <BrandWordmark size="sm" />
         <Text style={styles.drawerLeague}>{league?.name ?? 'Your league'}</Text>
         <Text style={styles.drawerUser}>Hey {user?.displayName ?? 'player'}</Text>
+        <Text style={styles.drawerHint}>Club tools</Text>
       </View>
+
+      {liveMatches.map((m) => {
+        const copy = matchResumeCopy(m, nameOf);
+        return (
+          <View key={m.id} style={styles.resumeWrap}>
+            <LiveResumeCard
+              eyebrow="Live match"
+              title={copy.title}
+              meta={copy.meta}
+              onPress={() => {
+                props.navigation.closeDrawer();
+                router.push(`/match/${m.id}`);
+              }}
+            />
+          </View>
+        );
+      })}
+      {liveRaces.map((r) => {
+        const copy = raceResumeCopy(r, nameOf);
+        return (
+          <View key={r.id} style={styles.resumeWrap}>
+            <LiveResumeCard
+              eyebrow="Live race"
+              title={copy.title}
+              meta={copy.meta}
+              onPress={() => {
+                props.navigation.closeDrawer();
+                router.push(`/race/${r.id}`);
+              }}
+            />
+          </View>
+        );
+      })}
 
       {items.map((item) => {
         const focused = active === item.route;
@@ -93,7 +135,7 @@ export default function MainDrawerLayout(): ReactNode {
         headerRight: () => <ProfileButton />,
       }}
     >
-      <Drawer.Screen name="index" options={{ title: 'Home', drawerLabel: 'Home' }} />
+      <Drawer.Screen name="(tabs)" options={{ headerShown: false, title: 'Home' }} />
       <Drawer.Screen name="history" options={{ title: 'Game history' }} />
       <Drawer.Screen name="champions" options={{ title: 'Champion history' }} />
       <Drawer.Screen name="stats" options={{ title: 'Stats' }} />
@@ -104,8 +146,16 @@ export default function MainDrawerLayout(): ReactNode {
         options={{ title: 'Player', drawerItemStyle: { display: 'none' } }}
       />
       <Drawer.Screen
-        name="profile"
-        options={{ title: 'My profile', drawerItemStyle: { display: 'none' } }}
+        name="directory"
+        options={{ title: 'Directory', drawerItemStyle: { display: 'none' } }}
+      />
+      <Drawer.Screen
+        name="city-player"
+        options={{ title: 'Player', drawerItemStyle: { display: 'none' } }}
+      />
+      <Drawer.Screen
+        name="follows"
+        options={{ title: 'Follows', drawerItemStyle: { display: 'none' } }}
       />
       <Drawer.Screen name="league" options={{ title: 'League' }} />
     </Drawer>
@@ -127,11 +177,8 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     marginBottom: spacing.sm,
   },
-  drawerBrand: {
-    fontFamily: fonts.display,
-    fontSize: 28,
-    color: colors.chalk,
-    marginTop: spacing.sm,
+  resumeWrap: {
+    paddingHorizontal: spacing.sm,
   },
   drawerLeague: {
     fontFamily: fonts.bodyMedium,
@@ -142,6 +189,14 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     color: colors.chalkMuted,
     marginTop: spacing.xs,
+  },
+  drawerHint: {
+    fontFamily: fonts.bodyBold,
+    fontSize: 11,
+    letterSpacing: 1,
+    color: colors.gold,
+    marginTop: spacing.sm,
+    textTransform: 'uppercase',
   },
   item: {
     borderRadius: radii.md,

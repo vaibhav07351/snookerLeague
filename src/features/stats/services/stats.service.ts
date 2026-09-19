@@ -9,6 +9,8 @@ import type {
 import { emptyRaceStats, emptyStandardStats } from '@/shared/types/domain';
 import { updateStore } from '@/shared/storage/local-store';
 import { nowIso } from '@/shared/utils/id';
+import { playerShotTotals } from '@/features/match/services/frame-rank';
+import { visitBreaks } from '@/features/match/services/shot.service';
 
 function pct(part: number, whole: number): number {
   if (whole <= 0) {
@@ -45,6 +47,13 @@ export function recomputeStandardStats(playerId: string, matches: Match[]): Stan
   let lossFrameSeconds = 0;
   let fastestFrameSeconds: number | null = null;
   let slowestFrameSeconds: number | null = null;
+  let highestBreak = 0;
+  let breaks50 = 0;
+  let centuries = 0;
+  let maximums = 0;
+  let pointsScored = 0;
+  let fouls = 0;
+  let foulPoints = 0;
 
   for (const match of relevant) {
     const side: 'a' | 'b' = match.teamA.includes(playerId) ? 'a' : 'b';
@@ -75,6 +84,36 @@ export function recomputeStandardStats(playerId: string, matches: Match[]): Stan
     lastPlayedAt = match.updatedAt;
 
     for (const frame of match.frames) {
+      const shots = frame.shots ?? [];
+      const tagged = shots.some((s) => Boolean(s.playerId));
+      if (tagged) {
+        const totals = playerShotTotals(shots, { a: match.teamA, b: match.teamB });
+        const mine = totals[playerId];
+        if (mine) {
+          pointsScored += mine.scored;
+          fouls += mine.fouls;
+          foulPoints += mine.foulPoints;
+        }
+      } else {
+        pointsScored += side === 'a' ? frame.teamAPoints : frame.teamBPoints;
+      }
+      const visits = visitBreaks(shots).filter((v) =>
+        v.playerId ? v.playerId === playerId : v.side === side,
+      );
+      for (const visit of visits) {
+        if (visit.value > highestBreak) {
+          highestBreak = visit.value;
+        }
+        if (visit.value >= 50) {
+          breaks50 += 1;
+        }
+        if (visit.value >= 100) {
+          centuries += 1;
+        }
+        if (visit.value === 147) {
+          maximums += 1;
+        }
+      }
       const dur = frame.durationSeconds;
       if (typeof dur !== 'number' || !Number.isFinite(dur) || dur < 0) {
         continue;
@@ -115,6 +154,14 @@ export function recomputeStandardStats(playerId: string, matches: Match[]): Stan
     avgLossFrameSeconds: avgOrNull(lossFrameSeconds, timedFramesLost),
     fastestFrameSeconds,
     slowestFrameSeconds,
+    highestBreak,
+    breaks50,
+    centuries,
+    maximums,
+    pointsScored,
+    fouls,
+    foulPoints,
+    netPoints: pointsScored - foulPoints,
   };
 }
 
@@ -263,9 +310,7 @@ export async function refreshLeaguePlayerStats(leagueId: string): Promise<void> 
     const stamp = nowIso();
     return {
       ...s,
-      players: nextPlayers.map((p) =>
-        p.leagueId === leagueId ? { ...p, updatedAt: stamp } : p,
-      ),
+      players: nextPlayers.map((p) => (p.leagueId === leagueId ? { ...p, updatedAt: stamp } : p)),
     };
   });
 }

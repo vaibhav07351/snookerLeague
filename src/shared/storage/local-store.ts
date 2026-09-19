@@ -1,7 +1,19 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { logger } from '@/shared/logging/logger';
-import type { AppDataStore, FeedEvent, League, Match, Player, Race } from '@/shared/types/domain';
+import type {
+  AppDataStore,
+  Challenge,
+  DirectoryListing,
+  FeedEvent,
+  FollowEdge,
+  League,
+  LookingPost,
+  Match,
+  Player,
+  PlayerProfile,
+  Race,
+} from '@/shared/types/domain';
 
 const STORAGE_KEY = 'snooker.v1.store';
 
@@ -15,6 +27,11 @@ export function emptyStore(): AppDataStore {
     races: [],
     events: [],
     pendingOps: [],
+    playerProfiles: [],
+    challenges: [],
+    lookingPosts: [],
+    directoryListings: [],
+    follows: [],
   };
 }
 
@@ -36,6 +53,13 @@ export function normalizeStore(raw: Partial<AppDataStore>): AppDataStore {
   return {
     ...base,
     ...raw,
+    user: raw.user
+      ? {
+          ...raw.user,
+          cityId: raw.user.cityId ?? null,
+          cityName: raw.user.cityName ?? null,
+        }
+      : null,
     leagues: (raw.leagues ?? []).map((l) => withUpdatedAt(l as League)),
     players: (raw.players ?? []).map((p) => withUpdatedAt(p as Player)),
     matches: (raw.matches ?? []) as Match[],
@@ -51,6 +75,15 @@ export function normalizeStore(raw: Partial<AppDataStore>): AppDataStore {
       };
     }),
     pendingOps: Array.isArray(raw.pendingOps) ? raw.pendingOps : [],
+    playerProfiles: Array.isArray(raw.playerProfiles)
+      ? (raw.playerProfiles as PlayerProfile[])
+      : [],
+    challenges: Array.isArray(raw.challenges) ? (raw.challenges as Challenge[]) : [],
+    lookingPosts: Array.isArray(raw.lookingPosts) ? (raw.lookingPosts as LookingPost[]) : [],
+    directoryListings: Array.isArray(raw.directoryListings)
+      ? (raw.directoryListings as DirectoryListing[])
+      : [],
+    follows: Array.isArray(raw.follows) ? (raw.follows as FollowEdge[]) : [],
   };
 }
 

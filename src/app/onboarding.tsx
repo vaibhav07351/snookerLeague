@@ -82,9 +82,7 @@ export default function OnboardingScreen(): ReactNode {
           }}
           style={[styles.modeCard, mode === 'create' && styles.modeCardOn]}
         >
-          <Text style={[styles.modeTitle, mode === 'create' && styles.modeTitleOn]}>
-            Create
-          </Text>
+          <Text style={[styles.modeTitle, mode === 'create' && styles.modeTitleOn]}>Create</Text>
           <Text style={styles.modeBody}>Start a new group and invite friends with a code</Text>
         </Pressable>
         <Pressable

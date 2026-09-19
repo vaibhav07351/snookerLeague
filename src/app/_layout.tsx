@@ -2,11 +2,7 @@ import {
   LibreBaskerville_400Regular,
   LibreBaskerville_700Bold,
 } from '@expo-google-fonts/libre-baskerville';
-import {
-  DMSans_400Regular,
-  DMSans_500Medium,
-  DMSans_700Bold,
-} from '@expo-google-fonts/dm-sans';
+import { DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -62,7 +58,8 @@ export default function RootLayout(): ReactNode {
         >
           <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="login" options={{ headerShown: false }} />
-          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+          <Stack.Screen name="birthday" options={{ headerShown: false }} />
+          <Stack.Screen name="location" options={{ headerShown: false }} />
           <Stack.Screen name="(main)" options={{ headerShown: false }} />
           <Stack.Screen name="match/new" options={{ title: 'New match' }} />
           <Stack.Screen name="match/[id]" options={{ title: 'Match' }} />

@@ -6,12 +6,16 @@ import { Button } from '@/features/home/components/Button';
 import { Screen } from '@/features/home/components/Screen';
 import { TextField } from '@/features/home/components/TextField';
 import * as playersService from '@/features/players/services/players.service';
+import { RaceBallPad } from '@/features/race/components/RaceBallPad';
+import { RaceLiveBoard } from '@/features/race/components/RaceLiveBoard';
+import { currentRaceBreak, withRaceDefaults } from '@/features/race/services/race-helpers';
+import * as raceLive from '@/features/race/services/race-live.service';
 import * as raceService from '@/features/race/services/race.service';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { Player, Race, RacePlace } from '@/shared/types/domain';
 import { confirmAction } from '@/shared/utils/confirm';
-import { colors, spacing, typography } from '@/theme/tokens';
+import { colors, fonts, spacing, typography } from '@/theme/tokens';
 
 function formatRacePlace(place: RacePlace | null): string {
   if (place === null) {
@@ -39,7 +43,7 @@ export default function RaceDetailScreen(): ReactNode {
       if (prev && r && prev.id === r.id && prev.updatedAt === r.updatedAt) {
         return prev;
       }
-      return r;
+      return r ? withRaceDefaults(r) : r;
     });
     if (r) {
       setPlayers(await playersService.listPlayers(r.leagueId));
@@ -47,7 +51,7 @@ export default function RaceDetailScreen(): ReactNode {
         const drafts: Record<string, string> = {};
         let same = true;
         r.entrants.forEach((e) => {
-          const next = e.score > 0 ? String(e.score) : '';
+          const next = e.score === 0 ? '' : String(e.score);
           drafts[e.playerId] = next;
           if (prev[e.playerId] !== next) {
             same = false;
@@ -78,6 +82,13 @@ export default function RaceDetailScreen(): ReactNode {
   const nameOf = (pid: string): string =>
     players.find((p) => p.id === pid)?.displayName ?? 'Player';
 
+  const activeIds = race.entrants.filter((e) => e.place === null).map((e) => e.playerId);
+  const scoringId =
+    race.atTablePlayerId && activeIds.includes(race.atTablePlayerId)
+      ? race.atTablePlayerId
+      : (activeIds[0] ?? null);
+  const visitBreak = currentRaceBreak(race.liveShots, scoringId);
+
   const sorted = [...race.entrants].sort((a, b) => {
     const placeA = a.place === null ? 999 : a.place === 'dnf' ? 998 : a.place;
     const placeB = b.place === null ? 999 : b.place === 'dnf' ? 998 : b.place;
@@ -86,6 +97,10 @@ export default function RaceDetailScreen(): ReactNode {
     }
     return b.score - a.score;
   });
+
+  function alertLive(error: unknown): void {
+    Alert.alert('Could not record', toUserMessage(error));
+  }
 
   async function saveScore(playerId: string): Promise<void> {
     try {
@@ -136,6 +151,43 @@ export default function RaceDetailScreen(): ReactNode {
         {race.crownsRaceChampion ? ' · Crowns race king' : ''}
       </Text>
 
+      <RaceLiveBoard
+        race={race}
+        nameOf={nameOf}
+        selectedPlayerId={race.status === 'in_progress' ? scoringId : null}
+        onSelectPlayer={
+          race.status === 'in_progress'
+            ? (playerId) => {
+                void raceLive.setAtTablePlayer(race.id, playerId).catch(alertLive);
+              }
+            : undefined
+        }
+      />
+
+      {race.status === 'in_progress' ? (
+        <RaceBallPad
+          playerName={scoringId ? nameOf(scoringId) : null}
+          currentBreak={visitBreak}
+          canUndo={(race.liveShots?.length ?? 0) > 0}
+          onPot={(ball) => {
+            void raceLive.recordPot(race.id, ball).catch(alertLive);
+          }}
+          onFoul={(points) => {
+            void raceLive.recordFoul(race.id, points).catch(alertLive);
+          }}
+          onMiss={() => {
+            void raceLive.recordMiss(race.id).catch(alertLive);
+          }}
+          onUndo={() => {
+            void raceLive.undoLast(race.id).catch(alertLive);
+          }}
+        />
+      ) : null}
+
+      {race.status === 'in_progress' ? (
+        <Text style={styles.finalHeading}>Or set final score</Text>
+      ) : null}
+
       {sorted.map((e) => {
         const playerName = nameOf(e.playerId);
         const busy = busyPlayerId === e.playerId;
@@ -151,13 +203,11 @@ export default function RaceDetailScreen(): ReactNode {
               <View style={styles.scoreEdit}>
                 <View style={styles.scoreField}>
                   <TextField
-                    label="Score"
+                    label="Set score"
                     value={draftScores[e.playerId] ?? ''}
-                    onChangeText={(t) =>
-                      setDraftScores((prev) => ({ ...prev, [e.playerId]: t }))
-                    }
+                    onChangeText={(t) => setDraftScores((prev) => ({ ...prev, [e.playerId]: t }))}
                     keyboardType="number-pad"
-                    placeholder={e.score > 0 ? String(e.score) : 'Enter score'}
+                    placeholder="Tap to type"
                   />
                 </View>
                 <Button
@@ -218,6 +268,12 @@ const styles = StyleSheet.create({
   meta: {
     color: colors.chalkMuted,
     marginBottom: spacing.lg,
+  },
+  finalHeading: {
+    fontFamily: fonts.bodyBold,
+    color: colors.goldSoft,
+    fontSize: 13,
+    marginBottom: spacing.sm,
   },
   row: {
     borderBottomWidth: 1,

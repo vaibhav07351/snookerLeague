@@ -20,6 +20,16 @@ export default function Index(): ReactNode {
     return <Redirect href="/login" />;
   }
 
+  if (!user.dateOfBirth) {
+    return <Redirect href="/birthday" />;
+  }
+
+  const needsCity = !user.isDemo && !user.cityId;
+  const demoNeedsCity = user.isDemo && !user.cityId && user.citySkipped !== true;
+  if (needsCity || demoNeedsCity) {
+    return <Redirect href="/location" />;
+  }
+
   if (!league) {
     return <Redirect href="/onboarding" />;
   }

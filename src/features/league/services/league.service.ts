@@ -16,9 +16,11 @@ import {
   scheduleUserProfileSync,
   shouldCloudSync,
 } from '@/shared/sync';
+import { uniqueDisplayName } from '@/features/players/services/players.service';
 import {
   emptyRaceStats,
   emptyStandardStats,
+  leagueKindOf,
   type League,
   type Player,
 } from '@/shared/types/domain';
@@ -61,16 +63,25 @@ function makeMemberPlayer(
 
 export async function getActiveLeague(): Promise<League | null> {
   await loadStore();
-  const { activeLeagueId, leagues } = getStore();
+  const { activeLeagueId, leagues, user } = getStore();
   if (!activeLeagueId) {
     return null;
   }
-  return leagues.find((l) => l.id === activeLeagueId) ?? null;
+  const active = leagues.find((l) => l.id === activeLeagueId) ?? null;
+  if (active && leagueKindOf(active) === 'city') {
+    const uid = user?.uid;
+    return (
+      leagues.find(
+        (l) => uid != null && l.memberUids.includes(uid) && leagueKindOf(l) !== 'city',
+      ) ?? null
+    );
+  }
+  return active;
 }
 
 export async function listLeaguesForUser(uid: string): Promise<League[]> {
   await loadStore();
-  return getStore().leagues.filter((l) => l.memberUids.includes(uid));
+  return getStore().leagues.filter((l) => l.memberUids.includes(uid) && leagueKindOf(l) !== 'city');
 }
 
 export async function createLeague(input: {
@@ -99,6 +110,8 @@ export async function createLeague(input: {
     defaultBestOf: parsed.data.defaultBestOf,
     reigningTeam: null,
     raceKing: null,
+    kind: 'club',
+    cityId: null,
   };
 
   const player = makeMemberPlayer(
@@ -184,7 +197,12 @@ export async function joinLeague(input: {
   const newPlayer =
     existingPlayer != null
       ? null
-      : makeMemberPlayer(league.id, parsed.data.uid, parsed.data.displayName, parsed.data.photoUrl);
+      : makeMemberPlayer(
+          league.id,
+          parsed.data.uid,
+          uniqueDisplayName(league.id, parsed.data.displayName),
+          parsed.data.photoUrl,
+        );
 
   const updatedLeague: League = alreadyMember
     ? { ...league, updatedAt: now }
@@ -290,6 +308,9 @@ export async function deleteLeague(input: {
   const league = getStore().leagues.find((l) => l.id === input.leagueId);
   if (!league) {
     throw new AppError('NOT_FOUND', 'League not found');
+  }
+  if (leagueKindOf(league) === 'city') {
+    throw new AppError('FORBIDDEN', 'City hubs cannot be deleted from here');
   }
   if (league.createdByUid !== input.uid) {
     throw new AppError('FORBIDDEN', 'Only the person who created this league can delete it');

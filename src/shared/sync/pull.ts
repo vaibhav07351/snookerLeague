@@ -61,6 +61,8 @@ function asLeague(data: Record<string, unknown>, id: string): League {
     defaultBestOf: Number(data.defaultBestOf ?? 3),
     reigningTeam: (data.reigningTeam as League['reigningTeam']) ?? null,
     raceKing: (data.raceKing as League['raceKing']) ?? null,
+    kind: data.kind === 'city' ? 'city' : 'club',
+    cityId: typeof data.cityId === 'string' ? data.cityId : null,
   };
 }
 
@@ -77,8 +79,8 @@ function asPlayer(data: Record<string, unknown>, id: string, leagueId: string): 
     createdAt,
     updatedAt: String(data.updatedAt ?? data.createdAt ?? createdAt),
     stats: {
-      standard: stats?.standard ?? emptyStandardStats(),
-      race: stats?.race ?? emptyRaceStats(),
+      standard: { ...emptyStandardStats(), ...stats?.standard },
+      race: { ...emptyRaceStats(), ...stats?.race },
     },
   };
 }
@@ -127,6 +129,9 @@ export async function fetchCloudUser(uid: string): Promise<CloudUserProfile | nu
     leagueIds: Array.isArray(data.leagueIds) ? (data.leagueIds as string[]) : [],
     activeLeagueId: (data.activeLeagueId as string | null) ?? null,
     updatedAt: String(data.updatedAt ?? MISSING_TS),
+    cityId: typeof data.cityId === 'string' ? data.cityId : null,
+    cityName: typeof data.cityName === 'string' ? data.cityName : null,
+    dateOfBirth: typeof data.dateOfBirth === 'string' ? data.dateOfBirth : null,
   };
 }
 
@@ -237,6 +242,9 @@ export async function pullUserAndLeagues(uid: string): Promise<void> {
               displayName: profile?.displayName || s.user.displayName,
               email: profile?.email ?? s.user.email,
               photoUrl: profile?.photoUrl ?? s.user.photoUrl,
+              cityId: profile?.cityId ?? s.user.cityId,
+              cityName: profile?.cityName ?? s.user.cityName,
+              dateOfBirth: profile?.dateOfBirth ?? s.user.dateOfBirth ?? null,
             }
           : s.user,
       };

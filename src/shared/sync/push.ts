@@ -4,9 +4,14 @@ import { logger } from '@/shared/logging/logger';
 import type { CloudUserProfile, PendingOp } from '@/shared/types/domain';
 import {
   eventDocRef,
+  challengeDocRef,
+  directoryListingDocRef,
+  followDocRef,
   leagueDocRef,
+  lookingPostDocRef,
   matchDocRef,
   playerDocRef,
+  playerProfileDocRef,
   raceDocRef,
   stripUndefined,
   userDocRef,
@@ -74,6 +79,21 @@ async function upsertRemote(op: PendingOp): Promise<void> {
       }
       await setDoc(eventDocRef(op.leagueId, op.docId), data, { merge: true });
       return;
+    case 'profile':
+      await setDoc(playerProfileDocRef(op.docId), data, { merge: true });
+      return;
+    case 'challenge':
+      await setDoc(challengeDocRef(op.docId), data, { merge: true });
+      return;
+    case 'looking':
+      await setDoc(lookingPostDocRef(op.docId), data, { merge: true });
+      return;
+    case 'directory':
+      await setDoc(directoryListingDocRef(op.docId), data, { merge: true });
+      return;
+    case 'follow':
+      await setDoc(followDocRef(op.docId), data, { merge: true });
+      return;
     default:
       throw new Error(`Unknown entity ${op.entity as string}`);
   }
@@ -110,6 +130,21 @@ async function deleteRemote(op: PendingOp): Promise<void> {
         throw new Error('event delete requires leagueId');
       }
       await deleteDoc(eventDocRef(op.leagueId, op.docId));
+      return;
+    case 'profile':
+      await deleteDoc(playerProfileDocRef(op.docId));
+      return;
+    case 'challenge':
+      await deleteDoc(challengeDocRef(op.docId));
+      return;
+    case 'looking':
+      await deleteDoc(lookingPostDocRef(op.docId));
+      return;
+    case 'directory':
+      await deleteDoc(directoryListingDocRef(op.docId));
+      return;
+    case 'follow':
+      await deleteDoc(followDocRef(op.docId));
       return;
     default:
       throw new Error(`Unknown entity ${op.entity as string}`);

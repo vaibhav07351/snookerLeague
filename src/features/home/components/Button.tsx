@@ -41,9 +41,7 @@ export function Button({
       {...rest}
     >
       {loading ? (
-        <ActivityIndicator
-          color={variant === 'primary' ? colors.felt : colors.chalk}
-        />
+        <ActivityIndicator color={variant === 'primary' ? colors.felt : colors.chalk} />
       ) : (
         <Text
           style={[

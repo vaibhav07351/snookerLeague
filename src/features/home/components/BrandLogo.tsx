@@ -10,7 +10,7 @@ export function BrandLogo({ size = 88, style }: BrandLogoProps): ReactNode {
   return (
     <Image
       source={require('../../../../assets/snooker-logo.png')}
-      accessibilityLabel="Snooker League logo"
+      accessibilityLabel="Snookit logo"
       style={[styles.logo, { width: size, height: size, borderRadius: size * 0.22 }, style]}
     />
   );
