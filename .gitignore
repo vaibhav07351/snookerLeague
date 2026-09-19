@@ -32,6 +32,14 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
+.env.*
+!.env.example
+
+# EAS / Play Store credentials (never commit)
+google-service-account.json
+*-service-account*.json
+credentials.json
 
 # typescript
 *.tsbuildinfo
