@@ -40,6 +40,8 @@ yarn-error.*
 google-service-account.json
 *-service-account*.json
 credentials.json
+eas-log.txt
+eas-raw.bin
 
 # typescript
 *.tsbuildinfo
