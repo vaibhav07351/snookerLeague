@@ -2,10 +2,14 @@ import { router } from 'expo-router';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 
-import * as authService from '@/features/auth/services/auth.service';
 import { useSession } from '@/features/auth/hooks/use-session';
+import * as authService from '@/features/auth/services/auth.service';
+import { parseAndValidateDob } from '@/features/auth/services/division.service';
+import * as profileService from '@/features/community/services/profile.service';
 import { BrandLogo } from '@/features/home/components/BrandLogo';
+import { BrandWordmark } from '@/features/home/components/BrandWordmark';
 import { Button } from '@/features/home/components/Button';
+import { DateOfBirthField } from '@/features/home/components/DateOfBirthField';
 import { Screen } from '@/features/home/components/Screen';
 import { TextField } from '@/features/home/components/TextField';
 import { toUserMessage } from '@/shared/errors/app-error';
@@ -15,8 +19,10 @@ import { colors, fonts, radii, spacing, typography } from '@/theme/tokens';
 export default function LoginScreen(): ReactNode {
   const { refresh } = useSession();
   const [name, setName] = useState('');
+  const [dob, setDob] = useState('');
   const [busy, setBusy] = useState(false);
   const [nameError, setNameError] = useState<string | undefined>();
+  const [dobError, setDobError] = useState<string | undefined>();
   const [request, response, promptAsync] = authService.useGoogleAuthRequest();
   const handledIdToken = useRef<string | null>(null);
 
@@ -48,6 +54,13 @@ export default function LoginScreen(): ReactNode {
     setBusy(true);
     try {
       await authService.signInWithGoogleIdToken(idToken);
+      if (dob.trim()) {
+        try {
+          await profileService.setOwnDateOfBirth(parseAndValidateDob(dob));
+        } catch {
+          // Birthday onboarding collects a valid date after Google returns.
+        }
+      }
       await refresh();
       router.replace('/');
     } catch (error) {
@@ -70,9 +83,18 @@ export default function LoginScreen(): ReactNode {
       return;
     }
     setNameError(undefined);
+    let dateOfBirth: string;
+    try {
+      dateOfBirth = parseAndValidateDob(dob);
+      setDobError(undefined);
+    } catch (error) {
+      setDobError(toUserMessage(error));
+      return;
+    }
     setBusy(true);
     try {
-      await authService.signInDemo(trimmed);
+      await authService.signInDemo(trimmed, dateOfBirth);
+      await profileService.setOwnDateOfBirth(dateOfBirth);
       await refresh();
       router.replace('/');
     } catch (error) {
@@ -109,18 +131,18 @@ export default function LoginScreen(): ReactNode {
     <Screen keyboardVerticalOffset={0}>
       <View style={styles.hero}>
         <BrandLogo size={112} style={styles.logo} />
-        <Text style={typography.label}>Your table. Your league.</Text>
-        <Text style={typography.brand}>Snooker</Text>
+        <Text style={typography.label}>Your table. Your city.</Text>
+        <BrandWordmark />
         <Text style={styles.tagline}>
-          Track doubles matches, race for first place, and crown who rules the table.
+          Live score every shot, find the best players in your city, and crown who rules the table.
         </Text>
       </View>
 
       <View style={styles.steps}>
         {[
-          { n: '1', t: 'Create or join a league' },
-          { n: '2', t: 'Add your friends' },
-          { n: '3', t: 'Log matches & races' },
+          { n: '1', t: 'Tell us your name and date of birth' },
+          { n: '2', t: 'Pick your city' },
+          { n: '3', t: 'Live-score matches & races' },
         ].map((step) => (
           <View key={step.n} style={styles.stepRow}>
             <View style={styles.stepBadge}>
@@ -149,12 +171,8 @@ export default function LoginScreen(): ReactNode {
           error={nameError}
           hint="This is how you appear on the leaderboard"
         />
-        <Button
-          label="Get started"
-          loading={busy}
-          onPress={() => void onDemo()}
-          disabled={busy}
-        />
+        <DateOfBirthField value={dob} onChange={setDob} error={dobError} />
+        <Button label="Get started" loading={busy} onPress={() => void onDemo()} disabled={busy} />
         <Button
           label="Continue with Google"
           variant="secondary"

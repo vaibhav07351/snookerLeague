@@ -4,9 +4,11 @@ import { logger } from '@/shared/logging/logger';
 import type { CloudUserProfile, PendingOp } from '@/shared/types/domain';
 import {
   eventDocRef,
+  challengeDocRef,
   leagueDocRef,
   matchDocRef,
   playerDocRef,
+  playerProfileDocRef,
   raceDocRef,
   stripUndefined,
   userDocRef,
@@ -74,6 +76,12 @@ async function upsertRemote(op: PendingOp): Promise<void> {
       }
       await setDoc(eventDocRef(op.leagueId, op.docId), data, { merge: true });
       return;
+    case 'profile':
+      await setDoc(playerProfileDocRef(op.docId), data, { merge: true });
+      return;
+    case 'challenge':
+      await setDoc(challengeDocRef(op.docId), data, { merge: true });
+      return;
     default:
       throw new Error(`Unknown entity ${op.entity as string}`);
   }
@@ -110,6 +118,12 @@ async function deleteRemote(op: PendingOp): Promise<void> {
         throw new Error('event delete requires leagueId');
       }
       await deleteDoc(eventDocRef(op.leagueId, op.docId));
+      return;
+    case 'profile':
+      await deleteDoc(playerProfileDocRef(op.docId));
+      return;
+    case 'challenge':
+      await deleteDoc(challengeDocRef(op.docId));
       return;
     default:
       throw new Error(`Unknown entity ${op.entity as string}`);

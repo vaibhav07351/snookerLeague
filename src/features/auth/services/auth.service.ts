@@ -54,7 +54,10 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   return getStore().user;
 }
 
-export async function signInDemo(displayName: string): Promise<SessionUser> {
+export async function signInDemo(
+  displayName: string,
+  dateOfBirth?: string | null,
+): Promise<SessionUser> {
   const name = displayName.trim();
   if (name.length < 2) {
     throw new AppError('VALIDATION', 'Enter a display name (at least 2 characters)');
@@ -65,6 +68,9 @@ export async function signInDemo(displayName: string): Promise<SessionUser> {
     email: null,
     photoUrl: null,
     isDemo: true,
+    cityId: null,
+    cityName: null,
+    dateOfBirth: dateOfBirth ?? null,
   };
   stopWatchingActiveLeague();
   await updateStore((s) => ({ ...s, user }));
@@ -85,6 +91,9 @@ export async function signInWithGoogleIdToken(idToken: string): Promise<SessionU
     email: result.user.email,
     photoUrl: result.user.photoURL,
     isDemo: false,
+    cityId: null,
+    cityName: null,
+    dateOfBirth: null,
   };
   await updateStore((s) => ({ ...s, user }));
   try {
@@ -125,6 +134,10 @@ export async function linkDemoAccountWithGoogleIdToken(idToken: string): Promise
     email: result.user.email,
     photoUrl: result.user.photoURL,
     isDemo: false,
+    cityId: current.cityId,
+    cityName: current.cityName,
+    citySkipped: current.citySkipped,
+    dateOfBirth: current.dateOfBirth ?? null,
   };
 
   await updateStore((s) => {

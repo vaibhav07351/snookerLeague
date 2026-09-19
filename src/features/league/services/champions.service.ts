@@ -32,9 +32,7 @@ function scoreLineFor(match: Match): string {
 }
 
 /** Doubles title matches that crowned a team, newest first. */
-export async function listTeamChampionHistory(
-  leagueId: string,
-): Promise<TeamChampionRecord[]> {
+export async function listTeamChampionHistory(leagueId: string): Promise<TeamChampionRecord[]> {
   await loadStore();
   const store = getStore();
   const league = store.leagues.find((l) => l.id === leagueId);
@@ -42,16 +40,10 @@ export async function listTeamChampionHistory(
 
   return store.matches
     .filter((m) => m.leagueId === leagueId && m.crownsChampion)
-    .filter(
-      (m) => m.outcome.status === 'completed' || m.outcome.status === 'forfeited',
-    )
+    .filter((m) => m.outcome.status === 'completed' || m.outcome.status === 'forfeited')
     .map((m) => {
       const winnerIds =
-        m.outcome.status === 'in_progress'
-          ? m.teamA
-          : m.outcome.winner === 'a'
-            ? m.teamA
-            : m.teamB;
+        m.outcome.status === 'in_progress' ? m.teamA : m.outcome.winner === 'a' ? m.teamA : m.teamB;
       return {
         kind: 'team' as const,
         matchId: m.id,
@@ -68,9 +60,7 @@ export async function listTeamChampionHistory(
 }
 
 /** Race-to-score crowning races, newest first. */
-export async function listRaceChampionHistory(
-  leagueId: string,
-): Promise<RaceChampionRecord[]> {
+export async function listRaceChampionHistory(leagueId: string): Promise<RaceChampionRecord[]> {
   await loadStore();
   const store = getStore();
   const league = store.leagues.find((l) => l.id === leagueId);
@@ -81,8 +71,7 @@ export async function listRaceChampionHistory(
     .filter((r) => r.status === 'completed')
     .map((r: Race) => {
       const first = r.entrants.find((e) => e.place === 1);
-      const crownedAt =
-        first?.finishedAt ?? r.updatedAt;
+      const crownedAt = first?.finishedAt ?? r.updatedAt;
       return {
         kind: 'race' as const,
         raceId: r.id,

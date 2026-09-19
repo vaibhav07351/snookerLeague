@@ -5,10 +5,10 @@
  */
 module.exports = ({ config }) => ({
   ...config,
-  name: 'Snooker League',
+  name: 'Snookit',
   slug: 'snooker-league',
   owner: 'vaibhav07351',
-  version: '1.0.0',
+  version: '2.0.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
   scheme: 'snooker',
@@ -22,6 +22,10 @@ module.exports = ({ config }) => ({
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'com.snooker.league',
+    infoPlist: {
+      NSLocationWhenInUseUsageDescription:
+        'Snookit uses your location to suggest your city so you can see local players, city rankings, and live matches. We store your city, not a live GPS trail.',
+    },
   },
   android: {
     adaptiveIcon: {
@@ -33,12 +37,25 @@ module.exports = ({ config }) => ({
     package: 'com.snooker.league',
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: 'resize',
+    permissions: ['ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION'],
   },
   web: {
     favicon: './assets/favicon.png',
     bundler: 'metro',
   },
-  plugins: ['expo-router', 'expo-font', 'expo-web-browser', 'expo-splash-screen'],
+  plugins: [
+    'expo-router',
+    'expo-font',
+    'expo-web-browser',
+    'expo-splash-screen',
+    [
+      'expo-location',
+      {
+        locationWhenInUsePermission:
+          'Snookit uses your location to suggest your city so you can see local players, city rankings, and live matches. We store your city, not a live GPS trail.',
+      },
+    ],
+  ],
   extra: {
     eas: {
       projectId: '66106947-8796-4241-8d9a-de50e4f04021',

@@ -33,11 +33,7 @@ const HEADLINES_WIN = [
 
 const HEADLINES_FORFEIT = ['Win by forfeit', 'Walkover winners', 'Still counts'] as const;
 
-const HEADLINES_CROWN = [
-  'New reigning champs!',
-  'Crown secured',
-  'The throne is theirs',
-] as const;
+const HEADLINES_CROWN = ['New reigning champs!', 'Crown secured', 'The throne is theirs'] as const;
 
 interface ParticleSpec {
   id: number;

@@ -20,10 +20,7 @@ export function useStoreTick(): number {
  * Run `reload` when the store notifies or when `readyKey` changes (e.g. league id).
  * `reload` is held in a ref so unstable callback identities cannot cause update loops.
  */
-export function useStoreReload(
-  reload: () => void | Promise<void>,
-  readyKey?: string | null,
-): void {
+export function useStoreReload(reload: () => void | Promise<void>, readyKey?: string | null): void {
   const tick = useStoreTick();
   const reloadRef = useRef(reload);
   reloadRef.current = reload;

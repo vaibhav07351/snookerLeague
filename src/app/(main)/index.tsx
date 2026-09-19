@@ -4,8 +4,15 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { BrandLogo } from '@/features/home/components/BrandLogo';
+import { BrandWordmark } from '@/features/home/components/BrandWordmark';
 import { Button } from '@/features/home/components/Button';
+import { LiveResumeCard } from '@/features/home/components/LiveResumeCard';
 import { Screen } from '@/features/home/components/Screen';
+import {
+  matchResumeCopy,
+  raceResumeCopy,
+  useLiveSessions,
+} from '@/features/home/hooks/use-live-sessions';
 import * as matchService from '@/features/match/services/match.service';
 import { listPlayers } from '@/features/players/services/players.service';
 import { listFeed } from '@/features/stats/services/stats.service';
@@ -35,11 +42,11 @@ export default function HomeScreen(): ReactNode {
 
   useStoreReload(reload, leagueId ?? null);
 
+  const { matches: liveMatches, races: liveRaces, nameOf } = useLiveSessions(leagueId);
+
   if (!league || !user) {
     return null;
   }
-
-  const nameOf = (id: string): string => players.find((p) => p.id === id)?.displayName ?? 'Player';
 
   const me = players.find((p) => p.authUid === user.uid);
   const hasRoster = players.length >= 2;
@@ -56,13 +63,38 @@ export default function HomeScreen(): ReactNode {
         <BrandLogo size={56} style={styles.homeLogo} />
         <View style={styles.brandText}>
           <Text style={typography.label}>{league.name}</Text>
-          <Text style={styles.homeBrand}>Snooker</Text>
+          <BrandWordmark size="md" />
         </View>
       </View>
       <Text style={styles.greeting}>Welcome back, {user.displayName}</Text>
       <Text style={styles.lastPlayed}>
         Last match day · <Text style={styles.lastPlayedValue}>{lastMatchDay}</Text>
       </Text>
+
+      {liveMatches.map((m) => {
+        const copy = matchResumeCopy(m, nameOf);
+        return (
+          <LiveResumeCard
+            key={m.id}
+            eyebrow="Live match"
+            title={copy.title}
+            meta={copy.meta}
+            onPress={() => router.push(`/match/${m.id}`)}
+          />
+        );
+      })}
+      {liveRaces.map((r) => {
+        const copy = raceResumeCopy(r, nameOf);
+        return (
+          <LiveResumeCard
+            key={r.id}
+            eyebrow="Live race"
+            title={copy.title}
+            meta={copy.meta}
+            onPress={() => router.push(`/race/${r.id}`)}
+          />
+        );
+      })}
 
       <View style={styles.champPanel}>
         <Text style={typography.label}>Reigning champions</Text>

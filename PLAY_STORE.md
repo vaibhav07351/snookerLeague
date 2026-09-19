@@ -64,9 +64,10 @@ Without this, Google login can fail in the Play build even though Expo Go / web 
 Follow **[PLAY_STORE_SCREENS.md](PLAY_STORE_SCREENS.md)** screen by screen (Create app → store listing → Internal testing).
 
 Short version:
-1. Play Console → **Create app** → name **Snooker League**, package `com.snooker.league`, Free, App  
-2. Complete Dashboard setup tasks (privacy policy, ratings, data safety, listing)  
-3. **Testing → Internal testing** → upload `.aab` → add your email → install from the join link  
+
+1. Play Console → **Create app** → name **Snookit-Snooker Scoring App**, package `com.snooker.league`, Free, App
+2. Complete Dashboard setup tasks (privacy policy, ratings, data safety, listing)
+3. **Testing → Internal testing** → upload `.aab` → add your email → install from the join link
 
 ## 5. Optional: upload via CLI later
 

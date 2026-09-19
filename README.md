@@ -1,6 +1,6 @@
-# Snooker League
+# Snookit
 
-Phone-first Expo app for 2v2 doubles matches and individual race-to-score games.
+Phone-first Expo app for live snooker scoring, city rankings, doubles matches, and race-to-score games.
 
 ## Stack
 
@@ -21,7 +21,7 @@ Demo sign-in works without Firebase. For Google SSO + cloud sync, fill Firebase 
 
 ## Play Store (Android)
 
-- **[PLAY_STORE.md](PLAY_STORE.md)** — EAS build, env vars, SHA-1  
+- **[PLAY_STORE.md](PLAY_STORE.md)** — EAS build, env vars, SHA-1
 - **[PLAY_STORE_SCREENS.md](PLAY_STORE_SCREENS.md)** — Play Console **screen-by-screen** (what to enter on each page)
 
 ```bash
@@ -32,14 +32,14 @@ npm run eas:build:android
 
 ## Scripts
 
-| Command | Purpose |
-|---------|---------|
-| `npm install --legacy-peer-deps` | Install deps (also enforced via `.npmrc` for EAS) |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm run lint` | ESLint (no mutate) |
-| `npm run format` / `format:check` | Prettier |
-| `npm run eas:build:android` | Production AAB for Play Store |
-| `npm run eas:build:preview` | Internal APK for sideload |
-| `npm run eas:submit:android` | Upload AAB to Play (after Console setup) |
+| Command                           | Purpose                                           |
+| --------------------------------- | ------------------------------------------------- |
+| `npm install --legacy-peer-deps`  | Install deps (also enforced via `.npmrc` for EAS) |
+| `npm run typecheck`               | `tsc --noEmit`                                    |
+| `npm run lint`                    | ESLint (no mutate)                                |
+| `npm run format` / `format:check` | Prettier                                          |
+| `npm run eas:build:android`       | Production AAB for Play Store                     |
+| `npm run eas:build:preview`       | Internal APK for sideload                         |
+| `npm run eas:submit:android`      | Upload AAB to Play (after Console setup)          |
 
 See [claude.md](claude.md) for engineering conventions.

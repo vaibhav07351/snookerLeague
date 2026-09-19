@@ -32,6 +32,8 @@ function syncPriority(op: PendingOp): number {
       match: 0,
       race: 0,
       event: 0,
+      challenge: 0,
+      profile: 0,
       league: 1,
       user: 2,
     };
@@ -39,11 +41,13 @@ function syncPriority(op: PendingOp): number {
   }
   const upsertOrder: Record<SyncEntity, number> = {
     user: 0,
+    profile: 0,
     league: 1,
     player: 2,
     match: 2,
     race: 2,
     event: 2,
+    challenge: 2,
   };
   return upsertOrder[op.entity] ?? 9;
 }
@@ -68,6 +72,9 @@ function buildCloudUserPayload(user: SessionUser, store = getStore()): CloudUser
     leagueIds,
     activeLeagueId: store.activeLeagueId,
     updatedAt: nowIso(),
+    cityId: user.cityId,
+    cityName: user.cityName,
+    dateOfBirth: user.dateOfBirth ?? null,
   };
 }
 

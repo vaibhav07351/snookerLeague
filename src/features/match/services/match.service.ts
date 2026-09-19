@@ -14,6 +14,7 @@ import type {
   MatchOutcome,
   TeamChampions,
 } from '@/shared/types/domain';
+import { emptyOpenFrame, leagueKindOf } from '@/shared/types/domain';
 
 const createMatchSchema = z.object({
   leagueId: z.string().min(1),
@@ -82,6 +83,14 @@ export async function listMatches(
     .slice(offset, offset + limit);
 }
 
+export async function listLiveMatches(leagueId: string): Promise<Match[]> {
+  await loadStore();
+  return getStore()
+    .matches.filter((m) => m.leagueId === leagueId && m.outcome.status === 'in_progress')
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, 20);
+}
+
 export async function getMatch(matchId: string): Promise<Match | null> {
   await loadStore();
   return getStore().matches.find((m) => m.id === matchId) ?? null;
@@ -120,6 +129,8 @@ export async function createMatch(input: {
     outcome: { status: 'in_progress', framesA: 0, framesB: 0 },
     timingEnabled: false,
     frameStartedAt: null,
+    openFrame: emptyOpenFrame('a', parsed.data.teamA[0] ?? null),
+    scorerUid: parsed.data.createdByUid,
   };
 
   await updateStore((s) => ({ ...s, matches: [...s.matches, match] }));
@@ -287,6 +298,15 @@ async function persistMatchResult(match: Match, event?: FeedEvent): Promise<Matc
     });
   }
   await scheduleSync(items);
+  const cityLeague = store.leagues.find((l) => l.id === match.leagueId);
+  if (cityLeague && leagueKindOf(cityLeague) === 'city') {
+    const { syncCityRankFromHub } = await import('@/features/community/services/profile.service');
+    for (const player of syncedPlayers) {
+      if (player.authUid) {
+        await syncCityRankFromHub(player.authUid, cityLeague.id);
+      }
+    }
+  }
   return match;
 }
 
@@ -459,6 +479,12 @@ export async function addFrame(
     frames,
     outcome,
     ...timer,
+    openFrame: stillInProgress
+      ? emptyOpenFrame(
+          frame.winner === 'a' ? 'b' : 'a',
+          (frame.winner === 'a' ? match.teamB[0] : match.teamA[0]) ?? null,
+        )
+      : null,
     updatedAt: nowIso(),
   };
 
@@ -564,6 +590,8 @@ export async function forfeitFrame(
     frames,
     outcome,
     ...timer,
+    openFrame:
+      outcome.status === 'in_progress' ? emptyOpenFrame('a', match.teamA[0] ?? null) : null,
     updatedAt,
   };
 

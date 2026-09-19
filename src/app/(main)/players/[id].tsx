@@ -44,7 +44,12 @@ export default function PlayerDetailScreen(): ReactNode {
       <Text style={styles.kind}>{player.kind === 'guest' ? 'Guest player' : 'League member'}</Text>
 
       <View style={styles.tiles}>
-        <StatTile label="Games" value={String(insights.totalGames)} accent={colors.mint} />
+        <StatTile
+          label="Highest break"
+          value={String(player.stats.standard.highestBreak || '—')}
+          hint={`${player.stats.standard.centuries} centuries · ${player.stats.standard.breaks50}×50+`}
+          accent={colors.gold}
+        />
         <StatTile
           label="Win %"
           value={`${insights.doublesWinPct}%`}
@@ -62,6 +67,22 @@ export default function PlayerDetailScreen(): ReactNode {
           value={insights.avgRacePlace != null ? `#${insights.avgRacePlace}` : '—'}
           hint={`${insights.racePodiums} podiums`}
           accent={colors.lavender}
+        />
+        <StatTile
+          label="Points scored"
+          value={String(player.stats.standard.pointsScored || 0)}
+          hint={`Net ${player.stats.standard.netPoints ?? player.stats.standard.pointsScored} · ${player.stats.standard.fouls ?? 0} fouls`}
+          accent={colors.mint}
+        />
+        <StatTile
+          label="Fouls"
+          value={String(player.stats.standard.fouls || 0)}
+          hint={
+            (player.stats.standard.fouls ?? 0) > 0
+              ? `${player.stats.standard.foulPoints ?? 0} pts conceded`
+              : 'Clean cueing'
+          }
+          accent={colors.coral}
         />
         <StatTile
           label="Forfeits"

@@ -14,6 +14,7 @@ import { refreshLeaguePlayerStats } from '@/features/stats/services/stats.servic
 import { loadStore, subscribeStore, getStore } from '@/shared/storage/local-store';
 import { startSyncRuntime } from '@/shared/sync';
 import type { League, SessionUser } from '@/shared/types/domain';
+import { leagueKindOf } from '@/shared/types/domain';
 
 interface SessionState {
   ready: boolean;
@@ -34,7 +35,7 @@ function leaguesForUser(uid: string | undefined): League[] {
     return [];
   }
   return getStore()
-    .leagues.filter((l) => l.memberUids.includes(uid))
+    .leagues.filter((l) => l.memberUids.includes(uid) && leagueKindOf(l) !== 'city')
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 

@@ -21,6 +21,19 @@ export interface StandardStats {
   avgLossFrameSeconds: number | null;
   fastestFrameSeconds: number | null;
   slowestFrameSeconds: number | null;
+  /** Highest recorded break (from shot log; 0 if none). */
+  highestBreak: number;
+  breaks50: number;
+  centuries: number;
+  maximums: number;
+  /** Pots + free balls attributed to this player. */
+  pointsScored: number;
+  /** Foul shots this player committed (from shot log). */
+  fouls: number;
+  /** Points conceded on those fouls. */
+  foulPoints: number;
+  /** pointsScored minus foulPoints. */
+  netPoints: number;
 }
 
 export interface RaceStats {
@@ -55,6 +68,14 @@ export function emptyStandardStats(): StandardStats {
     avgLossFrameSeconds: null,
     fastestFrameSeconds: null,
     slowestFrameSeconds: null,
+    highestBreak: 0,
+    breaks50: 0,
+    centuries: 0,
+    maximums: 0,
+    pointsScored: 0,
+    fouls: 0,
+    foulPoints: 0,
+    netPoints: 0,
   };
 }
 
@@ -103,6 +124,8 @@ export interface RaceKing {
   crownedAt: string;
 }
 
+export type LeagueKind = 'club' | 'city';
+
 export interface League {
   id: string;
   name: string;
@@ -115,6 +138,18 @@ export interface League {
   defaultBestOf: number;
   reigningTeam: TeamChampions | null;
   raceKing: RaceKing | null;
+  /** Defaults to club when missing (legacy leagues). */
+  kind?: LeagueKind;
+  /** Set when kind is city. */
+  cityId?: string | null;
+}
+
+export function leagueKindOf(league: League): LeagueKind {
+  return league.kind === 'city' ? 'city' : 'club';
+}
+
+export function cityHubId(cityId: string): string {
+  return `city_${cityId}`;
 }
 
 export interface FrameScore {
@@ -125,6 +160,55 @@ export interface FrameScore {
   viaForfeit?: boolean;
   /** Elapsed seconds when auto-timing was on for this frame. */
   durationSeconds?: number;
+  shots?: Shot[];
+  highestBreakA?: number;
+  highestBreakB?: number;
+}
+
+export type ShotKind = 'pot' | 'foul' | 'miss' | 'safety' | 'free_ball';
+
+export type BallValue = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
+export interface Shot {
+  id: string;
+  at: string;
+  side: 'a' | 'b';
+  kind: ShotKind;
+  points: number;
+  ball?: BallValue;
+  /** League player id whose visit this shot belongs to (doubles). */
+  playerId?: string | null;
+}
+
+export interface OpenFrame {
+  shots: Shot[];
+  teamAPoints: number;
+  teamBPoints: number;
+  atTable: 'a' | 'b';
+  currentBreak: number;
+  currentBreakSide: 'a' | 'b';
+  /** Player currently scoring; points on this visit count under them. */
+  atTablePlayerId?: string | null;
+  lastPlayerIdBySide?: { a: string | null; b: string | null };
+}
+
+export function emptyOpenFrame(
+  atTable: 'a' | 'b' = 'a',
+  atTablePlayerId: string | null = null,
+): OpenFrame {
+  return {
+    shots: [],
+    teamAPoints: 0,
+    teamBPoints: 0,
+    atTable,
+    currentBreak: 0,
+    currentBreakSide: atTable,
+    atTablePlayerId,
+    lastPlayerIdBySide: {
+      a: atTable === 'a' ? atTablePlayerId : null,
+      b: atTable === 'b' ? atTablePlayerId : null,
+    },
+  };
 }
 
 export type MatchOutcome =
@@ -175,13 +259,30 @@ export interface Match {
   timingEnabled?: boolean;
   /** ISO timestamp when the open frame timer started. */
   frameStartedAt?: string | null;
+  /** Live frame in progress; null when scoring a finished frame manually. */
+  openFrame?: OpenFrame | null;
+  /** Auth uid allowed to record shots. Defaults to createdByUid. */
+  scorerUid?: string;
 }
 
 export type RacePlace = number | 'dnf';
 
+export type RaceLiveShotKind = 'pot' | 'foul' | 'miss';
+
+export interface RaceLiveShot {
+  id: string;
+  at: string;
+  playerId: string;
+  kind: RaceLiveShotKind;
+  points: number;
+  ball?: BallValue;
+}
+
 export interface RaceEntrant {
   playerId: string;
   score: number;
+  /** Points conceded on fouls in this race. */
+  foulPoints?: number;
   place: RacePlace | null;
   finishedAt: string | null;
 }
@@ -199,6 +300,9 @@ export interface Race {
   crownsRaceChampion: boolean;
   entrants: RaceEntrant[];
   status: RaceStatus;
+  /** Player whose next pot / foul is logged. */
+  atTablePlayerId?: string | null;
+  liveShots?: RaceLiveShot[];
 }
 
 export type FeedEventType =
@@ -215,7 +319,8 @@ export interface FeedEvent {
   relatedIds: string[];
 }
 
-export type SyncEntity = 'user' | 'league' | 'player' | 'match' | 'race' | 'event';
+export type SyncEntity =
+  'user' | 'league' | 'player' | 'match' | 'race' | 'event' | 'profile' | 'challenge';
 
 export type SyncAction = 'upsert' | 'delete';
 
@@ -233,6 +338,9 @@ export interface PendingOp {
   attempts: number;
 }
 
+/** Amateur snooker age band, derived from date of birth. */
+export type SnookerDivision = 'u16' | 'u18' | 'u21' | 'open' | 'masters' | 'seniors';
+
 /** Cloud user profile (Firestore users/{uid}). */
 export interface CloudUserProfile {
   uid: string;
@@ -242,6 +350,10 @@ export interface CloudUserProfile {
   leagueIds: string[];
   activeLeagueId: string | null;
   updatedAt: string;
+  cityId: string | null;
+  cityName: string | null;
+  /** ISO date YYYY-MM-DD. Private — not copied to public playerProfiles. */
+  dateOfBirth: string | null;
 }
 
 export interface SessionUser {
@@ -250,6 +362,73 @@ export interface SessionUser {
   email: string | null;
   photoUrl: string | null;
   isDemo: boolean;
+  cityId: string | null;
+  cityName: string | null;
+  /** Demo users may skip city onboarding. */
+  citySkipped?: boolean;
+  /** ISO date YYYY-MM-DD. */
+  dateOfBirth?: string | null;
+}
+
+export type ChallengeStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
+
+export interface Challenge {
+  id: string;
+  fromUid: string;
+  toUid: string;
+  cityId: string;
+  format: MatchFormat;
+  bestOf: number;
+  status: ChallengeStatus;
+  matchId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PlayerProfile {
+  uid: string;
+  displayName: string;
+  photoUrl: string | null;
+  cityId: string | null;
+  cityName: string | null;
+  createdAt: string;
+  updatedAt: string;
+  rankScore: number;
+  played: number;
+  winPct: number;
+  titles: number;
+  highestBreak: number;
+  centuries: number;
+  breaks50: number;
+  maximums: number;
+  /** Public age band only — never the raw date of birth. */
+  division?: SnookerDivision | null;
+}
+
+export function emptyPlayerProfile(
+  uid: string,
+  displayName: string,
+  photoUrl: string | null,
+): PlayerProfile {
+  const stamp = new Date().toISOString();
+  return {
+    uid,
+    displayName,
+    photoUrl,
+    cityId: null,
+    cityName: null,
+    createdAt: stamp,
+    updatedAt: stamp,
+    rankScore: 0,
+    played: 0,
+    winPct: 0,
+    titles: 0,
+    highestBreak: 0,
+    centuries: 0,
+    breaks50: 0,
+    maximums: 0,
+    division: null,
+  };
 }
 
 export interface AppDataStore {
@@ -261,4 +440,6 @@ export interface AppDataStore {
   races: Race[];
   events: FeedEvent[];
   pendingOps: PendingOp[];
+  playerProfiles: PlayerProfile[];
+  challenges: Challenge[];
 }

@@ -7,8 +7,16 @@ import type { FrameScore } from '@/shared/types/domain';
 import { formatDuration } from '@/shared/utils/datetime';
 import { colors, fonts, radii, spacing } from '@/theme/tokens';
 
+export interface FramePlayerLine {
+  playerId: string;
+  name: string;
+  scored: number;
+  foulPoints: number;
+}
+
 export interface MatchFrameListProps {
   frames: FrameScore[];
+  playerPoints?: FramePlayerLine[][];
   onUpdate: (
     index: number,
     patch: { teamAPoints: number; teamBPoints: number; winner: 'a' | 'b' },
@@ -19,6 +27,7 @@ export interface MatchFrameListProps {
 
 export function MatchFrameList({
   frames,
+  playerPoints,
   onUpdate,
   onDelete,
   onClearTime,
@@ -85,6 +94,9 @@ export function MatchFrameList({
     <View style={styles.list}>
       {frames.map((f, i) => {
         const editing = editingIndex === i;
+        const playerLines = (playerPoints?.[i] ?? []).filter(
+          (p) => p.scored > 0 || p.foulPoints > 0,
+        );
         return (
           <View key={`${i}-${f.winner}-${f.teamAPoints}-${f.teamBPoints}`} style={styles.row}>
             {editing ? (
@@ -149,6 +161,16 @@ export function MatchFrameList({
                     : ''}
                   )
                 </Text>
+                {playerLines.length > 0 ? (
+                  <View style={styles.players}>
+                    {playerLines.map((p) => (
+                      <Text key={p.playerId} style={styles.playerLine}>
+                        {p.name} · {p.scored}
+                        {p.foulPoints > 0 ? ` · Foul ${p.foulPoints}` : ''}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
                 <View style={styles.actions}>
                   <Pressable onPress={() => startEdit(i)} hitSlop={8}>
                     <Text style={styles.actionEdit}>Edit</Text>
@@ -186,6 +208,15 @@ const styles = StyleSheet.create({
   frameText: {
     fontFamily: fonts.body,
     color: colors.chalk,
+  },
+  players: {
+    gap: 2,
+    paddingLeft: 2,
+  },
+  playerLine: {
+    fontFamily: fonts.body,
+    color: colors.chalkMuted,
+    fontSize: 13,
   },
   actions: {
     flexDirection: 'row',

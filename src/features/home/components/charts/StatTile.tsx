@@ -24,8 +24,7 @@ export function FormSpark({
   return (
     <View style={[styles.row, { height }]}>
       {values.map((v, i) => {
-        const bg =
-          v > 0 ? color : v < 0 ? colors.danger : colors.coral;
+        const bg = v > 0 ? color : v < 0 ? colors.danger : colors.coral;
         return (
           <View
             key={`${i}-${v}`}
@@ -51,12 +50,7 @@ interface StatTileProps {
   accent?: string;
 }
 
-export function StatTile({
-  label,
-  value,
-  hint,
-  accent = colors.gold,
-}: StatTileProps): ReactNode {
+export function StatTile({ label, value, hint, accent = colors.gold }: StatTileProps): ReactNode {
   return (
     <View style={[styles.tile, { borderColor: accent }]}>
       <Text style={styles.tileLabel}>{label}</Text>

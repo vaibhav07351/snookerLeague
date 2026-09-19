@@ -1,13 +1,6 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
-import {
-  Alert,
-  Pressable,
-  StyleSheet,
-  Switch,
-  Text,
-  View,
-} from 'react-native';
+import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { Button } from '@/features/home/components/Button';
@@ -21,6 +14,7 @@ import { colors, fonts, radii, spacing, typography } from '@/theme/tokens';
 
 export default function NewMatchScreen(): ReactNode {
   const { user, league } = useSession();
+  const params = useLocalSearchParams<{ opponentPlayerId?: string; leagueId?: string }>();
   const [players, setPlayers] = useState<Player[]>([]);
   const [format, setFormat] = useState<MatchFormat>('doubles');
   const [selected, setSelected] = useState<string[]>([]);
@@ -28,16 +22,33 @@ export default function NewMatchScreen(): ReactNode {
   const [label, setLabel] = useState('');
   const [crowns, setCrowns] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [targetLeagueId, setTargetLeagueId] = useState<string | null>(null);
 
   const needed = format === 'singles' ? 2 : 4;
+  const scoringLeagueId = targetLeagueId ?? league?.id ?? null;
 
   useEffect(() => {
     if (!league) {
       return;
     }
+    const lid =
+      params.leagueId && typeof params.leagueId === 'string' ? params.leagueId : league.id;
+    setTargetLeagueId(lid);
     setBestOf(String(league.defaultBestOf));
-    void playersService.listPlayers(league.id).then(setPlayers);
-  }, [league]);
+    void playersService.listPlayers(lid).then((list) => {
+      setPlayers(list);
+      const opponent = typeof params.opponentPlayerId === 'string' ? params.opponentPlayerId : null;
+      if (opponent) {
+        setFormat('singles');
+        const me = list.find((p) => p.authUid === user?.uid);
+        if (me) {
+          setSelected([me.id, opponent]);
+        } else {
+          setSelected([opponent]);
+        }
+      }
+    });
+  }, [league, params.leagueId, params.opponentPlayerId, user?.uid]);
 
   function setMatchFormat(next: MatchFormat): void {
     setFormat(next);
@@ -57,7 +68,7 @@ export default function NewMatchScreen(): ReactNode {
   }
 
   async function create(): Promise<void> {
-    if (!league || !user) {
+    if (!scoringLeagueId || !user) {
       return;
     }
     if (selected.length !== needed) {
@@ -71,17 +82,15 @@ export default function NewMatchScreen(): ReactNode {
     }
     setBusy(true);
     try {
-      const teamA =
-        format === 'singles' ? [selected[0]!] : [selected[0]!, selected[1]!];
-      const teamB =
-        format === 'singles' ? [selected[1]!] : [selected[2]!, selected[3]!];
+      const teamA = format === 'singles' ? [selected[0]!] : [selected[0]!, selected[1]!];
+      const teamB = format === 'singles' ? [selected[1]!] : [selected[2]!, selected[3]!];
       const match = await matchService.createMatch({
-        leagueId: league.id,
+        leagueId: scoringLeagueId,
         createdByUid: user.uid,
         format,
         teamA,
         teamB,
-        bestOf: Number(bestOf) || league.defaultBestOf,
+        bestOf: Number(bestOf) || league?.defaultBestOf || 3,
         namedLabel: label.trim() || null,
         crownsChampion: crowns,
       });

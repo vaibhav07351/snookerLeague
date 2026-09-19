@@ -10,6 +10,13 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { BrandLogo } from '@/features/home/components/BrandLogo';
+import { BrandWordmark } from '@/features/home/components/BrandWordmark';
+import { LiveResumeCard } from '@/features/home/components/LiveResumeCard';
+import {
+  matchResumeCopy,
+  raceResumeCopy,
+  useLiveSessions,
+} from '@/features/home/hooks/use-live-sessions';
 import { colors, fonts, radii, spacing } from '@/theme/tokens';
 
 function ProfileButton(): ReactNode {
@@ -30,6 +37,7 @@ function ProfileButton(): ReactNode {
 function CustomDrawer(props: DrawerContentComponentProps): ReactNode {
   const { league, user } = useSession();
   const active = props.state.routes[props.state.index]?.name;
+  const { matches: liveMatches, races: liveRaces, nameOf } = useLiveSessions(league?.id);
 
   const items: Array<{ label: string; route: string; hint: string }> = [
     { label: 'Home', route: 'index', hint: 'Champs & quick play' },
@@ -38,6 +46,7 @@ function CustomDrawer(props: DrawerContentComponentProps): ReactNode {
     { label: 'Stats', route: 'stats', hint: 'Charts & form' },
     { label: 'Leaderboard', route: 'leaderboard', hint: "Who's hot" },
     { label: 'Players', route: 'players/index', hint: 'Roster & guests' },
+    { label: 'Community', route: 'community', hint: 'City · live · challenge' },
     { label: 'League', route: 'league', hint: 'Invite · settings' },
   ];
 
@@ -49,10 +58,43 @@ function CustomDrawer(props: DrawerContentComponentProps): ReactNode {
     >
       <View style={styles.drawerHero}>
         <BrandLogo size={56} />
-        <Text style={styles.drawerBrand}>Snooker</Text>
+        <BrandWordmark size="sm" />
         <Text style={styles.drawerLeague}>{league?.name ?? 'Your league'}</Text>
         <Text style={styles.drawerUser}>Hey {user?.displayName ?? 'player'}</Text>
       </View>
+
+      {liveMatches.map((m) => {
+        const copy = matchResumeCopy(m, nameOf);
+        return (
+          <View key={m.id} style={styles.resumeWrap}>
+            <LiveResumeCard
+              eyebrow="Live match"
+              title={copy.title}
+              meta={copy.meta}
+              onPress={() => {
+                props.navigation.closeDrawer();
+                router.push(`/match/${m.id}`);
+              }}
+            />
+          </View>
+        );
+      })}
+      {liveRaces.map((r) => {
+        const copy = raceResumeCopy(r, nameOf);
+        return (
+          <View key={r.id} style={styles.resumeWrap}>
+            <LiveResumeCard
+              eyebrow="Live race"
+              title={copy.title}
+              meta={copy.meta}
+              onPress={() => {
+                props.navigation.closeDrawer();
+                router.push(`/race/${r.id}`);
+              }}
+            />
+          </View>
+        );
+      })}
 
       {items.map((item) => {
         const focused = active === item.route;
@@ -107,6 +149,11 @@ export default function MainDrawerLayout(): ReactNode {
         name="profile"
         options={{ title: 'My profile', drawerItemStyle: { display: 'none' } }}
       />
+      <Drawer.Screen name="community" options={{ title: 'Community' }} />
+      <Drawer.Screen
+        name="city-player"
+        options={{ title: 'Player', drawerItemStyle: { display: 'none' } }}
+      />
       <Drawer.Screen name="league" options={{ title: 'League' }} />
     </Drawer>
   );
@@ -126,6 +173,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     marginBottom: spacing.sm,
+  },
+  resumeWrap: {
+    paddingHorizontal: spacing.sm,
   },
   drawerBrand: {
     fontFamily: fonts.display,
