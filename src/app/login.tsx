@@ -66,12 +66,14 @@ export default function LoginScreen(): ReactNode {
       Alert.alert('Google sign-in failed', 'Auth request is still loading. Try again in a moment.');
       return;
     }
-    setBusy(true);
     try {
+      // Do not set busy before the account picker — Android Google Sign-In
+      // fails when another modal/loading state is already on screen.
       const idToken = await promptIdToken();
       if (!idToken) {
         return;
       }
+      setBusy(true);
       await authService.signInWithGoogleIdToken(idToken);
       if (dob.trim()) {
         try {

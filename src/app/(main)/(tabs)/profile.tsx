@@ -70,12 +70,16 @@ export default function ProfileScreen(): ReactNode {
     if (!ok) {
       return;
     }
-    setLinkingGoogle(true);
+    // Let the confirm dialog finish dismissing before opening Google UI.
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 400);
+    });
     try {
       const idToken = await promptIdToken();
       if (!idToken) {
         return;
       }
+      setLinkingGoogle(true);
       await authService.linkDemoAccountWithGoogleIdToken(idToken);
       await refresh();
       Alert.alert(

@@ -5,10 +5,38 @@ import { AppError } from '@/shared/errors/app-error';
 import { getGoogleWebClientId } from '@/shared/firebase/config';
 import { logger } from '@/shared/logging/logger';
 
-let configured = false;
+/** Root google-services.json (client_type 3 = Web OAuth client). */
+type GoogleServicesFile = {
+  client?: Array<{
+    oauth_client?: Array<{ client_id?: string; client_type?: number }>;
+  }>;
+};
+
+let configuredWebClientId: string | null = null;
 
 function isExpoGo(): boolean {
   return Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+}
+
+function webClientIdFromGoogleServices(): string {
+  try {
+    // Metro resolves JSON from the project root (included in EAS builds).
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const googleServices = require('../../../../google-services.json') as GoogleServicesFile;
+    const oauth = googleServices.client?.[0]?.oauth_client ?? [];
+    const web = oauth.find((c) => c.client_type === 3 && typeof c.client_id === 'string');
+    return web?.client_id?.trim() ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function resolveWebClientId(): string {
+  const fromServices = webClientIdFromGoogleServices();
+  if (fromServices.length > 0) {
+    return fromServices;
+  }
+  return getGoogleWebClientId().trim();
 }
 
 async function loadNativeGoogleSignIn(): Promise<
@@ -30,19 +58,32 @@ async function loadNativeGoogleSignIn(): Promise<
 function ensureConfigured(
   GoogleSignin: (typeof import('@react-native-google-signin/google-signin'))['GoogleSignin'],
 ): void {
-  if (configured) {
-    return;
-  }
-  const webClientId = getGoogleWebClientId();
+  const webClientId = resolveWebClientId();
   if (!webClientId) {
     throw new AppError('AUTH_UNAVAILABLE', 'Firebase Google Sign-In is not configured');
+  }
+  if (configuredWebClientId === webClientId) {
+    return;
   }
   GoogleSignin.configure({
     webClientId,
     offlineAccess: false,
-    scopes: ['openid', 'profile', 'email'],
   });
-  configured = true;
+  configuredWebClientId = webClientId;
+  logger.info('google-sign-in', 'Native GoogleSignin configured', {
+    webClientIdSuffix: webClientId.slice(-24),
+  });
+}
+
+function nativeErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object' || !('code' in error)) {
+    return undefined;
+  }
+  const code = (error as { code: unknown }).code;
+  if (typeof code === 'string' || typeof code === 'number') {
+    return String(code);
+  }
+  return undefined;
 }
 
 /**
@@ -73,7 +114,17 @@ export async function promptNativeGoogleIdToken(): Promise<string | null> {
     if (!isSuccessResponse(response)) {
       throw new AppError('AUTH_FAILED', 'Google sign-in failed. Please try again.');
     }
-    const idToken = response.data.idToken;
+    let idToken = response.data.idToken;
+    if (!idToken) {
+      try {
+        const tokens = await GoogleSignin.getTokens();
+        idToken = tokens.idToken;
+      } catch (tokenError) {
+        logger.error('google-sign-in', 'getTokens after signIn failed', {
+          shape: tokenError instanceof Error ? tokenError.name : 'unknown',
+        });
+      }
+    }
     if (!idToken) {
       throw new AppError(
         'AUTH_FAILED',
@@ -97,17 +148,18 @@ export async function promptNativeGoogleIdToken(): Promise<string | null> {
         'Google Play Services is missing or out of date on this phone.',
       );
     }
-    const code = isErrorWithCode(error) ? error.code : undefined;
+    const code = nativeErrorCode(error);
+    logger.error('google-sign-in', 'Native Google sign-in failed', {
+      shape: error instanceof Error ? error.name : 'unknown',
+      message: error instanceof Error ? error.message : undefined,
+      code,
+    });
     if (code === '10' || code === 'DEVELOPER_ERROR') {
       throw new AppError(
         'AUTH_MISCONFIGURED',
-        'Google sign-in is misconfigured. Add both the Play App Signing SHA-1 and the EAS upload SHA-1 to the Firebase Android app (com.snooker.league).',
+        'Google rejected this Android build (error 10). Confirm Play Classical SHA-1 matches Firebase, then install the newest closed-testing AAB (versionCode 10+ with google-services.json).',
       );
     }
-    logger.error('google-sign-in', 'Native Google sign-in failed', {
-      shape: error instanceof Error ? error.name : 'unknown',
-      code,
-    });
     throw new AppError('AUTH_FAILED', 'Google sign-in failed. Please try again.');
   }
 }
