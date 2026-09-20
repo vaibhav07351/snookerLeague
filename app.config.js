@@ -35,6 +35,7 @@ module.exports = ({ config }) => ({
       monochromeImage: './assets/android-icon-monochrome.png',
     },
     package: 'com.snooker.league',
+    googleServicesFile: './google-services.json',
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: 'resize',
     permissions: ['ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION'],

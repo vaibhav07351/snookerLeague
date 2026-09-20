@@ -60,6 +60,8 @@ Firebase Console → Project settings → Your apps → Android app `com.snooker
 
 Then ship a **new EAS AAB** (native module). A JS-only update will not fix Google login.
 
+Keep `google-services.json` (downloaded from Firebase → Android app) at the repo root. `app.config.js` points `android.googleServicesFile` at it so Play builds can resolve Google Sign-In.
+
 ## 4. Create the Play Console app
 
 Follow **[PLAY_STORE_SCREENS.md](PLAY_STORE_SCREENS.md)** screen by screen (Create app → store listing → Internal testing).

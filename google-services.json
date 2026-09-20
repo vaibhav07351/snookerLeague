@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "134168091127",
+    "project_id": "snooker-league-a8541",
+    "storage_bucket": "snooker-league-a8541.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:134168091127:android:b39ea5ac5356583bf5b6f2",
+        "android_client_info": {
+          "package_name": "com.snooker.league"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "134168091127-n2c73mffu11bohdq9sj6lc4al613uqub.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.snooker.league",
+            "certificate_hash": "4dc0c4f13ea68727065838028915e8ee1d382dd2"
+          }
+        },
+        {
+          "client_id": "134168091127-oj56rqg20b6pi8oqkf41g6rbv6ba7dc1.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.snooker.league",
+            "certificate_hash": "f98c80cd3917661bc83bb2d1fabca2861ace2fc7"
+          }
+        },
+        {
+          "client_id": "134168091127-3jjquh77bqp7qhbgd8geaqjg0afhbmb0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDU5qrwVR-u93x77Un6bRDfwJAUimCnQ6I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "134168091127-3jjquh77bqp7qhbgd8geaqjg0afhbmb0.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
