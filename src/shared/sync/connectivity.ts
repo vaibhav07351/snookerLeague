@@ -45,10 +45,13 @@ export function startConnectivity(): void {
   }
   started = true;
 
+  // Web: browser online/offline only — Expo Network can disagree with navigator.onLine
+  // and would thrash sync start/stop if both listeners ran.
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     setOnline(typeof navigator === 'undefined' ? true : navigator.onLine);
     window.addEventListener('online', onBrowserOnline);
     window.addEventListener('offline', onBrowserOffline);
+    return;
   }
 
   void refreshFromExpo();

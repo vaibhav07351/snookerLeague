@@ -1,7 +1,12 @@
 import { logger } from '@/shared/logging/logger';
 import { getFirebaseAuth, waitForFirebaseAuth } from '@/shared/firebase/app';
 import { getStore, loadStore } from '@/shared/storage/local-store';
-import { isOnline, startConnectivity, subscribeConnectivity } from '@/shared/sync/connectivity';
+import {
+  isOnline,
+  startConnectivity,
+  stopConnectivity,
+  subscribeConnectivity,
+} from '@/shared/sync/connectivity';
 import { firebaseErrorMeta } from '@/shared/sync/firebase-error';
 import { shouldCloudSync } from '@/shared/sync/firestore-paths';
 import { pullUserAndLeagues } from '@/shared/sync/pull';
@@ -245,6 +250,7 @@ export function startSyncRuntime(): () => void {
     removeAuth?.();
     removeAuth = null;
     stopWatchingActiveLeague();
+    stopConnectivity();
     runtimeStarted = false;
   };
 }
@@ -255,6 +261,7 @@ export function stopSyncRuntime(): void {
   removeAuth?.();
   removeAuth = null;
   stopWatchingActiveLeague();
+  stopConnectivity();
   runtimeStarted = false;
 }
 

@@ -6,7 +6,7 @@ import {
 } from 'expo-router/drawer';
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { BrandLogo } from '@/features/home/components/BrandLogo';
@@ -131,7 +131,11 @@ export default function MainDrawerLayout(): ReactNode {
         headerTintColor: colors.chalk,
         headerTitleStyle: { fontFamily: fonts.bodyBold, fontSize: 17 },
         headerShadowVisible: false,
-        drawerStyle: { backgroundColor: colors.felt, width: 300 },
+        drawerStyle: {
+          backgroundColor: colors.felt,
+          // Cap drawer so it never exceeds narrow phones (~320–360 CSS px).
+          width: Math.min(300, Math.round(Dimensions.get('window').width * 0.86)),
+        },
         headerRight: () => <ProfileButton />,
       }}
     >
