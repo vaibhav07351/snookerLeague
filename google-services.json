@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "134168091127-k21lnvgbgsr5jjfkdmac8kh04girc5tt.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.snooker.league",
+            "certificate_hash": "179542fa46bbbe91701c674e0cd9a076ba02be5c"
+          }
+        },
+        {
           "client_id": "134168091127-n2c73mffu11bohdq9sj6lc4al613uqub.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
