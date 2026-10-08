@@ -1,31 +1,8 @@
 import { StyleSheet } from 'react-native';
 
-/** Cheerful club-night palette — bright felt, warm sun gold, soft coral pops. */
-export const colors = {
-  felt: '#0E2A1C',
-  feltMid: '#1B4D34',
-  feltLight: '#2A6B48',
-  chalk: '#FFFDF8',
-  chalkMuted: '#C5D9CB',
-  gold: '#FFC84A',
-  goldSoft: '#FFE39A',
-  sun: '#FFB020',
-  coral: '#FF7A6E',
-  mint: '#5EE4A8',
-  sky: '#6EC8FF',
-  lavender: '#B8A6FF',
-  cue: '#C4894A',
-  danger: '#FF6B5C',
-  success: '#3DDC97',
-  surface: 'rgba(255, 253, 248, 0.08)',
-  surfaceRaised: 'rgba(255, 253, 248, 0.12)',
-  surfaceBright: 'rgba(255, 200, 74, 0.14)',
-  border: 'rgba(255, 253, 248, 0.16)',
-  borderStrong: 'rgba(255, 200, 74, 0.45)',
-  white: '#FFFFFF',
-  overlay: 'rgba(8, 28, 18, 0.55)',
-  chartTrack: 'rgba(255, 253, 248, 0.12)',
-} as const;
+import type { Palette } from '@/theme/palettes';
+
+export type { Palette } from '@/theme/palettes';
 
 export const spacing = {
   xs: 4,
@@ -37,6 +14,7 @@ export const spacing = {
 } as const;
 
 export const radii = {
+  xs: 8,
   sm: 12,
   md: 16,
   lg: 24,
@@ -52,47 +30,51 @@ export const fonts = {
   bodyBold: 'DMSans_700Bold',
 } as const;
 
-export const typography = {
-  brand: {
-    fontFamily: fonts.display,
-    fontSize: 44,
-    letterSpacing: 0.4,
-    color: colors.chalk,
-  },
-  title: {
-    fontFamily: fonts.display,
-    fontSize: 26,
-    color: colors.chalk,
-  },
-  subtitle: {
-    fontFamily: fonts.body,
-    fontSize: 16,
-    lineHeight: 24,
-    color: colors.chalkMuted,
-  },
-  body: {
-    fontFamily: fonts.body,
-    fontSize: 15,
-    lineHeight: 22,
-    color: colors.chalk,
-  },
-  label: {
-    fontFamily: fonts.bodyBold,
-    fontSize: 11,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase' as const,
-    color: colors.goldSoft,
-  },
-};
+/** Minimum touch target (Apple HIG 44pt, Material 48dp). */
+export const TOUCH_TARGET = 44;
 
-export const theme = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.felt,
-  },
-  pad: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
-  },
-});
+/** Shared text styles, coloured by the active palette. Use via `useStyles(makeTypography)`. */
+export const makeTypography = (c: Palette) =>
+  StyleSheet.create({
+    brand: {
+      fontFamily: fonts.display,
+      fontSize: 40,
+      letterSpacing: 0.4,
+      color: c.text,
+    },
+    title: {
+      fontFamily: fonts.display,
+      fontSize: 24,
+      color: c.text,
+    },
+    heading: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 18,
+      color: c.text,
+    },
+    subtitle: {
+      fontFamily: fonts.body,
+      fontSize: 15,
+      lineHeight: 22,
+      color: c.textMuted,
+    },
+    body: {
+      fontFamily: fonts.body,
+      fontSize: 15,
+      lineHeight: 22,
+      color: c.text,
+    },
+    caption: {
+      fontFamily: fonts.body,
+      fontSize: 12,
+      lineHeight: 17,
+      color: c.textMuted,
+    },
+    label: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 11,
+      letterSpacing: 1.2,
+      textTransform: 'uppercase',
+      color: c.textMuted,
+    },
+  });

@@ -6,87 +6,195 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function uid() {
+      return request.auth.uid;
+    }
+
     function userCityId() {
-      return get(/databases/$(database)/documents/playerProfiles/$(request.auth.uid)).data.cityId;
+      return get(/databases/$(database)/documents/playerProfiles/$(uid())).data.cityId;
+    }
+
+    function leagueData(leagueId) {
+      return get(/databases/$(database)/documents/leagues/$(leagueId)).data;
+    }
+
+    function isMember(leagueId) {
+      return signedIn() && uid() in leagueData(leagueId).memberUids;
+    }
+
+    // League contents: members of a club league; anyone signed in for a city hub.
+    function canReadLeague(leagueId) {
+      return signedIn()
+        && (uid() in leagueData(leagueId).memberUids
+          || leagueData(leagueId).get('kind', 'club') == 'city');
+    }
+
+    function isLeagueOwner(leagueId) {
+      return signedIn() && leagueData(leagueId).createdByUid == uid();
     }
 
     match /leagues/{leagueId} {
-      allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.createdByUid == request.auth.uid;
+      // Club leagues are members-only; city hubs are open to everyone in the app.
+      // Missing docs are readable so a phone can check whether a league exists yet.
+      // Leagues cannot be listed: invite codes resolve through /leagueInvites instead.
+      allow get: if signedIn() && (
+        resource == null
+        || uid() in resource.data.memberUids
+        || resource.data.get('kind', 'club') == 'city'
+      );
+      allow list: if false;
+
+      allow create: if signedIn()
+        && request.resource.data.createdByUid == uid()
+        && uid() in request.resource.data.memberUids;
+
+      // Membership only ever changes by one person adding or removing themselves.
+      function addsOnlyMe() {
+        return request.resource.data.memberUids.toSet()
+          == resource.data.memberUids.toSet().union([uid()].toSet());
+      }
+      function removesOnlyMe() {
+        return request.resource.data.memberUids.toSet()
+          == resource.data.memberUids.toSet().difference([uid()].toSet());
+      }
+      function onlyMembershipChanges() {
+        return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['memberUids', 'updatedAt']);
+      }
+
       allow update: if signedIn() && (
-        request.auth.uid in resource.data.memberUids
+        // Members edit the league; membership and ownership are not theirs to change.
+        (uid() in resource.data.memberUids
+          && request.resource.data.createdByUid == resource.data.createdByUid
+          && request.resource.data.memberUids.toSet() == resource.data.memberUids.toSet())
+        // Leaving.
+        || (uid() in resource.data.memberUids && onlyMembershipChanges() && removesOnlyMe())
+        // Joining a city hub in your own city.
         || (
-          resource.data.kind == 'city'
-          && exists(/databases/$(database)/documents/playerProfiles/$(request.auth.uid))
+          resource.data.get('kind', 'club') == 'city'
+          && exists(/databases/$(database)/documents/playerProfiles/$(uid()))
           && userCityId() == resource.data.cityId
-          && request.auth.uid in request.resource.data.memberUids
+          && onlyMembershipChanges()
+          && addsOnlyMe()
+        )
+        // Joining with the current invite code: may only add yourself, nothing else.
+        || (
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['memberUids', 'updatedAt', 'lastJoinCode'])
+          && request.resource.data.lastJoinCode == resource.data.inviteCode
+          && addsOnlyMe()
         )
       );
 
+      allow delete: if signedIn() && resource.data.createdByUid == uid();
+
       match /players/{playerId} {
-        allow read: if signedIn();
-        allow create, update: if signedIn()
-          && request.auth.uid in get(/databases/$(database)/documents/leagues/$(leagueId)).data.memberUids;
-        allow delete: if signedIn()
-          && request.auth.uid == get(/databases/$(database)/documents/leagues/$(leagueId)).data.createdByUid;
+        allow read: if canReadLeague(leagueId);
+        // Members add guests (no owner) or their own card.
+        allow create: if isMember(leagueId)
+          && (request.resource.data.get('authUid', null) == null
+            || request.resource.data.authUid == uid());
+        // Stats and names can be updated by members, but a card's owner never changes,
+        // except claiming an unowned guest card for yourself ("that's me").
+        allow update: if isMember(leagueId) && (
+          request.resource.data.get('authUid', null) == resource.data.get('authUid', null)
+          || (resource.data.get('authUid', null) == null
+            && request.resource.data.get('authUid', null) == uid())
+        );
+        allow delete: if isLeagueOwner(leagueId);
       }
 
       match /matches/{matchId} {
-        allow read: if signedIn();
-        allow write: if signedIn()
-          && request.auth.uid in get(/databases/$(database)/documents/leagues/$(leagueId)).data.memberUids;
+        function scorerOf(m) {
+          return m.get('scorerUid', m.createdByUid);
+        }
+
+        // Only `scorerUid` (plus its timestamps) changes, to yourself, while the match is
+        // live, and the match's scoring policy allows you.
+        function takingOverScoring() {
+          return request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['scorerUid', 'updatedAt', 'settingsUpdatedAt'])
+            && request.resource.data.scorerUid == uid()
+            && resource.data.outcome.status == 'in_progress'
+            && (resource.data.get('scoringPolicy', 'anyone') == 'anyone'
+              || uid() in resource.data.get('allowedScorerUids', []));
+        }
+
+        allow read: if canReadLeague(leagueId);
+        allow create: if isMember(leagueId) && request.resource.data.createdByUid == uid();
+        // One scorer at a time: the scorer writes; the creator and league owner may
+        // manage (title match, scoring policy, fixes); other members may only take over.
+        allow update: if isMember(leagueId) && (
+          scorerOf(resource.data) == uid()
+          || resource.data.createdByUid == uid()
+          || isLeagueOwner(leagueId)
+          || takingOverScoring()
+        );
+        allow delete: if isMember(leagueId)
+          && (resource.data.createdByUid == uid() || isLeagueOwner(leagueId));
       }
 
       match /races/{raceId} {
-        allow read: if signedIn();
-        allow write: if signedIn()
-          && request.auth.uid in get(/databases/$(database)/documents/leagues/$(leagueId)).data.memberUids;
+        allow read: if canReadLeague(leagueId);
+        allow write: if isMember(leagueId);
       }
 
       match /events/{eventId} {
-        allow read: if signedIn();
-        allow write: if signedIn()
-          && request.auth.uid in get(/databases/$(database)/documents/leagues/$(leagueId)).data.memberUids;
+        allow read: if canReadLeague(leagueId);
+        allow write: if isMember(leagueId);
       }
     }
 
-    match /users/{uid} {
-      allow read, write: if signedIn() && request.auth.uid == uid;
+    // Invite code -> league. Readable only by someone who already knows the code (no list).
+    // Written by members, and only for their league's current code.
+    match /leagueInvites/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create, update: if signedIn()
+        && request.resource.data.leagueId is string
+        && uid() in leagueData(request.resource.data.leagueId).memberUids
+        && leagueData(request.resource.data.leagueId).inviteCode == code;
+      allow delete: if signedIn()
+        && (resource == null || uid() in leagueData(resource.data.leagueId).memberUids);
     }
 
-    match /playerProfiles/{uid} {
+    match /users/{userId} {
+      allow read, write: if signedIn() && uid() == userId;
+    }
+
+    match /playerProfiles/{profileUid} {
       allow read: if signedIn();
-      allow write: if signedIn() && request.auth.uid == uid;
+      allow write: if signedIn() && uid() == profileUid;
     }
 
     match /challenges/{id} {
       allow read: if signedIn()
-        && (request.auth.uid == resource.data.fromUid || request.auth.uid == resource.data.toUid);
-      allow create: if signedIn() && request.resource.data.fromUid == request.auth.uid;
+        && (uid() == resource.data.fromUid || uid() == resource.data.toUid);
+      allow create: if signedIn() && request.resource.data.fromUid == uid();
       allow update: if signedIn()
-        && (request.auth.uid == resource.data.fromUid || request.auth.uid == resource.data.toUid);
-      allow delete: if signedIn() && request.auth.uid == resource.data.fromUid;
+        && (uid() == resource.data.fromUid || uid() == resource.data.toUid);
+      allow delete: if signedIn() && uid() == resource.data.fromUid;
     }
 
     match /lookingPosts/{id} {
       allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.createdByUid == request.auth.uid;
-      allow update, delete: if signedIn() && resource.data.createdByUid == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.createdByUid == uid();
+      allow update, delete: if signedIn() && resource.data.createdByUid == uid();
     }
 
     match /directoryListings/{id} {
       allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.createdByUid == request.auth.uid;
-      allow update, delete: if signedIn() && resource.data.createdByUid == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.createdByUid == uid();
+      allow update, delete: if signedIn() && resource.data.createdByUid == uid();
     }
 
     match /follows/{id} {
       allow read: if signedIn();
       allow create: if signedIn()
-        && request.resource.data.followerUid == request.auth.uid
+        && request.resource.data.followerUid == uid()
         && request.resource.data.followingUid is string
-        && request.resource.data.followingUid != request.auth.uid;
-      allow delete: if signedIn() && resource.data.followerUid == request.auth.uid;
+        && request.resource.data.followingUid != uid();
+      allow delete: if signedIn() && resource.data.followerUid == uid();
       allow update: if false;
     }
 

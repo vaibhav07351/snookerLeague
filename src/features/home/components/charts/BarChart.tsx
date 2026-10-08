@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, fonts, radii, spacing } from '@/theme/tokens';
+import { usePalette, useStyles } from '@/theme/ThemeProvider';
+import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
 
 export interface BarDatum {
   label: string;
   value: number;
+  /** Optional override; defaults to the palette's first chart colour. */
   color?: string;
 }
 
@@ -22,10 +24,13 @@ export function BarChart({
   height = 140,
   emptyLabel = 'Play a few games to unlock this chart',
 }: BarChartProps): ReactNode {
+  const styles = useStyles(makeStyles);
+  const palette = usePalette();
   const peak = maxValue ?? Math.max(...data.map((d) => d.value), 1);
   if (data.length === 0 || data.every((d) => d.value === 0)) {
     return <Text style={styles.empty}>{emptyLabel}</Text>;
   }
+  const defaultFill = palette.chart[0] ?? palette.primary;
 
   return (
     <View style={[styles.wrap, { height }]}>
@@ -33,14 +38,16 @@ export function BarChart({
         const ratio = Math.max(item.value / peak, 0.04);
         return (
           <View key={item.label} style={styles.col}>
-            <Text style={styles.value}>{item.value}</Text>
+            <Text style={styles.value} numberOfLines={1}>
+              {item.value}
+            </Text>
             <View style={styles.track}>
               <View
                 style={[
                   styles.fill,
                   {
                     height: `${ratio * 100}%`,
-                    backgroundColor: item.color ?? colors.gold,
+                    backgroundColor: item.color ?? defaultFill,
                   },
                 ]}
               />
@@ -55,49 +62,51 @@ export function BarChart({
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: spacing.sm,
-    paddingTop: spacing.sm,
-  },
-  col: {
-    flex: 1,
-    alignItems: 'center',
-    height: '100%',
-    justifyContent: 'flex-end',
-    gap: 4,
-  },
-  track: {
-    flex: 1,
-    width: '100%',
-    maxWidth: 36,
-    backgroundColor: colors.chartTrack,
-    borderRadius: radii.sm,
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
-  },
-  fill: {
-    width: '100%',
-    borderRadius: radii.sm,
-    minHeight: 6,
-  },
-  value: {
-    fontFamily: fonts.bodyBold,
-    fontSize: 12,
-    color: colors.chalk,
-  },
-  label: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 11,
-    color: colors.chalkMuted,
-  },
-  empty: {
-    fontFamily: fonts.body,
-    color: colors.chalkMuted,
-    fontSize: 14,
-    lineHeight: 20,
-    paddingVertical: spacing.md,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    wrap: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      gap: spacing.sm,
+      paddingTop: spacing.sm,
+    },
+    col: {
+      flex: 1,
+      minWidth: 0,
+      alignItems: 'center',
+      height: '100%',
+      justifyContent: 'flex-end',
+      gap: 4,
+    },
+    track: {
+      flex: 1,
+      width: '100%',
+      maxWidth: 36,
+      backgroundColor: c.chartTrack,
+      borderRadius: radii.xs,
+      justifyContent: 'flex-end',
+      overflow: 'hidden',
+    },
+    fill: {
+      width: '100%',
+      borderRadius: radii.xs,
+      minHeight: 6,
+    },
+    value: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 12,
+      color: c.text,
+    },
+    label: {
+      fontFamily: fonts.bodyMedium,
+      fontSize: 11,
+      color: c.textMuted,
+    },
+    empty: {
+      fontFamily: fonts.body,
+      color: c.textMuted,
+      fontSize: 14,
+      lineHeight: 20,
+      paddingVertical: spacing.md,
+    },
+  });

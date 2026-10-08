@@ -4,7 +4,8 @@ import { DrawerToggleButton } from 'expo-router/drawer';
 import type { ComponentProps, ReactNode } from 'react';
 import type { ColorValue } from 'react-native';
 
-import { colors, fonts } from '@/theme/tokens';
+import { usePalette } from '@/theme/ThemeProvider';
+import { fonts } from '@/theme/tokens';
 
 type IonName = ComponentProps<typeof Ionicons>['name'];
 
@@ -15,21 +16,22 @@ function tabIcon(name: IonName) {
 }
 
 export default function MainTabsLayout(): ReactNode {
+  const palette = usePalette();
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: colors.feltMid },
-        headerTintColor: colors.chalk,
+        headerStyle: { backgroundColor: palette.bgElevated },
+        headerTintColor: palette.text,
         headerTitleStyle: { fontFamily: fonts.bodyBold, fontSize: 17 },
         headerShadowVisible: false,
-        headerLeft: () => <DrawerToggleButton tintColor={colors.chalk} />,
+        headerLeft: () => <DrawerToggleButton tintColor={palette.text} />,
         tabBarHideOnKeyboard: true,
-        tabBarActiveTintColor: colors.gold,
-        tabBarInactiveTintColor: colors.chalkMuted,
+        tabBarActiveTintColor: palette.primary,
+        tabBarInactiveTintColor: palette.textMuted,
         tabBarLabelStyle: { fontFamily: fonts.bodyMedium, fontSize: 10 },
         tabBarStyle: {
-          backgroundColor: colors.feltMid,
-          borderTopColor: colors.border,
+          backgroundColor: palette.bgElevated,
+          borderTopColor: palette.border,
         },
       }}
     >

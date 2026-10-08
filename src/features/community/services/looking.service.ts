@@ -2,6 +2,8 @@ import { getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import { z } from 'zod';
 
 import { AppError } from '@/shared/errors/app-error';
+import { mergeRemoteRows, pendingDocIdsOf } from '@/shared/sync/merge';
+import { withTimeout } from '@/shared/utils/timeout';
 import { logger } from '@/shared/logging/logger';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { isOnline } from '@/shared/sync/connectivity';
@@ -133,21 +135,23 @@ export async function listLookingPosts(input: {
   const user = getStore().user;
   if (shouldCloudSync(user) && isOnline()) {
     try {
-      const snap = await getDocs(
-        query(
-          lookingPostsCol(),
-          where('cityId', '==', input.cityId),
-          orderBy('createdAt', 'desc'),
-          limit(PAGE),
+      const snap = await withTimeout(
+        getDocs(
+          query(
+            lookingPostsCol(),
+            where('cityId', '==', input.cityId),
+            orderBy('createdAt', 'desc'),
+            limit(PAGE),
+          ),
         ),
+        'looking query',
       );
       const remote = snap.docs.map((d) => asPost(d.data(), d.id));
       await updateStore((s) => {
-        const map = new Map(s.lookingPosts.map((p) => [p.id, p]));
-        for (const row of remote) {
-          map.set(row.id, row);
-        }
-        return { ...s, lookingPosts: [...map.values()] };
+        return {
+          ...s,
+          lookingPosts: mergeRemoteRows(s.lookingPosts, remote, pendingDocIdsOf(s.pendingOps)),
+        };
       });
     } catch (error) {
       logger.error('looking.service', 'Looking query failed', {

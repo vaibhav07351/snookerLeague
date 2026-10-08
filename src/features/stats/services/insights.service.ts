@@ -1,15 +1,35 @@
-import type { Match, Player, Race } from '@/shared/types/domain';
-import { colors } from '@/theme/tokens';
+import type { Match, Player } from '@/shared/types/domain';
+
+/**
+ * Semantic colour role for a chart datum. Services stay theme-free: the UI resolves a role
+ * to the active palette (e.g. `palette.success`), so a theme switch recolours every chart.
+ */
+export type ChartTone =
+  'primary' | 'success' | 'danger' | 'warning' | 'info' | 'accent' | 'teamA' | 'teamB';
+
+/** Either a meaningful role, or a categorical slot (`palette.chart[index]`) for ranked boards. */
+export type ChartColorKey = { kind: 'tone'; tone: ChartTone } | { kind: 'series'; index: number };
+
+export interface ChartDatum {
+  label: string;
+  value: number;
+  colorKey: ChartColorKey;
+}
+
+function tone(t: ChartTone): ChartColorKey {
+  return { kind: 'tone', tone: t };
+}
 
 export interface PlayerInsights {
   player: Player;
   totalGames: number;
-  doublesPlayed: number;
-  doublesWins: number;
-  doublesLosses: number;
+  /** Singles and doubles matches. */
+  matchesPlayed: number;
+  matchWins: number;
+  matchLosses: number;
   /** Clean losses (not via forfeit). */
   cleanLosses: number;
-  doublesWinPct: number;
+  matchWinPct: number;
   forfeits: number;
   winsByForfeit: number;
   racesPlayed: number;
@@ -17,10 +37,16 @@ export interface PlayerInsights {
   racePodiums: number;
   raceFirstPct: number;
   avgRacePlace: number | null;
-  currentDoublesStreak: number;
+  currentMatchStreak: number;
   currentRaceFirstStreak: number;
+  raceTitles: number;
   titles: number;
   lastPlayedAt: string | null;
+  /** Frames played at the table (frames carried over from before the app are left out). */
+  framesPlayed: number;
+  /** Pots per frame, so heavy and light players compare fairly. Null with no frames. */
+  pointsPerFrame: number | null;
+  foulsPerFrame: number | null;
   /** Timed frame pace (doubles share the frame clock). */
   timedFrames: number;
   totalFrameSeconds: number;
@@ -31,151 +57,94 @@ export interface PlayerInsights {
   slowestFrameSeconds: number | null;
   /** Seconds faster on win frames vs loss frames (null if N/A). */
   winPaceDeltaSeconds: number | null;
+  highestBreak: number;
+  breaks50: number;
+  centuries: number;
+  maximums: number;
   pointsScored: number;
   fouls: number;
   foulPoints: number;
   netPoints: number;
-  /** 1 = win, 0 = loss, -1 = forfeit loss */
-  form: number[];
-  placeBars: Array<{ label: string; value: number; color: string }>;
-  resultDonut: Array<{ label: string; value: number; color: string }>;
-  activityBars: Array<{ label: string; value: number; color: string }>;
+  placeBars: ChartDatum[];
+  resultDonut: ChartDatum[];
   /** Avg win vs avg loss frame length (minutes, for bar chart). */
-  paceBars: Array<{ label: string; value: number; color: string }>;
+  paceBars: ChartDatum[];
 }
 
-function playerSide(match: Match, playerId: string): 'a' | 'b' | null {
-  if (match.teamA.includes(playerId)) {
-    return 'a';
-  }
-  if (match.teamB.includes(playerId)) {
-    return 'b';
-  }
-  return null;
-}
-
-function matchFormValue(match: Match, playerId: string): number | null {
-  if (match.outcome.status === 'in_progress') {
+function perFrame(total: number, frames: number): number | null {
+  if (frames <= 0) {
     return null;
   }
-  const side = playerSide(match, playerId);
-  if (!side) {
-    return null;
-  }
-  if (match.outcome.status === 'forfeited' && match.outcome.forfeitedBy === side) {
-    return -1;
-  }
-  return match.outcome.winner === side ? 1 : 0;
+  return Math.round((total / frames) * 10) / 10;
 }
 
-function timingFromStats(player: Player): {
-  timedFrames: number;
-  totalFrameSeconds: number;
-  avgFrameSeconds: number | null;
-  avgWinFrameSeconds: number | null;
-  avgLossFrameSeconds: number | null;
-  fastestFrameSeconds: number | null;
-  slowestFrameSeconds: number | null;
-  winPaceDeltaSeconds: number | null;
-} {
-  const s = player.stats.standard;
-  const timedFrames = s.timedFrames ?? 0;
-  const totalFrameSeconds = s.totalFrameSeconds ?? 0;
-  const avgFrameSeconds = s.avgFrameSeconds ?? null;
-  const avgWinFrameSeconds = s.avgWinFrameSeconds ?? null;
-  const avgLossFrameSeconds = s.avgLossFrameSeconds ?? null;
-  const fastestFrameSeconds = s.fastestFrameSeconds ?? null;
-  const slowestFrameSeconds = s.slowestFrameSeconds ?? null;
-  const winPaceDeltaSeconds =
-    avgWinFrameSeconds != null && avgLossFrameSeconds != null
-      ? avgLossFrameSeconds - avgWinFrameSeconds
-      : null;
-  return {
-    timedFrames,
-    totalFrameSeconds,
-    avgFrameSeconds,
-    avgWinFrameSeconds,
-    avgLossFrameSeconds,
-    fastestFrameSeconds,
-    slowestFrameSeconds,
-    winPaceDeltaSeconds,
-  };
+/** Frames this player was at the table for in finished league matches. */
+function countFramesPlayed(player: Player, matches: Match[]): number {
+  let frames = 0;
+  for (const m of matches) {
+    if (m.leagueId !== player.leagueId || m.outcome.status === 'in_progress') {
+      continue;
+    }
+    if (!m.teamA.includes(player.id) && !m.teamB.includes(player.id)) {
+      continue;
+    }
+    frames += m.frames.filter((f) => !f.carriedOver && !f.viaForfeit).length;
+  }
+  return frames;
 }
 
-export function buildPlayerInsights(
-  player: Player,
-  matches: Match[],
-  races: Race[],
-): PlayerInsights {
-  const doubles = matches
-    .filter((m) => m.leagueId === player.leagueId)
-    .filter((m) => m.teamA.includes(player.id) || m.teamB.includes(player.id))
-    .filter((m) => m.outcome.status !== 'in_progress')
-    .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
-
-  const raceList = races
-    .filter((r) => r.leagueId === player.leagueId)
-    .filter((r) => r.status === 'completed')
-    .filter((r) => r.entrants.some((e) => e.playerId === player.id))
-    .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
-
-  const form: number[] = [];
-  for (const m of doubles.slice(-10)) {
-    const value = matchFormValue(m, player.id);
-    if (value != null) {
-      form.push(value);
-    }
-  }
-  for (const r of raceList.slice(-10)) {
-    const place = r.entrants.find((e) => e.playerId === player.id)?.place;
-    if (typeof place === 'number') {
-      form.push(place === 1 ? 1 : 0);
-    }
-  }
-  const clippedForm = form.slice(-12);
-
+/**
+ * Everything a player card shows. `player.stats` must be fresh for this league (see
+ * `applyPlayerStats`); `matches` is only walked for the frame count.
+ */
+export function buildPlayerInsights(player: Player, matches: Match[]): PlayerInsights {
   const s = player.stats.standard;
   const r = player.stats.race;
   const forfeits = s.forfeits ?? 0;
   const winsByForfeit = s.winsByForfeit ?? 0;
-  const doublesLosses = Math.max(s.played - s.wins, 0);
-  const cleanLosses = Math.max(doublesLosses - forfeits, 0);
+  const matchLosses = Math.max(s.played - s.wins, 0);
+  const cleanLosses = Math.max(matchLosses - forfeits, 0);
   const podiums = r.firsts + r.seconds + r.thirds;
-  const lastCandidates = [s.lastPlayedAt, r.lastPlayedAt].filter(Boolean) as string[];
+  const lastCandidates = [s.lastPlayedAt, r.lastPlayedAt].filter(
+    (x): x is string => typeof x === 'string',
+  );
   const lastPlayedAt = lastCandidates.length > 0 ? (lastCandidates.sort().at(-1) ?? null) : null;
-  const timing = timingFromStats(player);
+  const framesPlayed = countFramesPlayed(player, matches);
 
-  const paceBars: Array<{ label: string; value: number; color: string }> = [];
-  if (timing.avgWinFrameSeconds != null) {
+  const avgWinFrameSeconds = s.avgWinFrameSeconds ?? null;
+  const avgLossFrameSeconds = s.avgLossFrameSeconds ?? null;
+  const avgFrameSeconds = s.avgFrameSeconds ?? null;
+  const paceBars: ChartDatum[] = [];
+  if (avgWinFrameSeconds != null) {
     paceBars.push({
       label: 'Win',
-      value: Math.max(1, Math.round(timing.avgWinFrameSeconds / 60)),
-      color: colors.mint,
+      value: Math.max(1, Math.round(avgWinFrameSeconds / 60)),
+      colorKey: tone('success'),
     });
   }
-  if (timing.avgLossFrameSeconds != null) {
+  if (avgLossFrameSeconds != null) {
     paceBars.push({
       label: 'Loss',
-      value: Math.max(1, Math.round(timing.avgLossFrameSeconds / 60)),
-      color: colors.coral,
+      value: Math.max(1, Math.round(avgLossFrameSeconds / 60)),
+      colorKey: tone('teamB'),
     });
   }
-  if (timing.avgFrameSeconds != null) {
+  if (avgFrameSeconds != null) {
     paceBars.push({
       label: 'Avg',
-      value: Math.max(1, Math.round(timing.avgFrameSeconds / 60)),
-      color: colors.gold,
+      value: Math.max(1, Math.round(avgFrameSeconds / 60)),
+      colorKey: tone('primary'),
     });
   }
 
   return {
     player,
     totalGames: s.played + r.played,
-    doublesPlayed: s.played,
-    doublesWins: s.wins,
-    doublesLosses,
+    matchesPlayed: s.played,
+    matchWins: s.wins,
+    matchLosses,
     cleanLosses,
-    doublesWinPct: s.winPct,
+    matchWinPct: s.winPct,
     forfeits,
     winsByForfeit,
     racesPlayed: r.played,
@@ -183,146 +152,48 @@ export function buildPlayerInsights(
     racePodiums: podiums,
     raceFirstPct: r.firstPct,
     avgRacePlace: r.avgPlace,
-    currentDoublesStreak: s.streak,
+    currentMatchStreak: s.streak,
     currentRaceFirstStreak: r.firstStreak,
+    raceTitles: r.titles,
     titles: s.titles + r.titles,
     lastPlayedAt,
-    ...timing,
+    framesPlayed,
+    pointsPerFrame: perFrame(s.pointsScored ?? 0, framesPlayed),
+    foulsPerFrame: perFrame(s.fouls ?? 0, framesPlayed),
+    timedFrames: s.timedFrames ?? 0,
+    totalFrameSeconds: s.totalFrameSeconds ?? 0,
+    avgFrameSeconds,
+    avgWinFrameSeconds,
+    avgLossFrameSeconds,
+    fastestFrameSeconds: s.fastestFrameSeconds ?? null,
+    slowestFrameSeconds: s.slowestFrameSeconds ?? null,
+    winPaceDeltaSeconds:
+      avgWinFrameSeconds != null && avgLossFrameSeconds != null
+        ? avgLossFrameSeconds - avgWinFrameSeconds
+        : null,
+    highestBreak: s.highestBreak ?? 0,
+    breaks50: s.breaks50 ?? 0,
+    centuries: s.centuries ?? 0,
+    maximums: s.maximums ?? 0,
     pointsScored: s.pointsScored ?? 0,
     fouls: s.fouls ?? 0,
     foulPoints: s.foulPoints ?? 0,
     netPoints: s.netPoints ?? (s.pointsScored ?? 0) - (s.foulPoints ?? 0),
-    form: clippedForm,
     placeBars: [
-      { label: '1st', value: r.firsts, color: colors.gold },
-      { label: '2nd', value: r.seconds, color: colors.sky },
-      { label: '3rd', value: r.thirds, color: colors.lavender },
+      { label: '1st', value: r.firsts, colorKey: tone('primary') },
+      { label: '2nd', value: r.seconds, colorKey: tone('info') },
+      { label: '3rd', value: r.thirds, colorKey: tone('accent') },
       {
         label: '4+',
         value: Math.max(r.played - podiums, 0),
-        color: colors.coral,
+        colorKey: tone('teamB'),
       },
     ],
     resultDonut: [
-      { label: 'Wins', value: s.wins, color: colors.mint },
-      { label: 'Losses', value: cleanLosses, color: colors.sky },
-      { label: 'Forfeits', value: forfeits, color: colors.coral },
-    ],
-    activityBars: [
-      { label: 'Doubles', value: s.played, color: colors.mint },
-      { label: 'Races', value: r.played, color: colors.sky },
-      { label: 'Titles', value: s.titles + r.titles, color: colors.gold },
-      { label: 'Forfeits', value: forfeits, color: colors.coral },
+      { label: 'Wins', value: s.wins, colorKey: tone('success') },
+      { label: 'Losses', value: cleanLosses, colorKey: tone('info') },
+      { label: 'Forfeits', value: forfeits, colorKey: tone('danger') },
     ],
     paceBars,
   };
-}
-
-export function buildLeagueActivity(
-  players: Player[],
-): Array<{ label: string; value: number; color: string }> {
-  const palette = [colors.gold, colors.mint, colors.sky, colors.coral, colors.lavender, colors.sun];
-  return [...players]
-    .map((p) => ({
-      label: p.displayName.split(' ')[0] ?? p.displayName,
-      value: p.stats.standard.played + p.stats.race.played,
-      player: p,
-    }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 6)
-    .map((row, i) => ({
-      label: row.label.slice(0, 8),
-      value: row.value,
-      color: palette[i % palette.length]!,
-    }));
-}
-
-export function buildLeagueForfeitBoard(
-  players: Player[],
-): Array<{ label: string; value: number; color: string }> {
-  return [...players]
-    .map((p) => ({
-      label: (p.displayName.split(' ')[0] ?? p.displayName).slice(0, 8),
-      value: p.stats.standard.forfeits ?? 0,
-    }))
-    .filter((row) => row.value > 0)
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 6)
-    .map((row) => ({ ...row, color: colors.coral }));
-}
-
-export function buildLeagueFoulBoard(
-  players: Player[],
-): Array<{ label: string; value: number; color: string }> {
-  return [...players]
-    .map((p) => ({
-      label: (p.displayName.split(' ')[0] ?? p.displayName).slice(0, 8),
-      value: p.stats.standard.fouls ?? 0,
-    }))
-    .filter((row) => row.value > 0)
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 6)
-    .map((row) => ({ ...row, color: colors.coral }));
-}
-
-export function buildLeaguePointsBoard(
-  players: Player[],
-): Array<{ label: string; value: number; color: string }> {
-  const palette = [colors.mint, colors.gold, colors.sky, colors.sun, colors.lavender, colors.coral];
-  return [...players]
-    .map((p) => ({
-      label: (p.displayName.split(' ')[0] ?? p.displayName).slice(0, 8),
-      value: p.stats.standard.pointsScored ?? 0,
-    }))
-    .filter((row) => row.value > 0)
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 6)
-    .map((row, i) => ({
-      ...row,
-      color: palette[i % palette.length]!,
-    }));
-}
-
-/** League pace: avg frame minutes (sorted quickest first). */
-export function buildLeaguePaceBoard(
-  players: Player[],
-): Array<{ label: string; value: number; color: string }> {
-  const palette = [colors.mint, colors.sky, colors.gold, colors.sun, colors.coral, colors.lavender];
-  return [...players]
-    .filter(
-      (p) => (p.stats.standard.timedFrames ?? 0) > 0 && p.stats.standard.avgFrameSeconds != null,
-    )
-    .map((p) => ({
-      label: (p.displayName.split(' ')[0] ?? p.displayName).slice(0, 8),
-      value: Math.max(1, Math.round((p.stats.standard.avgFrameSeconds ?? 0) / 60)),
-      avg: p.stats.standard.avgFrameSeconds ?? 0,
-    }))
-    .sort((a, b) => a.avg - b.avg)
-    .slice(0, 6)
-    .map((row, i) => ({
-      label: row.label,
-      value: row.value,
-      color: palette[i % palette.length]!,
-    }));
-}
-
-/** Total table time in minutes of timed frames by player. */
-export function buildLeagueTableTimeBoard(
-  players: Player[],
-): Array<{ label: string; value: number; color: string }> {
-  const palette = [colors.gold, colors.mint, colors.sky, colors.coral, colors.lavender, colors.sun];
-  return [...players]
-    .filter((p) => (p.stats.standard.totalFrameSeconds ?? 0) > 0)
-    .map((p) => ({
-      label: (p.displayName.split(' ')[0] ?? p.displayName).slice(0, 8),
-      value: Math.max(1, Math.round((p.stats.standard.totalFrameSeconds ?? 0) / 60)),
-      raw: p.stats.standard.totalFrameSeconds ?? 0,
-    }))
-    .sort((a, b) => b.raw - a.raw)
-    .slice(0, 6)
-    .map((row, i) => ({
-      label: row.label,
-      value: row.value,
-      color: palette[i % palette.length]!,
-    }));
 }

@@ -4,9 +4,9 @@ import {
   DrawerItem,
   type DrawerContentComponentProps,
 } from 'expo-router/drawer';
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import type { ReactNode } from 'react';
-import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { BrandLogo } from '@/features/home/components/BrandLogo';
@@ -17,9 +17,13 @@ import {
   raceResumeCopy,
   useLiveSessions,
 } from '@/features/home/hooks/use-live-sessions';
-import { colors, fonts, radii, spacing } from '@/theme/tokens';
+import { useLayout } from '@/shared/hooks/use-layout';
+import { HeaderBack } from '@/shared/ui/HeaderBack';
+import { usePalette, useStyles } from '@/theme/ThemeProvider';
+import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
 
 function ProfileButton(): ReactNode {
+  const styles = useStyles(makeStyles);
   const { user } = useSession();
   const initial = (user?.displayName?.trim().charAt(0) ?? '?').toUpperCase();
   return (
@@ -35,6 +39,8 @@ function ProfileButton(): ReactNode {
 }
 
 function CustomDrawer(props: DrawerContentComponentProps): ReactNode {
+  const styles = useStyles(makeStyles);
+  const palette = usePalette();
   const { league, user } = useSession();
   const active = props.state.routes[props.state.index]?.name;
   const { matches: liveMatches, races: liveRaces, nameOf } = useLiveSessions(league?.id);
@@ -43,10 +49,10 @@ function CustomDrawer(props: DrawerContentComponentProps): ReactNode {
     { label: 'Home', route: '(tabs)', hint: 'Tabs · city & club' },
     { label: 'Game history', route: 'history', hint: 'Matches & races' },
     { label: 'Champion history', route: 'champions', hint: 'Titles & race kings' },
-    { label: 'Stats', route: 'stats', hint: 'Charts & form' },
+    { label: 'Stats', route: 'stats', hint: 'Rating, breaks & rivals' },
     { label: 'Leaderboard', route: 'leaderboard', hint: "Who's hot" },
     { label: 'Players', route: 'players/index', hint: 'Roster & guests' },
-    { label: 'League', route: 'league', hint: 'Invite · settings' },
+    { label: 'League', route: 'league', hint: 'Invite friends · settings' },
   ];
 
   return (
@@ -108,33 +114,62 @@ function CustomDrawer(props: DrawerContentComponentProps): ReactNode {
               </View>
             )}
             focused={focused}
-            activeBackgroundColor={colors.surfaceBright}
-            activeTintColor={colors.gold}
-            inactiveTintColor={colors.chalk}
+            activeBackgroundColor={palette.cardHighlight}
+            activeTintColor={palette.primary}
+            inactiveTintColor={palette.text}
             style={styles.item}
             onPress={() => {
+              if (item.route === '(tabs)') {
+                // The tabs remember their last tab (e.g. Profile); Home always opens the Home tab.
+                props.navigation.navigate('(tabs)', { screen: 'index' });
+                return;
+              }
               props.navigation.navigate(item.route as never);
             }}
           />
         );
       })}
+      <DrawerItem
+        label={() => (
+          <View>
+            <Text style={styles.itemLabel}>Appearance</Text>
+            <Text style={styles.itemHint}>Choose a colour theme</Text>
+          </View>
+        )}
+        inactiveTintColor={palette.text}
+        style={styles.item}
+        onPress={() => {
+          props.navigation.closeDrawer();
+          router.push('/settings/theme');
+        }}
+      />
     </DrawerContentScrollView>
   );
 }
 
+const DETAIL_BACK = { headerLeft: () => <HeaderBack fallback="/(main)" /> } as const;
+
 export default function MainDrawerLayout(): ReactNode {
+  const palette = usePalette();
+  const { width } = useLayout();
+  const { ready, user, league } = useSession();
+  // Signed out, or no league left (e.g. deleted on another phone): go through the start
+  // gate (login / onboarding) instead of showing blank screens.
+  if (ready && (!user || !league)) {
+    return <Redirect href="/" />;
+  }
   return (
     <Drawer
       drawerContent={(props) => <CustomDrawer {...props} />}
       screenOptions={{
-        headerStyle: { backgroundColor: colors.feltMid },
-        headerTintColor: colors.chalk,
+        headerStyle: { backgroundColor: palette.bgElevated },
+        headerTintColor: palette.text,
         headerTitleStyle: { fontFamily: fonts.bodyBold, fontSize: 17 },
         headerShadowVisible: false,
         drawerStyle: {
-          backgroundColor: colors.felt,
-          // Cap drawer so it never exceeds narrow phones (~320–360 CSS px).
-          width: Math.min(300, Math.round(Dimensions.get('window').width * 0.86)),
+          backgroundColor: palette.bg,
+          // Cap drawer so it never exceeds narrow phones (~320-360 CSS px).
+          width: Math.min(300, Math.round(width * 0.86)),
         },
         headerRight: () => <ProfileButton />,
       }}
@@ -144,96 +179,101 @@ export default function MainDrawerLayout(): ReactNode {
       <Drawer.Screen name="champions" options={{ title: 'Champion history' }} />
       <Drawer.Screen name="stats" options={{ title: 'Stats' }} />
       <Drawer.Screen name="leaderboard" options={{ title: 'Leaderboard' }} />
+      <Drawer.Screen
+        name="compare"
+        options={{ ...DETAIL_BACK, title: 'Compare', drawerItemStyle: { display: 'none' } }}
+      />
       <Drawer.Screen name="players/index" options={{ title: 'Players' }} />
       <Drawer.Screen
         name="players/[id]"
-        options={{ title: 'Player', drawerItemStyle: { display: 'none' } }}
+        options={{ ...DETAIL_BACK, title: 'Player', drawerItemStyle: { display: 'none' } }}
       />
       <Drawer.Screen
         name="directory"
-        options={{ title: 'Directory', drawerItemStyle: { display: 'none' } }}
+        options={{ ...DETAIL_BACK, title: 'Directory', drawerItemStyle: { display: 'none' } }}
       />
       <Drawer.Screen
         name="city-player"
-        options={{ title: 'Player', drawerItemStyle: { display: 'none' } }}
+        options={{ ...DETAIL_BACK, title: 'Player', drawerItemStyle: { display: 'none' } }}
       />
       <Drawer.Screen
         name="follows"
-        options={{ title: 'Follows', drawerItemStyle: { display: 'none' } }}
+        options={{ ...DETAIL_BACK, title: 'Follows', drawerItemStyle: { display: 'none' } }}
       />
       <Drawer.Screen name="league" options={{ title: 'League' }} />
     </Drawer>
   );
 }
 
-const styles = StyleSheet.create({
-  drawer: {
-    backgroundColor: colors.felt,
-  },
-  drawerContent: {
-    paddingTop: spacing.md,
-  },
-  drawerHero: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-    gap: spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    marginBottom: spacing.sm,
-  },
-  resumeWrap: {
-    paddingHorizontal: spacing.sm,
-  },
-  drawerLeague: {
-    fontFamily: fonts.bodyMedium,
-    color: colors.goldSoft,
-    fontSize: 14,
-  },
-  drawerUser: {
-    fontFamily: fonts.body,
-    color: colors.chalkMuted,
-    marginTop: spacing.xs,
-  },
-  drawerHint: {
-    fontFamily: fonts.bodyBold,
-    fontSize: 11,
-    letterSpacing: 1,
-    color: colors.gold,
-    marginTop: spacing.sm,
-    textTransform: 'uppercase',
-  },
-  item: {
-    borderRadius: radii.md,
-    marginHorizontal: spacing.sm,
-  },
-  itemLabel: {
-    fontFamily: fonts.bodyBold,
-    color: colors.chalk,
-    fontSize: 16,
-  },
-  itemLabelOn: {
-    color: colors.goldSoft,
-  },
-  itemHint: {
-    fontFamily: fonts.body,
-    color: colors.chalkMuted,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  avatarBtn: {
-    marginRight: spacing.md,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.gold,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: colors.goldSoft,
-  },
-  avatarText: {
-    fontFamily: fonts.bodyBold,
-    color: colors.felt,
-    fontSize: 16,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    drawer: {
+      backgroundColor: c.bg,
+    },
+    drawerContent: {
+      paddingTop: spacing.md,
+    },
+    drawerHero: {
+      paddingHorizontal: spacing.lg,
+      paddingBottom: spacing.lg,
+      gap: spacing.xs,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+      marginBottom: spacing.sm,
+    },
+    resumeWrap: {
+      paddingHorizontal: spacing.sm,
+    },
+    drawerLeague: {
+      fontFamily: fonts.bodyMedium,
+      color: c.primarySoft,
+      fontSize: 14,
+    },
+    drawerUser: {
+      fontFamily: fonts.body,
+      color: c.textMuted,
+      marginTop: spacing.xs,
+    },
+    drawerHint: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 11,
+      letterSpacing: 1,
+      color: c.primary,
+      marginTop: spacing.sm,
+      textTransform: 'uppercase',
+    },
+    item: {
+      borderRadius: radii.md,
+      marginHorizontal: spacing.sm,
+    },
+    itemLabel: {
+      fontFamily: fonts.bodyBold,
+      color: c.text,
+      fontSize: 16,
+    },
+    itemLabelOn: {
+      color: c.primarySoft,
+    },
+    itemHint: {
+      fontFamily: fonts.body,
+      color: c.textMuted,
+      fontSize: 12,
+      marginTop: 2,
+    },
+    avatarBtn: {
+      marginRight: spacing.md,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: c.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 2,
+      borderColor: c.primarySoft,
+    },
+    avatarText: {
+      fontFamily: fonts.bodyBold,
+      color: c.onPrimary,
+      fontSize: 16,
+    },
+  });

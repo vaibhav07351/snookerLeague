@@ -1,6 +1,7 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useState, type ReactNode } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { Button } from '@/features/home/components/Button';
@@ -10,10 +11,17 @@ import * as playersService from '@/features/players/services/players.service';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { Player } from '@/shared/types/domain';
+import { Card } from '@/shared/ui/Card';
+import { EmptyState } from '@/shared/ui/EmptyState';
+import { notify } from '@/shared/ui/notify';
 import { confirmAction } from '@/shared/utils/confirm';
-import { colors, spacing, typography } from '@/theme/tokens';
+import { usePalette, useStyles } from '@/theme/ThemeProvider';
+import { fonts, makeTypography, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
 
 export default function PlayersScreen(): ReactNode {
+  const styles = useStyles(makeStyles);
+  const typography = useStyles(makeTypography);
+  const palette = usePalette();
   const { league, user } = useSession();
   const [players, setPlayers] = useState<Player[]>([]);
   const [guestName, setGuestName] = useState('');
@@ -43,7 +51,7 @@ export default function PlayersScreen(): ReactNode {
       }
       setGuestName('');
     } catch (error) {
-      Alert.alert(editingId ? 'Could not save name' : 'Could not add guest', toUserMessage(error));
+      notify.error(editingId ? 'Could not save name' : 'Could not add guest', toUserMessage(error));
     }
   }
 
@@ -59,7 +67,7 @@ export default function PlayersScreen(): ReactNode {
     const ok = await confirmAction(
       `Delete ${player.displayName}?`,
       player.kind === 'guest'
-        ? 'They’ll be removed from this club. Past matches keep their score but the name may show as missing.'
+        ? "They'll be removed from this club. Past matches keep their score but the name may show as missing."
         : 'This removes them from the club roster. Past matches keep their score but the name may show as missing.',
       'Delete',
     );
@@ -73,7 +81,7 @@ export default function PlayersScreen(): ReactNode {
         setGuestName('');
       }
     } catch (error) {
-      Alert.alert('Could not delete', toUserMessage(error));
+      notify.error('Could not delete', toUserMessage(error));
     }
   }
 
@@ -85,25 +93,26 @@ export default function PlayersScreen(): ReactNode {
 
   return (
     <Screen scroll={false}>
-      <Text style={typography.subtitle}>Add everyone at the table. Guests don’t need the app.</Text>
+      <Text style={typography.subtitle}>Add everyone at the table. Guests don't need the app.</Text>
       <View style={styles.addRow}>
         <View style={styles.fieldGrow}>
           <TextField
             label={editing ? 'Edit player' : 'Add a guest'}
             value={guestName}
             onChangeText={setGuestName}
-            placeholder="Friend’s name"
+            placeholder="Friend's name"
             returnKeyType="done"
             onSubmitEditing={() => void savePlayer()}
             hint={
               editing
                 ? 'Change the name, then tap Save'
-                : 'Use this for people who aren’t signed in'
+                : "Use this for people who aren't signed in"
             }
           />
         </View>
         <Button
           label={editing ? 'Save' : 'Add'}
+          icon={editing ? 'checkmark' : 'add'}
           onPress={() => void savePlayer()}
           style={styles.addBtn}
         />
@@ -112,10 +121,12 @@ export default function PlayersScreen(): ReactNode {
         <Button
           label="Cancel edit"
           variant="ghost"
+          size="sm"
           onPress={() => {
             setEditingId(null);
             setGuestName('');
           }}
+          style={styles.cancel}
         />
       ) : null}
       <FlatList
@@ -125,34 +136,53 @@ export default function PlayersScreen(): ReactNode {
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
-          <Text style={typography.subtitle}>No players yet — add your friends above.</Text>
+          <EmptyState
+            icon="people-outline"
+            title="No players yet"
+            message="Add your friends above. Guests don't need the app."
+          />
         }
         renderItem={({ item }) => {
           const mine = Boolean(user?.uid && item.authUid === user.uid);
           const canDelete = Boolean(user?.uid && user.uid === league.createdByUid && !mine);
+          const isEditing = editingId === item.id;
           return (
-            <View style={styles.row}>
+            <Card tone={isEditing ? 'highlight' : 'default'} style={styles.row}>
               <Pressable
-                style={styles.rowMain}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${item.displayName}`}
+                style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
                 onPress={() => router.push(`/(main)/players/${item.id}`)}
               >
-                <Text style={styles.name}>{item.displayName}</Text>
-                <Text style={styles.meta}>
+                <Text style={styles.name} numberOfLines={1}>
+                  {item.displayName}
+                </Text>
+                <Text style={styles.meta} numberOfLines={2}>
                   {item.kind === 'guest' ? 'Guest' : 'Member'} · W {item.stats.standard.winPct}% ·
-                  1st {item.stats.race.firstPct}%
+                  1st {item.stats.race.firstPct}% · HB {item.stats.standard.highestBreak || '-'}
                 </Text>
               </Pressable>
               <View style={styles.actions}>
-                <Pressable onPress={() => startEdit(item)} hitSlop={8}>
-                  <Text style={styles.edit}>Edit</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit ${item.displayName}`}
+                  onPress={() => startEdit(item)}
+                  style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+                >
+                  <Ionicons name="create-outline" size={20} color={palette.textMuted} />
                 </Pressable>
                 {canDelete ? (
-                  <Pressable onPress={() => void removePlayer(item)} hitSlop={8}>
-                    <Text style={styles.delete}>Delete</Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete ${item.displayName}`}
+                    onPress={() => void removePlayer(item)}
+                    style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+                  >
+                    <Ionicons name="trash-outline" size={20} color={palette.danger} />
                   </Pressable>
                 ) : null}
               </View>
-            </View>
+            </Card>
           );
         }}
       />
@@ -160,60 +190,70 @@ export default function PlayersScreen(): ReactNode {
   );
 }
 
-const styles = StyleSheet.create({
-  addRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  fieldGrow: {
-    flex: 1,
-  },
-  addBtn: {
-    marginBottom: spacing.md,
-  },
-  listFlex: {
-    flex: 1,
-  },
-  list: {
-    paddingBottom: spacing.xl,
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    gap: spacing.sm,
-  },
-  rowMain: {
-    flex: 1,
-  },
-  name: {
-    color: colors.chalk,
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  meta: {
-    color: colors.chalkMuted,
-    marginTop: 2,
-    fontSize: 13,
-  },
-  actions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  edit: {
-    color: colors.goldSoft,
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  delete: {
-    color: colors.danger,
-    fontWeight: '700',
-    fontSize: 14,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    addRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      gap: spacing.sm,
+      marginTop: spacing.md,
+    },
+    fieldGrow: {
+      flex: 1,
+      minWidth: 0,
+    },
+    addBtn: {
+      marginBottom: spacing.md,
+      paddingHorizontal: spacing.md,
+    },
+    cancel: {
+      alignSelf: 'flex-start',
+      marginBottom: spacing.sm,
+    },
+    listFlex: {
+      flex: 1,
+    },
+    list: {
+      gap: spacing.sm,
+      paddingTop: spacing.sm,
+      paddingBottom: spacing.xl,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: spacing.xs,
+      paddingRight: spacing.xs,
+    },
+    rowMain: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: TOUCH_TARGET,
+      justifyContent: 'center',
+      paddingVertical: spacing.sm,
+    },
+    pressed: {
+      opacity: 0.7,
+    },
+    name: {
+      fontFamily: fonts.bodyBold,
+      color: c.text,
+      fontSize: 17,
+    },
+    meta: {
+      fontFamily: fonts.body,
+      color: c.textMuted,
+      marginTop: 2,
+      fontSize: 13,
+    },
+    actions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    iconBtn: {
+      width: TOUCH_TARGET,
+      height: TOUCH_TARGET,
+      borderRadius: radii.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+  });

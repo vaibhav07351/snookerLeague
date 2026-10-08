@@ -41,3 +41,11 @@ export function preferLocalData(): boolean {
 export function getGoogleWebClientId(): string {
   return env('EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID');
 }
+
+/** Stable public web address of the app (EAS Hosting). Used for shareable https links. */
+const DEFAULT_PUBLIC_WEB_ORIGIN = 'https://snookit.expo.app';
+
+export function getPublicWebOrigin(): string {
+  const configured = env('EXPO_PUBLIC_WEB_ORIGIN').replace(/\/+$/, '');
+  return configured.length > 0 ? configured : DEFAULT_PUBLIC_WEB_ORIGIN;
+}

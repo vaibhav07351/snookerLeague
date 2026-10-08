@@ -1,0 +1,60 @@
+# EAS Build uses this file INSTEAD of .gitignore when uploading the project.
+# It mirrors .gitignore, except that .env is uploaded so builds get the
+# EXPO_PUBLIC_* config. Keep the two files in step when adding new entries.
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+dist-web/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files: only .env is uploaded; other variants stay local
+.env.*
+!.env.example
+
+# editor and tool config
+.vscode/
+.claude/
+
+# local build outputs
+*.apk
+*.aab
+
+# EAS / Play Store credentials (never upload)
+google-service-account.json
+*-service-account*.json
+credentials.json
+eas-log.txt
+eas-raw.bin
+
+# typescript
+*.tsbuildinfo
+
+# generated native folders
+/ios
+/android

@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
-import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { StyleSheet, Switch, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { Button } from '@/features/home/components/Button';
@@ -10,7 +10,13 @@ import * as playersService from '@/features/players/services/players.service';
 import * as raceService from '@/features/race/services/race.service';
 import { toUserMessage } from '@/shared/errors/app-error';
 import type { Player } from '@/shared/types/domain';
-import { colors, fonts, radii, spacing, typography } from '@/theme/tokens';
+import { Card } from '@/shared/ui/Card';
+import { Chip } from '@/shared/ui/Chip';
+import { EmptyState } from '@/shared/ui/EmptyState';
+import { notify } from '@/shared/ui/notify';
+import { SectionTitle } from '@/shared/ui/SectionTitle';
+import { usePalette, useStyles } from '@/theme/ThemeProvider';
+import { fonts, makeTypography, spacing, type Palette } from '@/theme/tokens';
 
 export default function NewRaceScreen(): ReactNode {
   const { user, league } = useSession();
@@ -20,6 +26,9 @@ export default function NewRaceScreen(): ReactNode {
   const [label, setLabel] = useState('');
   const [crowns, setCrowns] = useState(false);
   const [busy, setBusy] = useState(false);
+  const styles = useStyles(makeStyles);
+  const typography = useStyles(makeTypography);
+  const palette = usePalette();
 
   useEffect(() => {
     if (!league) {
@@ -49,7 +58,7 @@ export default function NewRaceScreen(): ReactNode {
       });
       router.replace(`/race/${race.id}`);
     } catch (error) {
-      Alert.alert('Could not start race', toUserMessage(error));
+      notify.error('Could not start race', toUserMessage(error));
     } finally {
       setBusy(false);
     }
@@ -62,35 +71,36 @@ export default function NewRaceScreen(): ReactNode {
   return (
     <Screen>
       <Text style={typography.subtitle}>
-        Everyone scores alone. First to the target is 1st — then 2nd, 3rd, and so on.
+        Everyone scores alone. First to the target is 1st, then 2nd, 3rd, and so on.
       </Text>
 
+      <SectionTitle title="Players" />
       {players.length < 2 ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>Add at least two players</Text>
-          <Text style={styles.emptyBody}>Races need 2+ people on the roster.</Text>
-          <Button label="Go to players" onPress={() => router.push('/(main)/players')} />
-        </View>
+        <EmptyState
+          icon="people-outline"
+          title="Add at least two players"
+          message="Races need 2+ people on the roster."
+          actionLabel="Go to players"
+          onAction={() => router.push('/(main)/players')}
+        />
       ) : (
         <View style={styles.grid}>
-          {players.map((p) => {
-            const on = selected.includes(p.id);
-            return (
-              <Pressable
-                key={p.id}
-                onPress={() => toggle(p.id)}
-                style={[styles.chip, on && styles.chipOn]}
-              >
-                <Text style={[styles.chipText, on && styles.chipTextOn]}>{p.displayName}</Text>
-              </Pressable>
-            );
-          })}
+          {players.map((p) => (
+            <Chip
+              key={p.id}
+              label={p.displayName}
+              selected={selected.includes(p.id)}
+              onPress={() => toggle(p.id)}
+            />
+          ))}
         </View>
       )}
 
-      <Text style={styles.selectedCount}>
+      <Text style={[styles.selectedCount, selected.length >= 2 && styles.selectedReady]}>
         {selected.length} selected{selected.length < 2 ? ' · pick 2+' : ''}
       </Text>
+
+      <SectionTitle title="Race settings" />
 
       <TextField
         label="Target score"
@@ -105,19 +115,21 @@ export default function NewRaceScreen(): ReactNode {
         onChangeText={setLabel}
         placeholder="Friday race…"
       />
-      <View style={styles.switchRow}>
+      <Card style={styles.switchRow}>
         <View style={styles.switchCopy}>
           <Text style={styles.switchLabel}>Crowns race king</Text>
           <Text style={styles.switchHint}>1st place becomes the race king</Text>
         </View>
         <Switch
+          accessibilityLabel="Crowns race king"
           value={crowns}
           onValueChange={setCrowns}
-          trackColor={{ false: colors.feltLight, true: colors.gold }}
+          trackColor={{ false: palette.cardRaised, true: palette.primary }}
         />
-      </View>
+      </Card>
       <Button
         label="Start race"
+        icon="flag"
         loading={busy}
         onPress={() => void create()}
         disabled={busy || selected.length < 2}
@@ -126,77 +138,42 @@ export default function NewRaceScreen(): ReactNode {
   );
 }
 
-const styles = StyleSheet.create({
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginVertical: spacing.md,
-  },
-  chip: {
-    paddingVertical: 10,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  chipOn: {
-    backgroundColor: colors.gold,
-    borderColor: colors.gold,
-  },
-  chipText: {
-    fontFamily: fonts.bodyMedium,
-    color: colors.chalk,
-  },
-  chipTextOn: {
-    color: colors.felt,
-    fontFamily: fonts.bodyBold,
-  },
-  selectedCount: {
-    fontFamily: fonts.body,
-    color: colors.chalkMuted,
-    marginBottom: spacing.md,
-    fontSize: 13,
-  },
-  switchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-    gap: spacing.md,
-  },
-  switchCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  switchLabel: {
-    fontFamily: fonts.bodyMedium,
-    color: colors.chalk,
-  },
-  switchHint: {
-    fontFamily: fonts.body,
-    fontSize: 12,
-    color: colors.chalkMuted,
-  },
-  empty: {
-    marginVertical: spacing.lg,
-    gap: spacing.sm,
-    padding: spacing.lg,
-    borderRadius: radii.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  emptyTitle: {
-    fontFamily: fonts.bodyBold,
-    color: colors.chalk,
-    fontSize: 16,
-  },
-  emptyBody: {
-    fontFamily: fonts.body,
-    color: colors.chalkMuted,
-    marginBottom: spacing.sm,
-    lineHeight: 20,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    grid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+    },
+    selectedCount: {
+      fontFamily: fonts.body,
+      color: c.textMuted,
+      marginTop: spacing.sm,
+      fontSize: 13,
+    },
+    selectedReady: {
+      color: c.text,
+    },
+    switchRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: spacing.lg,
+      gap: spacing.md,
+    },
+    switchCopy: {
+      flex: 1,
+      minWidth: 0,
+      gap: 2,
+    },
+    switchLabel: {
+      fontFamily: fonts.bodyBold,
+      color: c.text,
+      fontSize: 15,
+    },
+    switchHint: {
+      fontFamily: fonts.body,
+      fontSize: 12,
+      color: c.textMuted,
+    },
+  });

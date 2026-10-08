@@ -1,6 +1,10 @@
 import {
   collection,
   doc,
+  limit,
+  orderBy,
+  query,
+  type Query,
   type CollectionReference,
   type DocumentReference,
   type Firestore,
@@ -14,7 +18,7 @@ export function shouldCloudSync(user: SessionUser | null | undefined): boolean {
   if (!isFirebaseEnabled() || user == null || user.isDemo) {
     return false;
   }
-  // Firestore rules require request.auth — local AsyncStorage session alone is not enough.
+  // Firestore rules require request.auth - local AsyncStorage session alone is not enough.
   return hasFirebaseAuthForUid(user.uid);
 }
 
@@ -50,6 +54,36 @@ export function leagueEventsCol(leagueId: string): CollectionReference {
   return collection(requireFirestore(), 'leagues', leagueId, 'events');
 }
 
+/** City hubs are shared by a whole city, so only their most recent rows are synced. */
+const CITY_HUB_LIMITS = { players: 500, matches: 200, races: 100, events: 200 } as const;
+
+export type LeagueCollection = keyof typeof CITY_HUB_LIMITS;
+
+export function isCityHubLeagueId(leagueId: string): boolean {
+  return leagueId.startsWith('city_');
+}
+
+/**
+ * What to read or watch for one league collection: everything for a club league; for a
+ * city hub, the most recently updated rows only (players are capped, not ordered).
+ */
+export function leagueCollectionQuery(leagueId: string, kind: LeagueCollection): Query {
+  const col =
+    kind === 'players'
+      ? leaguePlayersCol(leagueId)
+      : kind === 'matches'
+        ? leagueMatchesCol(leagueId)
+        : kind === 'races'
+          ? leagueRacesCol(leagueId)
+          : leagueEventsCol(leagueId);
+  if (!isCityHubLeagueId(leagueId)) {
+    return col;
+  }
+  return kind === 'players'
+    ? query(col, limit(CITY_HUB_LIMITS.players))
+    : query(col, orderBy('updatedAt', 'desc'), limit(CITY_HUB_LIMITS[kind]));
+}
+
 export function playerDocRef(leagueId: string, playerId: string): DocumentReference {
   return doc(leaguePlayersCol(leagueId), playerId);
 }
@@ -64,6 +98,10 @@ export function raceDocRef(leagueId: string, raceId: string): DocumentReference 
 
 export function eventDocRef(leagueId: string, eventId: string): DocumentReference {
   return doc(leagueEventsCol(leagueId), eventId);
+}
+
+export function leagueInviteDocRef(code: string): DocumentReference {
+  return doc(requireFirestore(), 'leagueInvites', code.toUpperCase());
 }
 
 export function playerProfileDocRef(uid: string): DocumentReference {
@@ -119,12 +157,10 @@ export function stripUndefined<T extends Record<string, unknown>>(value: T): T {
 }
 
 /**
- * User upserts use merge:true — never send null/empty membership fields or a
+ * User upserts use merge:true - never send null/empty membership fields or a
  * fresh Google session will wipe DOB, city, and leagueIds on returning users.
  */
-export function cloudUserWritePayload(
-  profile: Record<string, unknown>,
-): Record<string, unknown> {
+export function cloudUserWritePayload(profile: Record<string, unknown>): Record<string, unknown> {
   const out = stripUndefined({ ...profile });
   for (const key of ['cityId', 'cityName', 'dateOfBirth', 'activeLeagueId'] as const) {
     if (out[key] == null || out[key] === '') {

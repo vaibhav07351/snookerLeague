@@ -3,7 +3,9 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { foulPointsOf, netRaceScore } from '@/features/race/services/race-helpers';
 import type { Race, RacePlace } from '@/shared/types/domain';
-import { colors, fonts, spacing } from '@/theme/tokens';
+import { Card } from '@/shared/ui/Card';
+import { useStyles } from '@/theme/ThemeProvider';
+import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
 
 function formatPlace(place: RacePlace | null, livePlace: number): string {
   if (place === 'dnf') {
@@ -26,6 +28,7 @@ function formatPlace(place: RacePlace | null, livePlace: number): string {
 
 interface RaceLiveBoardProps {
   race: Race;
+  /** Compact display name (the caller passes short names, see `shortNames`). */
   nameOf: (playerId: string) => string;
   selectedPlayerId?: string | null;
   onSelectPlayer?: (playerId: string) => void;
@@ -37,6 +40,7 @@ export function RaceLiveBoard({
   selectedPlayerId,
   onSelectPlayer,
 }: RaceLiveBoardProps): ReactNode {
+  const styles = useStyles(makeStyles);
   const live = [...race.entrants].sort((a, b) => {
     if (a.place === 'dnf' && b.place !== 'dnf') {
       return 1;
@@ -74,9 +78,14 @@ export function RaceLiveBoard({
         : 'Level at the top';
 
   return (
-    <View style={styles.wrap}>
+    <Card tone="raised" style={styles.wrap}>
       <View style={styles.head}>
-        <Text style={styles.kicker}>Live score</Text>
+        <View style={styles.kickerRow}>
+          {race.status === 'in_progress' ? <View style={styles.liveDot} /> : null}
+          <Text style={styles.kicker}>
+            {race.status === 'in_progress' ? 'Live score' : 'Final score'}
+          </Text>
+        </View>
         <Text style={styles.leadLine} numberOfLines={1}>
           {leadLabel}
         </Text>
@@ -95,6 +104,9 @@ export function RaceLiveBoard({
             key={e.playerId}
             disabled={!canPick}
             onPress={() => onSelectPlayer?.(e.playerId)}
+            accessibilityRole={canPick ? 'button' : undefined}
+            accessibilityState={canPick ? { selected } : undefined}
+            accessibilityLabel={canPick ? `${nameOf(e.playerId)} to play` : undefined}
             style={[styles.row, selected && styles.rowOn]}
           >
             <Text style={[styles.place, leading && styles.lead]}>
@@ -110,100 +122,111 @@ export function RaceLiveBoard({
           </Pressable>
         );
       })}
-    </View>
+    </Card>
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-    padding: spacing.md,
-    borderRadius: 16,
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  head: {
-    gap: 2,
-  },
-  kicker: {
-    fontFamily: fonts.bodyBold,
-    color: colors.mint,
-    fontSize: 12,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  leadLine: {
-    fontFamily: fonts.bodyBold,
-    color: colors.goldSoft,
-    fontSize: 14,
-  },
-  legend: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 6,
-  },
-  legendPts: {
-    fontFamily: fonts.bodyBold,
-    color: colors.chalkMuted,
-    fontSize: 9,
-    width: 28,
-    textAlign: 'right',
-  },
-  legendFoul: {
-    fontFamily: fonts.bodyBold,
-    color: colors.chalkMuted,
-    fontSize: 9,
-    width: 32,
-    textAlign: 'right',
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-    marginHorizontal: -6,
-    borderRadius: 10,
-  },
-  rowOn: {
-    backgroundColor: colors.surfaceBright,
-  },
-  place: {
-    width: 32,
-    fontFamily: fonts.bodyBold,
-    color: colors.gold,
-    fontSize: 13,
-  },
-  name: {
-    flex: 1,
-    fontFamily: fonts.bodyMedium,
-    color: colors.chalk,
-    fontSize: 16,
-  },
-  lead: {
-    color: colors.goldSoft,
-    fontFamily: fonts.bodyBold,
-  },
-  pts: {
-    minWidth: 28,
-    textAlign: 'right',
-    fontFamily: fonts.display,
-    fontSize: 20,
-    color: colors.chalk,
-  },
-  ptsLead: {
-    color: colors.mint,
-  },
-  fouls: {
-    minWidth: 32,
-    textAlign: 'right',
-    fontFamily: fonts.bodyBold,
-    fontSize: 14,
-    color: colors.chalkMuted,
-  },
-  foulsOn: {
-    color: colors.coral,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    wrap: {
+      marginBottom: spacing.lg,
+    },
+    head: {
+      gap: 2,
+    },
+    kickerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    liveDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: c.live,
+    },
+    kicker: {
+      fontFamily: fonts.bodyBold,
+      color: c.textMuted,
+      fontSize: 12,
+      letterSpacing: 1,
+      textTransform: 'uppercase',
+    },
+    leadLine: {
+      fontFamily: fonts.bodyBold,
+      color: c.text,
+      fontSize: 15,
+    },
+    legend: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: spacing.sm,
+      paddingHorizontal: 6,
+    },
+    legendPts: {
+      fontFamily: fonts.bodyBold,
+      color: c.textFaint,
+      fontSize: 10,
+      minWidth: 32,
+      textAlign: 'right',
+    },
+    legendFoul: {
+      fontFamily: fonts.bodyBold,
+      color: c.textFaint,
+      fontSize: 10,
+      minWidth: 32,
+      textAlign: 'right',
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      minHeight: TOUCH_TARGET,
+      paddingHorizontal: 6,
+      marginHorizontal: -6,
+      borderRadius: radii.xs,
+      borderWidth: 1,
+      borderColor: 'transparent',
+    },
+    rowOn: {
+      backgroundColor: c.cardHighlight,
+      borderColor: c.borderStrong,
+    },
+    place: {
+      width: 36,
+      fontFamily: fonts.bodyBold,
+      color: c.textMuted,
+      fontSize: 13,
+    },
+    name: {
+      flex: 1,
+      minWidth: 0,
+      fontFamily: fonts.bodyMedium,
+      color: c.text,
+      fontSize: 16,
+    },
+    lead: {
+      color: c.primary,
+      fontFamily: fonts.bodyBold,
+    },
+    pts: {
+      minWidth: 32,
+      textAlign: 'right',
+      fontFamily: fonts.display,
+      fontSize: 20,
+      color: c.text,
+    },
+    ptsLead: {
+      color: c.primary,
+    },
+    fouls: {
+      minWidth: 32,
+      textAlign: 'right',
+      fontFamily: fonts.bodyBold,
+      fontSize: 14,
+      color: c.textFaint,
+    },
+    foulsOn: {
+      color: c.danger,
+    },
+  });

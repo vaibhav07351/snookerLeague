@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState, type ReactNode } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import {
@@ -15,7 +15,11 @@ import { TextField } from '@/features/home/components/TextField';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { DirectoryKind, DirectoryListing } from '@/shared/types/domain';
-import { colors, fonts, radii, spacing, typography } from '@/theme/tokens';
+import { Card } from '@/shared/ui/Card';
+import { EmptyState } from '@/shared/ui/EmptyState';
+import { notify } from '@/shared/ui/notify';
+import { useStyles } from '@/theme/ThemeProvider';
+import { fonts, makeTypography, spacing, type Palette } from '@/theme/tokens';
 
 function parseKind(raw: string | undefined): DirectoryKind {
   if (raw === 'table' || raw === 'referee' || raw === 'organiser' || raw === 'club') {
@@ -32,6 +36,8 @@ const ADD_LABEL: Record<DirectoryKind, string> = {
 };
 
 export default function DirectoryScreen(): ReactNode {
+  const styles = useStyles(makeStyles);
+  const typography = useStyles(makeTypography);
   const { kind: kindParam } = useLocalSearchParams<{ kind?: string }>();
   const kind = parseKind(kindParam);
   const { user } = useSession();
@@ -71,7 +77,7 @@ export default function DirectoryScreen(): ReactNode {
       setDetail('');
       setCompose(false);
     } catch (error) {
-      Alert.alert('Could not add listing', toUserMessage(error));
+      notify.error('Could not add listing', toUserMessage(error));
     } finally {
       setBusy(false);
     }
@@ -84,27 +90,35 @@ export default function DirectoryScreen(): ReactNode {
   if (!cityId) {
     return (
       <Screen>
-        <Text style={typography.title}>{heading}</Text>
-        <Text style={typography.subtitle}>Pick your city to browse the local directory.</Text>
-        <Button label="Choose city" onPress={() => router.push('/location')} />
+        <Text style={[typography.title, styles.heading]}>{heading}</Text>
+        <EmptyState
+          icon="location-outline"
+          title="Pick your city"
+          message="Choose a city to browse the local directory."
+          actionLabel="Choose city"
+          onAction={() => router.push('/location')}
+        />
       </Screen>
     );
   }
 
   return (
     <Screen>
-      <Text style={typography.label}>{user.cityName}</Text>
+      <Text style={typography.label} numberOfLines={1}>
+        {user.cityName}
+      </Text>
       <Text style={typography.title}>{heading}</Text>
-      <Text style={styles.lead}>Add a club, table, referee, or organiser others can find.</Text>
+      <Text style={styles.lead}>Add a club, table, referee or organiser others can find.</Text>
 
       <Button
         label={compose ? 'Cancel' : ADD_LABEL[kind]}
+        icon={compose ? 'close' : 'add'}
         variant={compose ? 'secondary' : 'primary'}
         onPress={() => setCompose((v) => !v)}
       />
 
       {compose ? (
-        <View style={styles.compose}>
+        <Card style={styles.compose}>
           <TextField
             label="Name"
             value={name}
@@ -115,75 +129,78 @@ export default function DirectoryScreen(): ReactNode {
             label="Details"
             value={detail}
             onChangeText={setDetail}
-            placeholder="Area, hours, contact…"
+            placeholder="Area, hours, contact"
           />
           <Button label="Save" onPress={() => void save()} loading={busy} disabled={busy} />
-        </View>
+        </Card>
       ) : null}
 
-      {rows.length === 0 ? (
-        <Text style={styles.empty}>Nothing listed yet in this city.</Text>
-      ) : (
-        rows.map((row) => (
-          <View key={row.id} style={styles.card}>
-            <Text style={styles.name}>{row.name}</Text>
-            {row.detail ? <Text style={styles.detail}>{row.detail}</Text> : null}
-            {row.createdByUid === user.uid ? (
-              <Button
-                label="Remove"
-                variant="ghost"
-                onPress={() => {
-                  void deleteDirectoryListing(row.id).catch((error: unknown) => {
-                    Alert.alert('Could not remove', toUserMessage(error));
-                  });
-                }}
-              />
-            ) : null}
-          </View>
-        ))
-      )}
+      <View style={styles.list}>
+        {rows.length === 0 ? (
+          <EmptyState
+            icon="map-outline"
+            title="Nothing listed yet"
+            message={`Be the first to add one in ${user.cityName ?? 'this city'}.`}
+          />
+        ) : (
+          rows.map((row) => (
+            <Card key={row.id}>
+              <Text style={styles.name}>{row.name}</Text>
+              {row.detail ? <Text style={styles.detail}>{row.detail}</Text> : null}
+              {row.createdByUid === user.uid ? (
+                <Button
+                  label="Remove"
+                  icon="trash-outline"
+                  variant="ghost"
+                  size="sm"
+                  style={styles.remove}
+                  onPress={() => {
+                    void deleteDirectoryListing(row.id).catch((error: unknown) => {
+                      notify.error('Could not remove', toUserMessage(error));
+                    });
+                  }}
+                />
+              ) : null}
+            </Card>
+          ))
+        )}
+      </View>
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  lead: {
-    fontFamily: fonts.body,
-    color: colors.chalkMuted,
-    fontSize: 14,
-    marginBottom: spacing.md,
-  },
-  compose: {
-    marginTop: spacing.md,
-    marginBottom: spacing.lg,
-    padding: spacing.md,
-    borderRadius: radii.md,
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  empty: {
-    fontFamily: fonts.body,
-    color: colors.chalkMuted,
-    marginTop: spacing.lg,
-  },
-  card: {
-    marginTop: spacing.md,
-    padding: spacing.md,
-    borderRadius: radii.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 4,
-  },
-  name: {
-    fontFamily: fonts.bodyBold,
-    color: colors.chalk,
-    fontSize: 16,
-  },
-  detail: {
-    fontFamily: fonts.body,
-    color: colors.chalkMuted,
-    fontSize: 14,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    heading: {
+      marginBottom: spacing.md,
+    },
+    lead: {
+      fontFamily: fonts.body,
+      color: c.textMuted,
+      fontSize: 14,
+      lineHeight: 20,
+      marginTop: spacing.xs,
+      marginBottom: spacing.md,
+    },
+    compose: {
+      marginTop: spacing.md,
+    },
+    list: {
+      marginTop: spacing.lg,
+      gap: spacing.sm,
+    },
+    name: {
+      fontFamily: fonts.bodyBold,
+      color: c.text,
+      fontSize: 16,
+    },
+    detail: {
+      fontFamily: fonts.body,
+      color: c.textMuted,
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    remove: {
+      alignSelf: 'flex-end',
+    },
+  });

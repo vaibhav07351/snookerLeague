@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { useGoogleSignIn } from '@/features/auth/hooks/use-google-sign-in';
 import { useSession } from '@/features/auth/hooks/use-session';
@@ -15,10 +15,17 @@ import { Screen } from '@/features/home/components/Screen';
 import { TextField } from '@/features/home/components/TextField';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { isFirebaseEnabled } from '@/shared/firebase/app';
-import { colors, fonts, radii, spacing, typography } from '@/theme/tokens';
+import { useLayout } from '@/shared/hooks/use-layout';
+import { Card } from '@/shared/ui/Card';
+import { notify } from '@/shared/ui/notify';
+import { useStyles } from '@/theme/ThemeProvider';
+import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
 
 export default function LoginScreen(): ReactNode {
   const { refresh } = useSession();
+  const styles = useStyles(makeStyles);
+  const typography = useStyles(makeTypography);
+  const { scale } = useLayout();
   const { ready: googleReady, promptIdToken } = useGoogleSignIn();
   const [name, setName] = useState('');
   const [dob, setDob] = useState('');
@@ -48,7 +55,7 @@ export default function LoginScreen(): ReactNode {
       await refresh();
       router.replace('/');
     } catch (error) {
-      Alert.alert('Could not sign in', toUserMessage(error));
+      notify.error('Could not sign in', toUserMessage(error));
     } finally {
       setBusy(false);
     }
@@ -56,18 +63,21 @@ export default function LoginScreen(): ReactNode {
 
   async function onGoogle(): Promise<void> {
     if (!isFirebaseEnabled()) {
-      Alert.alert(
+      notify.info(
         'Almost there',
-        'Cloud sign-in needs a one-time Firebase setup. For now, enter your name above and tap Get started — everything works on this phone.',
+        'Cloud sign-in needs a one-time Firebase setup. For now, enter your name below and tap Try without an account: everything works on this phone.',
       );
       return;
     }
     if (!googleReady) {
-      Alert.alert('Google sign-in failed', 'Auth request is still loading. Try again in a moment.');
+      notify.error(
+        'Google sign-in failed',
+        'Auth request is still loading. Try again in a moment.',
+      );
       return;
     }
     try {
-      // Do not set busy before the account picker — Android Google Sign-In
+      // Do not set busy before the account picker: Android Google Sign-In
       // fails when another modal/loading state is already on screen.
       const idToken = await promptIdToken();
       if (!idToken) {
@@ -85,7 +95,7 @@ export default function LoginScreen(): ReactNode {
       await refresh();
       router.replace('/');
     } catch (error) {
-      Alert.alert('Google sign-in failed', toUserMessage(error));
+      notify.error('Google sign-in failed', toUserMessage(error));
     } finally {
       setBusy(false);
     }
@@ -94,30 +104,40 @@ export default function LoginScreen(): ReactNode {
   return (
     <Screen keyboardVerticalOffset={0}>
       <View style={styles.hero}>
-        <BrandLogo size={112} style={styles.logo} />
+        <BrandLogo size={scale(96)} style={styles.logo} />
         <Text style={typography.label}>Your table. Your city.</Text>
         <BrandWordmark />
-        <Text style={styles.tagline}>
-          Live score every shot, find the best players in your city, and crown who rules the table.
+        <Text style={[typography.subtitle, styles.tagline]}>
+          Live-score snooker with your friends and see who rules the table in your city.
         </Text>
       </View>
 
-      <View style={styles.steps}>
-        {[
-          { n: '1', t: 'Tell us your name and date of birth' },
-          { n: '2', t: 'Pick your city' },
-          { n: '3', t: 'Live-score matches & races' },
-        ].map((step) => (
-          <View key={step.n} style={styles.stepRow}>
-            <View style={styles.stepBadge}>
-              <Text style={styles.stepNum}>{step.n}</Text>
-            </View>
-            <Text style={styles.stepText}>{step.t}</Text>
-          </View>
-        ))}
+      <Card tone="highlight" style={styles.googleCard}>
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>Recommended</Text>
+        </View>
+        <Button
+          label="Continue with Google"
+          icon="logo-google"
+          onPress={() => void onGoogle()}
+          disabled={busy || !googleReady}
+        />
+        <Text style={styles.googleNote}>
+          Needed to join your friends&apos; leagues and keep your scores synced across devices.
+        </Text>
+      </Card>
+
+      <View style={styles.divider}>
+        <View style={styles.dividerLine} />
+        <Text style={styles.dividerText}>or</Text>
+        <View style={styles.dividerLine} />
       </View>
 
-      <View style={styles.form}>
+      <View style={styles.demo}>
+        <Text style={typography.heading}>Try without an account</Text>
+        <Text style={[typography.caption, styles.demoNote]}>
+          Demo mode: everything stays on this device only.
+        </Text>
         <TextField
           label="What should we call you?"
           value={name}
@@ -136,75 +156,78 @@ export default function LoginScreen(): ReactNode {
           hint="This is how you appear on the leaderboard"
         />
         <DateOfBirthField value={dob} onChange={setDob} error={dobError} />
-        <Button label="Get started" loading={busy} onPress={() => void onDemo()} disabled={busy} />
         <Button
-          label="Continue with Google"
+          label="Try without an account"
           variant="secondary"
-          onPress={() => void onGoogle()}
-          disabled={busy || !googleReady}
-          style={styles.google}
+          loading={busy}
+          onPress={() => void onDemo()}
+          disabled={busy}
         />
       </View>
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  hero: {
-    marginTop: spacing.lg,
-    marginBottom: spacing.lg,
-    gap: spacing.sm,
-    alignItems: 'flex-start',
-  },
-  logo: {
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-  },
-  tagline: {
-    ...typography.subtitle,
-    maxWidth: 340,
-    marginTop: spacing.xs,
-  },
-  steps: {
-    gap: spacing.sm,
-    marginBottom: spacing.xl,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.lg,
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  stepRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  stepBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.gold,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepNum: {
-    fontFamily: fonts.bodyBold,
-    color: colors.felt,
-    fontSize: 13,
-  },
-  stepText: {
-    fontFamily: fonts.bodyMedium,
-    color: colors.chalk,
-    fontSize: 15,
-  },
-  form: {
-    // On native, pin the form to the bottom of tall screens. On web that creates a
-    // huge empty gap before the fields — keep natural flow instead.
-    marginTop: Platform.OS === 'web' ? spacing.md : 'auto',
-  },
-  google: {
-    marginTop: spacing.sm,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    hero: {
+      marginTop: spacing.md,
+      marginBottom: spacing.lg,
+      gap: spacing.sm,
+      alignItems: 'flex-start',
+    },
+    logo: {
+      marginBottom: spacing.sm,
+      borderWidth: 1,
+      borderColor: c.borderStrong,
+    },
+    tagline: {
+      maxWidth: 360,
+    },
+    googleCard: {
+      gap: spacing.sm,
+      padding: spacing.md,
+    },
+    badge: {
+      alignSelf: 'flex-start',
+      paddingHorizontal: 10,
+      paddingVertical: 3,
+      borderRadius: radii.pill,
+      backgroundColor: c.primary,
+    },
+    badgeText: {
+      fontFamily: fonts.bodyBold,
+      color: c.onPrimary,
+      fontSize: 11,
+      letterSpacing: 0.6,
+      textTransform: 'uppercase',
+    },
+    googleNote: {
+      fontFamily: fonts.body,
+      color: c.textMuted,
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    divider: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginVertical: spacing.lg,
+    },
+    dividerLine: {
+      flex: 1,
+      height: 1,
+      backgroundColor: c.border,
+    },
+    dividerText: {
+      fontFamily: fonts.bodyMedium,
+      color: c.textFaint,
+      fontSize: 13,
+    },
+    demo: {
+      gap: spacing.xs,
+    },
+    demoNote: {
+      marginBottom: spacing.md,
+    },
+  });

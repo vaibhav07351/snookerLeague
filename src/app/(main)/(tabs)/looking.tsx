@@ -1,6 +1,7 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useState, type ReactNode } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import {
@@ -15,12 +16,21 @@ import { TextField } from '@/features/home/components/TextField';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { LookingKind, LookingPost } from '@/shared/types/domain';
-import { colors, fonts, radii, spacing, typography } from '@/theme/tokens';
+import { Card } from '@/shared/ui/Card';
+import { Chip } from '@/shared/ui/Chip';
+import { EmptyState } from '@/shared/ui/EmptyState';
+import { notify } from '@/shared/ui/notify';
+import { SectionTitle } from '@/shared/ui/SectionTitle';
+import { usePalette, useStyles } from '@/theme/ThemeProvider';
+import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
 
 const KINDS: Array<LookingKind | 'all'> = ['all', 'opponent', 'player', 'club', 'table'];
 
 export default function LookingScreen(): ReactNode {
   const { user } = useSession();
+  const styles = useStyles(makeStyles);
+  const typography = useStyles(makeTypography);
+  const palette = usePalette();
   const [posts, setPosts] = useState<LookingPost[]>([]);
   const [kind, setKind] = useState<LookingKind | 'all'>('all');
   const [includeClosed, setIncludeClosed] = useState(false);
@@ -59,7 +69,7 @@ export default function LookingScreen(): ReactNode {
       setBody('');
       setCompose(false);
     } catch (error) {
-      Alert.alert('Could not post', toUserMessage(error));
+      notify.error('Could not post', toUserMessage(error));
     } finally {
       setBusy(false);
     }
@@ -73,10 +83,16 @@ export default function LookingScreen(): ReactNode {
     return (
       <Screen>
         <Text style={typography.title}>Looking</Text>
-        <Text style={typography.subtitle}>
-          Pick your city to find opponents, clubs, and tables.
+        <Text style={[typography.subtitle, styles.lead]}>
+          Find opponents, players, clubs and tables near you.
         </Text>
-        <Button label="Choose city" onPress={() => router.push('/location')} />
+        <EmptyState
+          icon="location-outline"
+          title="Pick your city first"
+          message="Looking posts are shared with players in the same city."
+          actionLabel="Choose city"
+          onAction={() => router.push('/location')}
+        />
       </Screen>
     );
   }
@@ -84,46 +100,31 @@ export default function LookingScreen(): ReactNode {
   return (
     <Screen>
       <Text style={typography.label}>Looking in</Text>
-      <Text style={typography.title}>{user.cityName}</Text>
-      <Text style={styles.lead}>Post what you need. Closed posts stay visible with a stamp.</Text>
-
-      <View style={styles.chipRow}>
-        {KINDS.map((k) => (
-          <Pressable
-            key={k}
-            onPress={() => setKind(k)}
-            style={[styles.chip, kind === k && styles.chipOn]}
-          >
-            <Text style={[styles.chipText, kind === k && styles.chipTextOn]}>
-              {k === 'all' ? 'All' : LOOKING_KIND_LABEL[k]}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      <Pressable onPress={() => setIncludeClosed((v) => !v)} style={styles.toggle}>
-        <Text style={styles.toggleText}>{includeClosed ? 'Showing closed' : 'Open only'}</Text>
-      </Pressable>
+      <Text style={typography.title} numberOfLines={2}>
+        {user.cityName}
+      </Text>
+      <Text style={[typography.subtitle, styles.lead]}>
+        Post what you need. Closed posts stay visible with a stamp.
+      </Text>
 
       <Button
         label={compose ? 'Cancel post' : 'New Looking post'}
+        icon={compose ? 'close' : 'add'}
         variant={compose ? 'secondary' : 'primary'}
         onPress={() => setCompose((v) => !v)}
       />
 
       {compose ? (
-        <View style={styles.compose}>
+        <Card tone="raised" style={styles.compose}>
+          <Text style={typography.label}>What are you looking for?</Text>
           <View style={styles.chipRow}>
             {(Object.keys(LOOKING_KIND_LABEL) as LookingKind[]).map((k) => (
-              <Pressable
+              <Chip
                 key={k}
+                label={LOOKING_KIND_LABEL[k]}
+                selected={draftKind === k}
                 onPress={() => setDraftKind(k)}
-                style={[styles.chip, draftKind === k && styles.chipOn]}
-              >
-                <Text style={[styles.chipText, draftKind === k && styles.chipTextOn]}>
-                  {LOOKING_KIND_LABEL[k]}
-                </Text>
-              </Pressable>
+              />
             ))}
           </View>
           <TextField
@@ -136,144 +137,162 @@ export default function LookingScreen(): ReactNode {
             label="Details"
             value={body}
             onChangeText={setBody}
-            placeholder="Best of 5, around 7pm…"
+            placeholder="Best of 5, around 7pm..."
           />
           <Button label="Post" onPress={() => void publish()} loading={busy} disabled={busy} />
-        </View>
+        </Card>
       ) : null}
 
+      <SectionTitle title="Posts" />
+      <View style={styles.chipRow}>
+        {KINDS.map((k) => (
+          <Chip
+            key={k}
+            label={k === 'all' ? 'All' : LOOKING_KIND_LABEL[k]}
+            selected={kind === k}
+            onPress={() => setKind(k)}
+          />
+        ))}
+      </View>
+      <View style={styles.closedRow}>
+        <Chip
+          label={includeClosed ? 'Showing closed' : 'Open only'}
+          selected={includeClosed}
+          onPress={() => setIncludeClosed((v) => !v)}
+        />
+      </View>
+
       {posts.length === 0 ? (
-        <Text style={styles.empty}>No Looking posts in this city yet.</Text>
+        <EmptyState
+          icon="search-outline"
+          title="No Looking posts in this city yet"
+          message="Be the first: tell local players what you need."
+          actionLabel={compose ? undefined : 'New Looking post'}
+          onAction={compose ? undefined : () => setCompose(true)}
+        />
       ) : (
-        posts.map((p) => {
-          const mine = p.createdByUid === user.uid;
-          return (
-            <View key={p.id} style={styles.card}>
-              <View style={styles.cardHead}>
-                <Text style={styles.kind}>{LOOKING_KIND_LABEL[p.kind]}</Text>
-                {p.status === 'closed' ? <Text style={styles.stamp}>CLOSED</Text> : null}
-              </View>
-              <Text style={styles.title}>{p.title}</Text>
-              {p.body ? <Text style={styles.body}>{p.body}</Text> : null}
-              <Pressable onPress={() => router.push(`/(main)/city-player?uid=${p.createdByUid}`)}>
-                <Text style={styles.author}>{p.authorName}</Text>
-              </Pressable>
-              {mine && p.status === 'open' ? (
-                <Button
-                  label="Mark closed"
-                  variant="secondary"
-                  onPress={() => {
-                    void closeLookingPost(p.id).catch((error: unknown) => {
-                      Alert.alert('Could not close', toUserMessage(error));
-                    });
-                  }}
-                />
-              ) : null}
-            </View>
-          );
-        })
+        <View style={styles.list}>
+          {posts.map((p) => {
+            const mine = p.createdByUid === user.uid;
+            const closed = p.status === 'closed';
+            return (
+              <Card key={p.id} style={closed ? styles.closedCard : undefined}>
+                <View style={styles.cardHead}>
+                  <Text style={styles.kind} numberOfLines={1}>
+                    {LOOKING_KIND_LABEL[p.kind]}
+                  </Text>
+                  {closed ? <Text style={styles.stamp}>CLOSED</Text> : null}
+                </View>
+                <Text style={styles.title}>{p.title}</Text>
+                {p.body ? <Text style={styles.body}>{p.body}</Text> : null}
+                <Pressable
+                  accessibilityRole="link"
+                  hitSlop={8}
+                  style={styles.authorRow}
+                  onPress={() => router.push(`/(main)/city-player?uid=${p.createdByUid}`)}
+                >
+                  <Ionicons name="person-circle-outline" size={18} color={palette.info} />
+                  <Text style={styles.author} numberOfLines={1}>
+                    {p.authorName}
+                  </Text>
+                </Pressable>
+                {mine && p.status === 'open' ? (
+                  <Button
+                    label="Mark closed"
+                    size="sm"
+                    variant="secondary"
+                    onPress={() => {
+                      void closeLookingPost(p.id).catch((error: unknown) => {
+                        notify.error('Could not close', toUserMessage(error));
+                      });
+                    }}
+                  />
+                ) : null}
+              </Card>
+            );
+          })}
+        </View>
       )}
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  lead: {
-    fontFamily: fonts.body,
-    color: colors.chalkMuted,
-    fontSize: 14,
-    marginBottom: spacing.md,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: spacing.sm,
-  },
-  chip: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  chipOn: {
-    borderColor: colors.gold,
-    backgroundColor: colors.surfaceBright,
-  },
-  chipText: {
-    fontFamily: fonts.bodyMedium,
-    color: colors.chalk,
-    fontSize: 12,
-  },
-  chipTextOn: {
-    color: colors.goldSoft,
-    fontFamily: fonts.bodyBold,
-  },
-  toggle: {
-    alignSelf: 'flex-start',
-    marginBottom: spacing.md,
-  },
-  toggleText: {
-    fontFamily: fonts.bodyBold,
-    color: colors.mint,
-    fontSize: 13,
-  },
-  compose: {
-    marginTop: spacing.md,
-    marginBottom: spacing.lg,
-    padding: spacing.md,
-    borderRadius: radii.md,
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  empty: {
-    fontFamily: fonts.body,
-    color: colors.chalkMuted,
-    marginTop: spacing.lg,
-  },
-  card: {
-    marginTop: spacing.md,
-    padding: spacing.md,
-    borderRadius: radii.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 6,
-  },
-  cardHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  kind: {
-    fontFamily: fonts.bodyBold,
-    color: colors.goldSoft,
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  stamp: {
-    fontFamily: fonts.bodyBold,
-    color: colors.coral,
-    fontSize: 11,
-    letterSpacing: 1.2,
-  },
-  title: {
-    fontFamily: fonts.bodyBold,
-    color: colors.chalk,
-    fontSize: 16,
-  },
-  body: {
-    fontFamily: fonts.body,
-    color: colors.chalkMuted,
-    fontSize: 14,
-  },
-  author: {
-    fontFamily: fonts.bodyMedium,
-    color: colors.sky,
-    fontSize: 13,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    lead: {
+      marginTop: spacing.xs,
+      marginBottom: spacing.md,
+    },
+    chipRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+    },
+    closedRow: {
+      flexDirection: 'row',
+      marginTop: spacing.sm,
+      marginBottom: spacing.md,
+    },
+    compose: {
+      marginTop: spacing.md,
+      gap: spacing.md,
+    },
+    list: {
+      gap: spacing.sm,
+    },
+    closedCard: {
+      opacity: 0.75,
+    },
+    cardHead: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    kind: {
+      flexShrink: 1,
+      fontFamily: fonts.bodyBold,
+      color: c.primary,
+      fontSize: 11,
+      letterSpacing: 1,
+      textTransform: 'uppercase',
+    },
+    stamp: {
+      fontFamily: fonts.bodyBold,
+      color: c.textMuted,
+      fontSize: 11,
+      letterSpacing: 1.2,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 2,
+      borderRadius: radii.pill,
+      borderWidth: 1,
+      borderColor: c.border,
+      overflow: 'hidden',
+    },
+    title: {
+      fontFamily: fonts.bodyBold,
+      color: c.text,
+      fontSize: 16,
+      lineHeight: 22,
+    },
+    body: {
+      fontFamily: fonts.body,
+      color: c.textMuted,
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    authorRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      gap: 4,
+      minHeight: 32,
+      maxWidth: '100%',
+    },
+    author: {
+      flexShrink: 1,
+      fontFamily: fonts.bodyMedium,
+      color: c.info,
+      fontSize: 13,
+    },
+  });

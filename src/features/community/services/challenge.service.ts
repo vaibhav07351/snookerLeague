@@ -5,6 +5,8 @@ import * as cityHubService from '@/features/league/services/city-hub.service';
 import * as matchService from '@/features/match/services/match.service';
 import * as playersService from '@/features/players/services/players.service';
 import { AppError } from '@/shared/errors/app-error';
+import { mergeRemoteRows, pendingDocIdsOf } from '@/shared/sync/merge';
+import { withTimeout } from '@/shared/utils/timeout';
 import { logger } from '@/shared/logging/logger';
 import { createId, nowIso } from '@/shared/utils/id';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
@@ -78,7 +80,11 @@ export async function createChallenge(input: {
     createdAt: now,
     updatedAt: now,
   };
-  await updateStore((s) => ({ ...s, challenges: [...s.challenges, challenge] }));
+  await updateStore((s) =>
+    s.challenges.some((c) => c.id === challenge.id)
+      ? s
+      : { ...s, challenges: [...s.challenges, challenge] },
+  );
   await scheduleSync([
     {
       entity: 'challenge',
@@ -133,7 +139,14 @@ export async function acceptChallenge(
     throw new AppError('INVALID_STATE', 'Challenge is no longer pending');
   }
 
-  const hub = await cityHubService.ensureCityHub({
+  if (user.cityId !== challenge.cityId) {
+    throw new AppError(
+      'INVALID_STATE',
+      'This challenge is for another city. Set that city in your profile to play it.',
+    );
+  }
+  // Only ever join the hub as yourself; the challenger joined it when they set their city.
+  const cityLeague = await cityHubService.ensureCityHub({
     cityId: challenge.cityId,
     cityName: user.cityName ?? challenge.cityId,
     uid: user.uid,
@@ -141,21 +154,14 @@ export async function acceptChallenge(
     photoUrl: user.photoUrl,
     leaveCityId: null,
   });
-  const fromHub = await cityHubService.ensureCityHub({
-    cityId: challenge.cityId,
-    cityName: user.cityName ?? challenge.cityId,
-    uid: challenge.fromUid,
-    displayName:
-      getStore().playerProfiles.find((p) => p.uid === challenge.fromUid)?.displayName ?? 'Player',
-    photoUrl: getStore().playerProfiles.find((p) => p.uid === challenge.fromUid)?.photoUrl ?? null,
-    leaveCityId: null,
-  });
-  const cityLeague = hub.id === fromHub.id ? hub : fromHub;
   const roster = await playersService.listPlayers(cityLeague.id);
   const me = roster.find((p) => p.authUid === user.uid);
   const them = roster.find((p) => p.authUid === challenge.fromUid);
   if (!me || !them) {
-    throw new AppError('INVALID_STATE', 'Both players must be in the city hub');
+    throw new AppError(
+      'INVALID_STATE',
+      'Your challenger is not in the city hub yet. Ask them to open Snookit, then try again.',
+    );
   }
 
   const match = await matchService.createMatch({
@@ -197,31 +203,32 @@ async function persistChallenge(next: Challenge): Promise<void> {
   ]);
 }
 
-export async function listMyChallenges(): Promise<Challenge[]> {
+export async function listMyChallenges(opts: { refresh?: boolean } = {}): Promise<Challenge[]> {
   await loadStore();
   const user = getStore().user;
   if (!user) {
     return [];
   }
-  if (shouldCloudSync(user) && isOnline()) {
+  // refresh: false reads only this phone's copy (for re-renders on local changes).
+  if (opts.refresh !== false && shouldCloudSync(user) && isOnline()) {
     try {
       const col = collection(requireFirestore(), 'challenges');
-      const [inbox, outbox] = await Promise.all([
-        getDocs(
-          query(col, where('toUid', '==', user.uid), orderBy('createdAt', 'desc'), limit(20)),
-        ),
-        getDocs(
-          query(col, where('fromUid', '==', user.uid), orderBy('createdAt', 'desc'), limit(20)),
-        ),
-      ]);
+      const [inbox, outbox] = await withTimeout(
+        Promise.all([
+          getDocs(
+            query(col, where('toUid', '==', user.uid), orderBy('createdAt', 'desc'), limit(20)),
+          ),
+          getDocs(
+            query(col, where('fromUid', '==', user.uid), orderBy('createdAt', 'desc'), limit(20)),
+          ),
+        ]),
+        'challenges',
+      );
       const remote = [...inbox.docs, ...outbox.docs].map((d) => asChallenge(d.data(), d.id));
-      await updateStore((s) => {
-        const map = new Map(s.challenges.map((c) => [c.id, c]));
-        for (const row of remote) {
-          map.set(row.id, row);
-        }
-        return { ...s, challenges: [...map.values()] };
-      });
+      await updateStore((s) => ({
+        ...s,
+        challenges: mergeRemoteRows(s.challenges, remote, pendingDocIdsOf(s.pendingOps)),
+      }));
     } catch (error) {
       logger.error('challenge.service', 'Challenge query failed', {
         shape: error instanceof Error ? error.name : 'unknown',

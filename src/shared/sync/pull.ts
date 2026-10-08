@@ -1,30 +1,38 @@
-import { collection, getDoc, getDocs, limit, query, where } from 'firebase/firestore';
+import { getDoc, getDocs } from 'firebase/firestore';
 
 import { logger } from '@/shared/logging/logger';
 import { getStore, updateStore } from '@/shared/storage/local-store';
 import {
+  leagueCollectionQuery,
   leagueDocRef,
-  leagueEventsCol,
-  leagueMatchesCol,
-  leaguePlayersCol,
-  leagueRacesCol,
-  requireFirestore,
+  leagueInviteDocRef,
+  eventDocRef,
+  matchDocRef,
+  playerDocRef,
+  raceDocRef,
   userDocRef,
 } from '@/shared/sync/firestore-paths';
+import {
+  dropUnreachableLeague,
+  markLeaguesInCloud,
+  removeLeagueLocally,
+} from '@/shared/sync/cloud-leagues';
 import { firebaseErrorMeta } from '@/shared/sync/firebase-error';
-import { mergeLeagueScoped, mergeLeagues } from '@/shared/sync/merge';
+import { mergeLeagueScoped, mergeLeagues, resolveMatch } from '@/shared/sync/merge';
 import type {
   CloudUserProfile,
   FeedEvent,
   League,
+  LeagueInvite,
   Match,
+  PendingOp,
   Player,
   Race,
 } from '@/shared/types/domain';
-import { emptyRaceStats, emptyStandardStats } from '@/shared/types/domain';
+import { emptyRaceStats, emptyStandardStats, leagueKindOf } from '@/shared/types/domain';
 
 const READ_TIMEOUT_MS = 25_000;
-/** Stable fallback — never use nowIso() in mappers or every read looks like a change. */
+/** Stable fallback - never use nowIso() in mappers or every read looks like a change. */
 const MISSING_TS = '1970-01-01T00:00:00.000Z';
 
 async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
@@ -149,10 +157,10 @@ export async function fetchLeagueBundle(leagueId: string): Promise<{
   const league = asLeague(leagueSnap.data(), leagueId);
 
   const [playersSnap, matchesSnap, racesSnap, eventsSnap] = await Promise.all([
-    withTimeout(getDocs(leaguePlayersCol(leagueId)), `players ${leagueId}`),
-    withTimeout(getDocs(leagueMatchesCol(leagueId)), `matches ${leagueId}`),
-    withTimeout(getDocs(leagueRacesCol(leagueId)), `races ${leagueId}`),
-    withTimeout(getDocs(leagueEventsCol(leagueId)), `events ${leagueId}`),
+    withTimeout(getDocs(leagueCollectionQuery(leagueId, 'players')), `players ${leagueId}`),
+    withTimeout(getDocs(leagueCollectionQuery(leagueId, 'matches')), `matches ${leagueId}`),
+    withTimeout(getDocs(leagueCollectionQuery(leagueId, 'races')), `races ${leagueId}`),
+    withTimeout(getDocs(leagueCollectionQuery(leagueId, 'events')), `events ${leagueId}`),
   ]);
 
   return {
@@ -164,19 +172,30 @@ export async function fetchLeagueBundle(leagueId: string): Promise<{
   };
 }
 
-export async function findLeagueByInviteCode(code: string): Promise<League | null> {
-  const db = requireFirestore();
-  const q = query(
-    collection(db, 'leagues'),
-    where('inviteCode', '==', code.toUpperCase()),
-    limit(1),
-  );
-  const snap = await withTimeout(getDocs(q), `invite ${code}`);
-  const first = snap.docs[0];
-  if (!first) {
+/** Resolve an invite code to its league (a point read; codes cannot be listed). */
+export async function fetchLeagueInvite(code: string): Promise<LeagueInvite | null> {
+  const upper = code.trim().toUpperCase();
+  const snap = await withTimeout(getDoc(leagueInviteDocRef(upper)), `invite ${upper}`);
+  if (!snap.exists()) {
     return null;
   }
-  return asLeague(first.data(), first.id);
+  const data = snap.data();
+  if (typeof data.leagueId !== 'string' || data.leagueId.length === 0) {
+    return null;
+  }
+  return {
+    code: upper,
+    leagueId: data.leagueId,
+    leagueName: String(data.leagueName ?? 'League'),
+    createdByUid: String(data.createdByUid ?? ''),
+    updatedAt: String(data.updatedAt ?? MISSING_TS),
+  };
+}
+
+/** True when the league document already exists in Firestore. */
+export async function leagueExistsRemote(leagueId: string): Promise<boolean> {
+  const snap = await withTimeout(getDoc(leagueDocRef(leagueId)), `exists league/${leagueId}`);
+  return snap.exists();
 }
 
 /** Merge one league bundle into local store (LWW; skip pending ids). */
@@ -191,13 +210,14 @@ export async function applyLeagueBundleToLocal(bundle: {
     return;
   }
   const leagueId = bundle.league.id;
+  await markLeaguesInCloud([leagueId]);
   const pending = pendingIds();
 
   await updateStore((s) => ({
     ...s,
     leagues: mergeLeagues(s.leagues, [bundle.league!], pending),
     players: mergeLeagueScoped(s.players, leagueId, bundle.players, pending),
-    matches: mergeLeagueScoped(s.matches, leagueId, bundle.matches, pending),
+    matches: mergeLeagueScoped(s.matches, leagueId, bundle.matches, pending, resolveMatch),
     races: mergeLeagueScoped(s.races, leagueId, bundle.races, pending),
     events: mergeLeagueScoped(s.events, leagueId, bundle.events, pending),
   }));
@@ -217,20 +237,35 @@ export async function pullUserAndLeagues(uid: string): Promise<void> {
 
     const remoteLeagues: League[] = [];
     for (const leagueId of leagueIds) {
-      const bundle = await fetchLeagueBundle(leagueId);
-      if (bundle.league) {
-        remoteLeagues.push(bundle.league);
-        await applyLeagueBundleToLocal(bundle);
+      try {
+        const bundle = await fetchLeagueBundle(leagueId);
+        if (bundle.league) {
+          remoteLeagues.push(bundle.league);
+          await applyLeagueBundleToLocal(bundle);
+        }
+      } catch (error) {
+        // One league we cannot read must not stop every other league from syncing.
+        const meta = firebaseErrorMeta(error);
+        if (meta.code === 'permission-denied') {
+          await dropUnreachableLeague(leagueId);
+        } else {
+          logger.warn('sync.pull', 'Skipping league that could not be read', { ...meta, leagueId });
+        }
       }
     }
 
     const pending = pendingIds();
     await updateStore((s) => {
+      // Only follow a league this phone actually has and is a member of.
+      const usable = (id: string | null | undefined): boolean =>
+        id != null && s.leagues.some((l) => l.id === id && l.memberUids.includes(uid));
       let activeLeagueId = s.activeLeagueId;
-      if (profile?.activeLeagueId) {
-        activeLeagueId = profile.activeLeagueId;
-      } else if (activeLeagueId && !s.leagues.some((l) => l.id === activeLeagueId)) {
-        activeLeagueId = s.leagues.find((l) => l.memberUids.includes(uid))?.id ?? null;
+      if (usable(profile?.activeLeagueId)) {
+        activeLeagueId = profile!.activeLeagueId;
+      } else if (!usable(activeLeagueId)) {
+        activeLeagueId =
+          s.leagues.find((l) => l.memberUids.includes(uid) && leagueKindOf(l) !== 'city')?.id ??
+          null;
       }
       return {
         ...s,
@@ -257,5 +292,85 @@ export async function pullUserAndLeagues(uid: string): Promise<void> {
       uid,
     });
     throw error;
+  }
+}
+
+type LeagueRowKey = 'players' | 'matches' | 'races' | 'events';
+
+/** Replace (or remove, when `row` is null) one league-scoped row, ignoring timestamps. */
+async function forceLocalRow<T extends { id: string }>(
+  key: LeagueRowKey,
+  id: string,
+  row: T | null,
+): Promise<void> {
+  if (!row) {
+    // Nothing on the server (a rejected create): keep this phone's copy rather than lose it.
+    return;
+  }
+  await updateStore((s) => {
+    const rows = s[key] as unknown as T[];
+    const without = rows.filter((r) => r.id !== id);
+    return { ...s, [key]: row ? [...without, row] : without };
+  });
+}
+
+/**
+ * The server refused one of our writes: load what it really holds so this phone stops
+ * showing a change nobody else can see (e.g. a guest card someone else claimed first).
+ */
+export async function refetchAfterRejection(op: PendingOp): Promise<void> {
+  try {
+    if (op.entity === 'league') {
+      const snap = await withTimeout(getDoc(leagueDocRef(op.docId)), `refetch league/${op.docId}`);
+      if (!snap.exists()) {
+        await removeLeagueLocally(op.docId);
+        return;
+      }
+      const league = asLeague(snap.data(), op.docId);
+      await updateStore((s) => ({
+        ...s,
+        leagues: s.leagues.map((l) => (l.id === league.id ? league : l)),
+      }));
+      return;
+    }
+    const leagueId = op.leagueId;
+    if (!leagueId) {
+      return;
+    }
+    if (op.entity === 'player') {
+      const snap = await withTimeout(getDoc(playerDocRef(leagueId, op.docId)), 'refetch player');
+      await forceLocalRow(
+        'players',
+        op.docId,
+        snap.exists() ? asPlayer(snap.data(), op.docId, leagueId) : null,
+      );
+    } else if (op.entity === 'match') {
+      const snap = await withTimeout(getDoc(matchDocRef(leagueId, op.docId)), 'refetch match');
+      await forceLocalRow(
+        'matches',
+        op.docId,
+        snap.exists() ? asMatch(snap.data(), op.docId, leagueId) : null,
+      );
+    } else if (op.entity === 'race') {
+      const snap = await withTimeout(getDoc(raceDocRef(leagueId, op.docId)), 'refetch race');
+      await forceLocalRow(
+        'races',
+        op.docId,
+        snap.exists() ? asRace(snap.data(), op.docId, leagueId) : null,
+      );
+    } else if (op.entity === 'event') {
+      const snap = await withTimeout(getDoc(eventDocRef(leagueId, op.docId)), 'refetch event');
+      await forceLocalRow(
+        'events',
+        op.docId,
+        snap.exists() ? asEvent(snap.data(), op.docId, leagueId) : null,
+      );
+    }
+  } catch (error) {
+    logger.warn('sync.pull', 'Could not refetch after a rejected write', {
+      ...firebaseErrorMeta(error),
+      entity: op.entity,
+      docId: op.docId,
+    });
   }
 }

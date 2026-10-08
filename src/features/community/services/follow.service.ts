@@ -2,6 +2,8 @@ import { getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import { z } from 'zod';
 
 import { AppError } from '@/shared/errors/app-error';
+import { mergeRemoteRows, pendingDocIdsOf } from '@/shared/sync/merge';
+import { withTimeout } from '@/shared/utils/timeout';
 import { logger } from '@/shared/logging/logger';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { isOnline } from '@/shared/sync/connectivity';
@@ -29,13 +31,10 @@ function asFollow(data: Record<string, unknown>, id: string): FollowEdge {
 }
 
 async function mergeRemote(rows: FollowEdge[]): Promise<void> {
-  await updateStore((s) => {
-    const map = new Map(s.follows.map((row) => [row.id, row]));
-    for (const row of rows) {
-      map.set(row.id, row);
-    }
-    return { ...s, follows: [...map.values()] };
-  });
+  await updateStore((s) => ({
+    ...s,
+    follows: mergeRemoteRows(s.follows, rows, pendingDocIdsOf(s.pendingOps)),
+  }));
 }
 
 export async function followPlayer(followingUid: string): Promise<FollowEdge> {
@@ -64,7 +63,10 @@ export async function followPlayer(followingUid: string): Promise<FollowEdge> {
     createdAt: now,
     updatedAt: now,
   };
-  await updateStore((s) => ({ ...s, follows: [...s.follows, edge] }));
+  // Checked inside the update too, so a double tap never adds the same edge twice.
+  await updateStore((s) =>
+    s.follows.some((row) => row.id === edge.id) ? s : { ...s, follows: [...s.follows, edge] },
+  );
   await scheduleSync([
     {
       entity: 'follow',
@@ -117,32 +119,39 @@ export function isFollowing(followerUid: string, followingUid: string): boolean 
   );
 }
 
-export async function listFollowGraph(uid: string): Promise<{
+export async function listFollowGraph(
+  uid: string,
+  opts: { refresh?: boolean } = {},
+): Promise<{
   followers: FollowEdge[];
   following: FollowEdge[];
 }> {
   await loadStore();
   const user = getStore().user;
-  if (shouldCloudSync(user) && isOnline()) {
+  // refresh: false reads only this phone's copy (for re-renders on local changes).
+  if (opts.refresh !== false && shouldCloudSync(user) && isOnline()) {
     try {
-      const [followersSnap, followingSnap] = await Promise.all([
-        getDocs(
-          query(
-            followsCol(),
-            where('followingUid', '==', uid),
-            orderBy('createdAt', 'desc'),
-            limit(PAGE),
+      const [followersSnap, followingSnap] = await withTimeout(
+        Promise.all([
+          getDocs(
+            query(
+              followsCol(),
+              where('followingUid', '==', uid),
+              orderBy('createdAt', 'desc'),
+              limit(PAGE),
+            ),
           ),
-        ),
-        getDocs(
-          query(
-            followsCol(),
-            where('followerUid', '==', uid),
-            orderBy('createdAt', 'desc'),
-            limit(PAGE),
+          getDocs(
+            query(
+              followsCol(),
+              where('followerUid', '==', uid),
+              orderBy('createdAt', 'desc'),
+              limit(PAGE),
+            ),
           ),
-        ),
-      ]);
+        ]),
+        'follow graph',
+      );
       await mergeRemote([
         ...followersSnap.docs.map((d) => asFollow(d.data(), d.id)),
         ...followingSnap.docs.map((d) => asFollow(d.data(), d.id)),

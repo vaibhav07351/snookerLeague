@@ -1,15 +1,20 @@
 import { z } from 'zod';
 
+import { frameSeedOf, replayOpenFrame, teamsOf } from '@/features/match/services/frame-engine';
+import {
+  loadMatchContext,
+  requireInProgress,
+  requireScorer,
+  serializeMatchWrite,
+} from '@/features/match/services/match-guards';
+import { freeBallValue, tableStateOf } from '@/features/match/services/table-state';
 import { AppError } from '@/shared/errors/app-error';
 import { logger } from '@/shared/logging/logger';
 import { createId, nowIso } from '@/shared/utils/id';
-import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
+import { updateStore } from '@/shared/storage/local-store';
 import { scheduleSync } from '@/shared/sync';
-import type { ScheduleItem } from '@/shared/sync/schedule';
 import {
-  emptyOpenFrame,
-  type BallValue,
-  type FrameScore,
+  FULL_RACK_REDS,
   type Match,
   type OpenFrame,
   type Shot,
@@ -26,173 +31,48 @@ const ballSchema = z.union([
   z.literal(7),
 ]);
 
-const potSchema = z.object({
-  kind: z.literal('pot'),
-  ball: ballSchema,
-});
+const shotInputSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('pot'), ball: ballSchema }),
+  z.object({ kind: z.literal('foul'), points: z.number().int().min(4).max(7) }),
+  z.object({ kind: z.literal('miss') }),
+  z.object({ kind: z.literal('safety') }),
+  z.object({ kind: z.literal('free_ball'), ball: ballSchema.optional() }),
+]);
 
-const foulSchema = z.object({
-  kind: z.literal('foul'),
-  points: z.number().int().min(4).max(7),
-});
+export type ShotInput = z.infer<typeof shotInputSchema>;
 
-const endVisitSchema = z.object({
-  kind: z.enum(['miss', 'safety']),
-});
-
-const freeBallSchema = z.object({
-  kind: z.literal('free_ball'),
-  ball: ballSchema.optional(),
-});
-
-export function isMatchScorer(match: Match, uid: string): boolean {
-  return (match.scorerUid ?? match.createdByUid) === uid;
+/** Load a match that is still being played and that the signed-in user is scoring. */
+async function loadScorableMatch(matchId: string): Promise<Match> {
+  const ctx = await loadMatchContext(matchId);
+  requireInProgress(ctx.match);
+  requireScorer(ctx);
+  return ctx.match;
 }
 
-/** When a visit returns to a doubles pair, the partner who sat out comes in. */
-export function incomingPartner(team: string[], lastPlayerId: string | null): string | null {
-  if (team.length === 0) {
-    return lastPlayerId;
+function openFrameOf(match: Match): OpenFrame {
+  if (match.openFrame) {
+    return match.openFrame;
   }
-  if (team.length === 1) {
-    return team[0] ?? lastPlayerId;
-  }
-  if (!lastPlayerId || !team.includes(lastPlayerId)) {
-    return team[0] ?? null;
-  }
-  return team.find((id) => id !== lastPlayerId) ?? lastPlayerId;
+  return replayOpenFrame(
+    [],
+    {
+      breakerSide: 'a',
+      breakerPlayerId: match.teamA[0] ?? null,
+      startingReds: FULL_RACK_REDS,
+      redsRemoved: 0,
+    },
+    teamsOf(match),
+  );
 }
 
-export function replayOpenFrame(
-  shots: Shot[],
-  startAt: 'a' | 'b' = 'a',
-  teams?: { a: string[]; b: string[] },
-): OpenFrame {
-  let atTable: 'a' | 'b' = startAt;
-  let teamAPoints = 0;
-  let teamBPoints = 0;
-  let currentBreak = 0;
-  let currentBreakSide: 'a' | 'b' = startAt;
-  let atTablePlayerId: string | null = null;
-  const lastPlayerIdBySide: { a: string | null; b: string | null } = { a: null, b: null };
-
-  function seatIncoming(side: 'a' | 'b'): void {
-    const roster = side === 'a' ? (teams?.a ?? []) : (teams?.b ?? []);
-    atTablePlayerId = incomingPartner(roster, lastPlayerIdBySide[side]);
-  }
-
-  for (const shot of shots) {
-    const playerId = shot.playerId ?? null;
-    if (playerId) {
-      lastPlayerIdBySide[shot.side] = playerId;
-    }
-    if (shot.kind === 'pot' || shot.kind === 'free_ball') {
-      atTable = shot.side;
-      if (shot.side === 'a') {
-        teamAPoints += shot.points;
-      } else {
-        teamBPoints += shot.points;
-      }
-      if (currentBreakSide === shot.side && (!playerId || atTablePlayerId === playerId)) {
-        currentBreak += shot.points;
-      } else {
-        currentBreak = shot.points;
-        currentBreakSide = shot.side;
-      }
-      if (playerId) {
-        atTablePlayerId = playerId;
-      }
-    } else if (shot.kind === 'foul') {
-      const awarded: 'a' | 'b' = shot.side === 'a' ? 'b' : 'a';
-      if (awarded === 'a') {
-        teamAPoints += shot.points;
-      } else {
-        teamBPoints += shot.points;
-      }
-      currentBreak = 0;
-      currentBreakSide = awarded;
-      atTable = awarded;
-      seatIncoming(awarded);
-    } else {
-      currentBreak = 0;
-      atTable = shot.side === 'a' ? 'b' : 'a';
-      currentBreakSide = atTable;
-      seatIncoming(atTable);
-    }
-  }
-
-  return {
-    shots,
-    teamAPoints,
-    teamBPoints,
-    atTable,
-    currentBreak,
-    currentBreakSide,
-    atTablePlayerId,
-    lastPlayerIdBySide,
-  };
-}
-
-export function visitBreaks(
-  shots: Shot[],
-): { side: 'a' | 'b'; value: number; playerId: string | null }[] {
-  const visits: { side: 'a' | 'b'; value: number; playerId: string | null }[] = [];
-  let current = 0;
-  let side: 'a' | 'b' | null = null;
-  let playerId: string | null = null;
-  const flush = (): void => {
-    if (side && current > 0) {
-      visits.push({ side, value: current, playerId });
-    }
-    current = 0;
-    side = null;
-    playerId = null;
-  };
-  for (const shot of shots) {
-    if (shot.kind === 'pot' || shot.kind === 'free_ball') {
-      const shotPlayer = shot.playerId ?? null;
-      if (
-        side != null &&
-        (side !== shot.side || (shotPlayer && playerId && shotPlayer !== playerId))
-      ) {
-        flush();
-      }
-      side = shot.side;
-      if (shotPlayer) {
-        playerId = shotPlayer;
-      }
-      current += shot.points;
-    } else {
-      flush();
-    }
-  }
-  flush();
-  return visits;
-}
-
-export function highestBreakFromShots(shots: Shot[], side?: 'a' | 'b'): number {
-  const visits = visitBreaks(shots);
-  const filtered = side ? visits.filter((v) => v.side === side) : visits;
-  return filtered.reduce((max, v) => Math.max(max, v.value), 0);
-}
-
-function requireInProgress(match: Match): void {
-  if (match.outcome.status !== 'in_progress') {
-    throw new AppError('INVALID_STATE', 'Match already finished');
-  }
-}
-
-async function writeOpenFrame(match: Match, openFrame: OpenFrame): Promise<Match> {
-  const updated: Match = {
-    ...match,
-    openFrame,
-    updatedAt: nowIso(),
-  };
+async function writeMatch(updated: Match): Promise<Match> {
   await updateStore((s) => ({
     ...s,
     matches: s.matches.map((m) => (m.id === updated.id ? updated : m)),
   }));
-  await scheduleSync([
+  // Not awaited: the next tap must not wait for the server. Firestore keeps one client's
+  // writes in order, and failures are queued and retried by the sync layer.
+  void scheduleSync([
     {
       entity: 'match',
       docId: updated.id,
@@ -201,7 +81,12 @@ async function writeOpenFrame(match: Match, openFrame: OpenFrame): Promise<Match
       payload: updated,
       updatedAt: updated.updatedAt,
     },
-  ]);
+  ]).catch((error: unknown) => {
+    logger.error('shot.service', 'Sync scheduling failed', {
+      matchId: updated.id,
+      shape: error instanceof Error ? error.name : 'unknown',
+    });
+  });
   return updated;
 }
 
@@ -215,262 +100,150 @@ function teamForPlayer(match: Match, playerId: string): 'a' | 'b' | null {
   return null;
 }
 
-function defaultPlayerId(match: Match, side: 'a' | 'b', open: OpenFrame): string | null {
-  if (open.atTablePlayerId) {
-    const owned = teamForPlayer(match, open.atTablePlayerId);
-    if (owned === side) {
-      return open.atTablePlayerId;
-    }
+function shooterFor(match: Match, open: OpenFrame): string | null {
+  const side = open.atTable;
+  if (open.atTablePlayerId && teamForPlayer(match, open.atTablePlayerId) === side) {
+    return open.atTablePlayerId;
   }
   const last = open.lastPlayerIdBySide?.[side];
   if (last && teamForPlayer(match, last) === side) {
     return last;
   }
-  const team = side === 'a' ? match.teamA : match.teamB;
-  return team[0] ?? null;
+  return (side === 'a' ? match.teamA[0] : match.teamB[0]) ?? null;
 }
 
-export async function setAtTablePlayer(matchId: string, playerId: string): Promise<Match> {
-  await loadStore();
-  const match = getStore().matches.find((m) => m.id === matchId);
-  if (!match) {
-    throw new AppError('NOT_FOUND', 'Match not found');
+function buildShot(match: Match, open: OpenFrame, input: ShotInput): Shot {
+  const base = {
+    id: createId('sh'),
+    at: nowIso(),
+    side: open.atTable,
+    playerId: shooterFor(match, open),
+  };
+  switch (input.kind) {
+    case 'pot':
+      return { ...base, kind: 'pot', points: input.ball, ball: input.ball };
+    case 'foul':
+      return { ...base, kind: 'foul', points: input.points };
+    case 'free_ball': {
+      // A free ball is worth the ball on (1 while reds remain, else the colour in sequence).
+      const ball = input.ball ?? freeBallValue(tableStateOf(open));
+      return { ...base, kind: 'free_ball', points: ball, ball };
+    }
+    case 'miss':
+    case 'safety':
+      return { ...base, kind: input.kind, points: 0 };
   }
-  requireInProgress(match);
+}
+
+/** Set the player at the table. Before the first shot this also changes who breaks off. */
+export function setAtTablePlayer(matchId: string, playerId: string): Promise<Match> {
+  return serializeMatchWrite(matchId, () => setAtTablePlayerNow(matchId, playerId));
+}
+
+async function setAtTablePlayerNow(matchId: string, playerId: string): Promise<Match> {
+  const match = await loadScorableMatch(matchId);
   const side = teamForPlayer(match, playerId);
   if (!side) {
     throw new AppError('VALIDATION', 'Player is not in this match');
   }
-  const open = match.openFrame ?? emptyOpenFrame(side, playerId);
-  const sameVisit = open.atTable === side && open.atTablePlayerId === playerId;
-  const next: OpenFrame = {
-    ...open,
-    atTable: side,
-    currentBreak: sameVisit ? open.currentBreak : 0,
-    currentBreakSide: side,
-    atTablePlayerId: playerId,
-    lastPlayerIdBySide: {
-      a: open.lastPlayerIdBySide?.a ?? null,
-      b: open.lastPlayerIdBySide?.b ?? null,
-      [side]: playerId,
-    },
-  };
-  const updated = await writeOpenFrame(match, next);
+  const open = openFrameOf(match);
+  let next: OpenFrame;
+  if (open.shots.length === 0) {
+    next = replayOpenFrame(
+      [],
+      { ...frameSeedOf(open), breakerSide: side, breakerPlayerId: playerId },
+      teamsOf(match),
+    );
+  } else {
+    const sameVisit = open.atTable === side && open.atTablePlayerId === playerId;
+    next = {
+      ...open,
+      atTable: side,
+      currentBreak: sameVisit ? open.currentBreak : 0,
+      currentBreakSide: side,
+      atTablePlayerId: playerId,
+      lastPlayerIdBySide: {
+        a: open.lastPlayerIdBySide?.a ?? null,
+        b: open.lastPlayerIdBySide?.b ?? null,
+        [side]: playerId,
+      },
+    };
+  }
+  const updated = await writeMatch({ ...match, openFrame: next, updatedAt: nowIso() });
   logger.info('shot.service', 'At-table player set', { matchId, side });
   return updated;
 }
 
-export async function startLiveFrame(matchId: string, atTable: 'a' | 'b' = 'a'): Promise<Match> {
-  await loadStore();
-  const match = getStore().matches.find((m) => m.id === matchId);
-  if (!match) {
-    throw new AppError('NOT_FOUND', 'Match not found');
-  }
-  requireInProgress(match);
-  if (match.openFrame && match.openFrame.shots.length > 0) {
-    return match;
-  }
-  const playerId = atTable === 'a' ? (match.teamA[0] ?? null) : (match.teamB[0] ?? null);
-  const updated = await writeOpenFrame(match, emptyOpenFrame(atTable, playerId));
-  logger.info('shot.service', 'Live frame started', { matchId });
-  return updated;
+export function recordShot(matchId: string, input: ShotInput): Promise<Match> {
+  return serializeMatchWrite(matchId, () => recordShotNow(matchId, input));
 }
 
-export async function recordShot(
-  matchId: string,
-  input:
-    | { kind: 'pot'; ball: BallValue }
-    | { kind: 'foul'; points: number }
-    | { kind: 'miss' | 'safety' }
-    | { kind: 'free_ball'; ball?: BallValue },
-): Promise<Match> {
-  await loadStore();
-  const match = getStore().matches.find((m) => m.id === matchId);
-  if (!match) {
-    throw new AppError('NOT_FOUND', 'Match not found');
+async function recordShotNow(matchId: string, input: ShotInput): Promise<Match> {
+  const parsed = shotInputSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new AppError('VALIDATION', 'Invalid shot');
   }
-  requireInProgress(match);
-
-  const open = match.openFrame ?? emptyOpenFrame('a', match.teamA[0] ?? null);
-  const side = open.atTable;
-  const playerId = defaultPlayerId(match, side, open);
-  let shot: Shot;
-
-  if (input.kind === 'pot') {
-    const parsed = potSchema.safeParse(input);
-    if (!parsed.success) {
-      throw new AppError('VALIDATION', 'Invalid pot');
-    }
-    shot = {
-      id: createId('sh'),
-      at: nowIso(),
-      side,
-      kind: 'pot',
-      points: parsed.data.ball,
-      ball: parsed.data.ball,
-      playerId,
-    };
-  } else if (input.kind === 'foul') {
-    const parsed = foulSchema.safeParse(input);
-    if (!parsed.success) {
-      throw new AppError('VALIDATION', 'Foul must be 4–7 points');
-    }
-    shot = {
-      id: createId('sh'),
-      at: nowIso(),
-      side,
-      kind: 'foul',
-      points: parsed.data.points,
-      playerId,
-    };
-  } else if (input.kind === 'free_ball') {
-    const parsed = freeBallSchema.safeParse(input);
-    if (!parsed.success) {
-      throw new AppError('VALIDATION', 'Invalid free ball');
-    }
-    const ball = parsed.data.ball ?? 1;
-    shot = {
-      id: createId('sh'),
-      at: nowIso(),
-      side,
-      kind: 'free_ball',
-      points: ball,
-      ball,
-      playerId,
-    };
-  } else {
-    const parsed = endVisitSchema.safeParse(input);
-    if (!parsed.success) {
-      throw new AppError('VALIDATION', 'Invalid shot');
-    }
-    shot = {
-      id: createId('sh'),
-      at: nowIso(),
-      side,
-      kind: parsed.data.kind,
-      points: 0,
-      playerId,
-    };
-  }
-
-  const next = replayOpenFrame([...open.shots, shot], 'a', {
-    a: match.teamA,
-    b: match.teamB,
+  const match = await loadScorableMatch(matchId);
+  const open = openFrameOf(match);
+  const shot = buildShot(match, open, parsed.data);
+  const next = replayOpenFrame([...open.shots, shot], frameSeedOf(open), teamsOf(match));
+  // Frame clock starts automatically on the first thing logged in the frame.
+  const startClock = match.timingEnabled === true && !match.frameStartedAt;
+  const updated = await writeMatch({
+    ...match,
+    openFrame: next,
+    ...(startClock ? { frameStartedAt: shot.at } : {}),
+    updatedAt: nowIso(),
   });
-  const updated = await writeOpenFrame(match, next);
   logger.info('shot.service', 'Shot recorded', { matchId, kind: shot.kind });
   return updated;
 }
 
-export async function undoLastShot(matchId: string): Promise<Match> {
-  await loadStore();
-  const match = getStore().matches.find((m) => m.id === matchId);
-  if (!match) {
-    throw new AppError('NOT_FOUND', 'Match not found');
-  }
-  requireInProgress(match);
+export function undoLastShot(matchId: string): Promise<Match> {
+  return serializeMatchWrite(matchId, () => undoLastShotNow(matchId));
+}
+
+async function undoLastShotNow(matchId: string): Promise<Match> {
+  const match = await loadScorableMatch(matchId);
   const open = match.openFrame;
   if (!open || open.shots.length === 0) {
     throw new AppError('INVALID_STATE', 'No shot to undo');
   }
-  const next = replayOpenFrame(open.shots.slice(0, -1), 'a', {
-    a: match.teamA,
-    b: match.teamB,
+  const shots = open.shots.slice(0, -1);
+  const next = replayOpenFrame(shots, frameSeedOf(open), teamsOf(match));
+  return writeMatch({
+    ...match,
+    openFrame: next,
+    // Undoing the first shot also resets the frame clock to "starts on first shot".
+    ...(shots.length === 0 ? { frameStartedAt: null } : {}),
+    updatedAt: nowIso(),
   });
-  return writeOpenFrame(match, next);
 }
 
-export async function completeLiveFrame(matchId: string, winner: 'a' | 'b'): Promise<Match> {
-  await loadStore();
-  const match = getStore().matches.find((m) => m.id === matchId);
-  if (!match) {
-    throw new AppError('NOT_FOUND', 'Match not found');
-  }
-  requireInProgress(match);
-  const open = match.openFrame ?? emptyOpenFrame('a');
-  const shots = open.shots;
-  const { addFrame } = await import('@/features/match/services/match.service');
-  const scored = await addFrame(matchId, {
+/** Finish the live frame: its points, shots and breaks are saved on the frame in one write. */
+export function completeLiveFrame(matchId: string, winner: 'a' | 'b'): Promise<Match> {
+  return serializeMatchWrite(matchId, () => completeLiveFrameNow(matchId, winner));
+}
+
+async function completeLiveFrameNow(matchId: string, winner: 'a' | 'b'): Promise<Match> {
+  const match = await loadScorableMatch(matchId);
+  const open = openFrameOf(match);
+  const { addFrameNow } = await import('@/features/match/services/match.service');
+  const updated = await addFrameNow(matchId, {
     teamAPoints: open.teamAPoints,
     teamBPoints: open.teamBPoints,
     winner,
+    live: open,
   });
-  const lastIndex = scored.frames.length - 1;
-  const frames: FrameScore[] = scored.frames.map((f, i) =>
-    i === lastIndex
-      ? {
-          ...f,
-          shots,
-          highestBreakA: highestBreakFromShots(shots, 'a'),
-          highestBreakB: highestBreakFromShots(shots, 'b'),
-        }
-      : f,
-  );
-  const withShots: Match = {
-    ...scored,
-    frames,
-    openFrame: emptyOpenFrame(
-      winner === 'a' ? 'b' : 'a',
-      (winner === 'a' ? scored.teamB[0] : scored.teamA[0]) ?? null,
-    ),
-    updatedAt: nowIso(),
-  };
-  await updateStore((s) => ({
-    ...s,
-    matches: s.matches.map((m) => (m.id === withShots.id ? withShots : m)),
-  }));
-  const syncItems: ScheduleItem[] = [
-    {
-      entity: 'match',
-      docId: withShots.id,
-      leagueId: withShots.leagueId,
-      action: 'upsert',
-      payload: withShots,
-      updatedAt: withShots.updatedAt,
-    },
-  ];
-  if (withShots.outcome.status !== 'in_progress') {
-    const { refreshLeaguePlayerStats } = await import('@/features/stats/services/stats.service');
-    await refreshLeaguePlayerStats(withShots.leagueId);
-    for (const player of getStore().players.filter((p) => p.leagueId === withShots.leagueId)) {
-      syncItems.push({
-        entity: 'player',
-        docId: player.id,
-        leagueId: player.leagueId,
-        action: 'upsert',
-        payload: player,
-        updatedAt: player.updatedAt,
-      });
-    }
-  }
-  await scheduleSync(syncItems);
   logger.info('shot.service', 'Live frame completed', { matchId, winner });
-  return withShots;
+  return updated;
 }
 
+/** Put the last finished frame back on the table, with its shots, to keep scoring it. */
 export async function undoLastFrame(matchId: string): Promise<Match> {
-  await loadStore();
-  const match = getStore().matches.find((m) => m.id === matchId);
-  if (!match) {
-    throw new AppError('NOT_FOUND', 'Match not found');
-  }
-  const last = match.frames[match.frames.length - 1];
-  if (!last) {
-    throw new AppError('INVALID_STATE', 'No frame to undo');
-  }
-  const shots = last.shots ?? [];
-  const open =
-    shots.length > 0
-      ? replayOpenFrame(shots, 'a', { a: match.teamA, b: match.teamB })
-      : emptyOpenFrame(
-          last.winner,
-          (last.winner === 'a' ? match.teamA[0] : match.teamB[0]) ?? null,
-        );
-  const { deleteFrame } = await import('@/features/match/services/match.service');
-  const after = await deleteFrame(matchId, match.frames.length - 1);
-  const restored = await writeOpenFrame(after, open);
-  logger.info('shot.service', 'Last frame undone', { matchId });
-  return restored;
+  // reopenLastFrame queues itself behind any pending shot writes for this match.
+  const { reopenLastFrame } = await import('@/features/match/services/match.service');
+  return reopenLastFrame(matchId);
 }
 
 export function shotKindLabel(kind: ShotKind): string {

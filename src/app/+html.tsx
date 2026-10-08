@@ -2,7 +2,7 @@ import { ScrollViewStyleReset } from 'expo-router/html';
 import type { PropsWithChildren, ReactNode } from 'react';
 
 /**
- * Web-only root HTML. Locks body scroll (native-like ScrollViews), paints the felt
+ * Web-only root HTML. Locks body scroll (native-like ScrollViews), paints the default theme
  * background behind the app, and blocks horizontal overflow from decorative blobs.
  * Does not run on iOS/Android.
  */
@@ -21,7 +21,7 @@ export default function Root({ children }: PropsWithChildren): ReactNode {
           dangerouslySetInnerHTML={{
             __html: `
               html, body, #root {
-                background-color: #0E2A1C;
+                background-color: #101317;
                 overscroll-behavior: none;
               }
               body {

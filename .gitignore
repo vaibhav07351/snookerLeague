@@ -31,10 +31,20 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
+# local env files (EAS builds still receive .env: see .easignore)
 .env
 .env.*
 !.env.example
+
+# editor and tool config that is personal to each machine
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.claude/settings.local.json
+
+# local build outputs
+*.apk
+*.aab
 
 # EAS / Play Store credentials (never commit)
 google-service-account.json

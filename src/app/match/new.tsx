@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState, type ReactNode } from 'react';
-import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { Button } from '@/features/home/components/Button';
@@ -9,168 +9,204 @@ import { TextField } from '@/features/home/components/TextField';
 import * as matchService from '@/features/match/services/match.service';
 import * as playersService from '@/features/players/services/players.service';
 import { toUserMessage } from '@/shared/errors/app-error';
+import { Card } from '@/shared/ui/Card';
+import { Chip } from '@/shared/ui/Chip';
+import { EmptyState } from '@/shared/ui/EmptyState';
+import { HintCard } from '@/shared/ui/HintCard';
+import { notify } from '@/shared/ui/notify';
+import { SectionTitle } from '@/shared/ui/SectionTitle';
 import type { MatchFormat, Player } from '@/shared/types/domain';
-import { colors, fonts, radii, spacing, typography } from '@/theme/tokens';
+import { sideColor } from '@/theme/palettes';
+import { usePalette, useStyles } from '@/theme/ThemeProvider';
+import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+
+const BEST_OF_OPTIONS = [1, 3, 5, 7, 9, 11] as const;
 
 export default function NewMatchScreen(): ReactNode {
+  const styles = useStyles(makeStyles);
+  const palette = usePalette();
   const { user, league } = useSession();
   const params = useLocalSearchParams<{ opponentPlayerId?: string; leagueId?: string }>();
   const [players, setPlayers] = useState<Player[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [format, setFormat] = useState<MatchFormat>('doubles');
-  const [selected, setSelected] = useState<string[]>([]);
-  const [bestOf, setBestOf] = useState('3');
+  const [sideA, setSideA] = useState<string[]>([]);
+  const [sideB, setSideB] = useState<string[]>([]);
+  const [bestOf, setBestOf] = useState(3);
   const [label, setLabel] = useState('');
   const [crowns, setCrowns] = useState(false);
+  const [midway, setMidway] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [targetLeagueId, setTargetLeagueId] = useState<string | null>(null);
 
-  const needed = format === 'singles' ? 2 : 4;
-  const scoringLeagueId = targetLeagueId ?? league?.id ?? null;
+  const perSide = format === 'singles' ? 1 : 2;
+  const scoringLeagueId =
+    typeof params.leagueId === 'string' && params.leagueId ? params.leagueId : (league?.id ?? null);
 
+  // Set up once per league. Depending on the league object would reset the form every
+  // time anything in the league is scored (the object changes on each update).
+  const leagueId = league?.id ?? null;
+  const defaultBestOf = league?.defaultBestOf ?? 3;
   useEffect(() => {
-    if (!league) {
+    if (!leagueId || !scoringLeagueId) {
       return;
     }
-    const lid =
-      params.leagueId && typeof params.leagueId === 'string' ? params.leagueId : league.id;
-    setTargetLeagueId(lid);
-    setBestOf(String(league.defaultBestOf));
-    void playersService.listPlayers(lid).then((list) => {
+    setBestOf(defaultBestOf);
+    void playersService.listPlayers(scoringLeagueId).then((list) => {
       setPlayers(list);
+      setLoaded(true);
       const opponent = typeof params.opponentPlayerId === 'string' ? params.opponentPlayerId : null;
       if (opponent) {
         setFormat('singles');
         const me = list.find((p) => p.authUid === user?.uid);
-        if (me) {
-          setSelected([me.id, opponent]);
-        } else {
-          setSelected([opponent]);
-        }
+        setSideA(me ? [me.id] : []);
+        setSideB([opponent]);
       }
     });
-  }, [league, params.leagueId, params.opponentPlayerId, user?.uid]);
+  }, [leagueId, defaultBestOf, scoringLeagueId, params.opponentPlayerId, user?.uid]);
 
-  function setMatchFormat(next: MatchFormat): void {
+  const nameOf = useMemo(() => {
+    const byId = new Map(players.map((p) => [p.id, p.displayName]));
+    return (id: string): string => byId.get(id) ?? 'Player';
+  }, [players]);
+
+  function changeFormat(next: MatchFormat): void {
     setFormat(next);
-    setSelected([]);
+    const cap = next === 'singles' ? 1 : 2;
+    setSideA((a) => a.slice(0, cap));
+    setSideB((b) => b.slice(0, cap));
   }
 
+  /** Tap a player: fills Side A first, then Side B. Tap again to remove. */
   function toggle(id: string): void {
-    setSelected((prev) => {
-      if (prev.includes(id)) {
-        return prev.filter((x) => x !== id);
-      }
-      if (prev.length >= needed) {
-        return prev;
-      }
-      return [...prev, id];
-    });
-  }
-
-  async function create(): Promise<void> {
-    if (!scoringLeagueId || !user) {
+    if (sideA.includes(id)) {
+      setSideA(sideA.filter((x) => x !== id));
       return;
     }
-    if (selected.length !== needed) {
-      Alert.alert(
-        format === 'singles' ? 'Pick two players' : 'Pick four players',
-        format === 'singles'
-          ? 'Select player A, then player B.'
-          : 'Select in order: Team A (2), then Team B (2).',
-      );
+    if (sideB.includes(id)) {
+      setSideB(sideB.filter((x) => x !== id));
+      return;
+    }
+    if (sideA.length < perSide) {
+      setSideA([...sideA, id]);
+    } else if (sideB.length < perSide) {
+      setSideB([...sideB, id]);
+    }
+  }
+
+  const ready = sideA.length === perSide && sideB.length === perSide;
+
+  async function create(): Promise<void> {
+    if (!scoringLeagueId || !user || !ready) {
       return;
     }
     setBusy(true);
     try {
-      const teamA = format === 'singles' ? [selected[0]!] : [selected[0]!, selected[1]!];
-      const teamB = format === 'singles' ? [selected[1]!] : [selected[2]!, selected[3]!];
       const match = await matchService.createMatch({
         leagueId: scoringLeagueId,
         createdByUid: user.uid,
         format,
-        teamA,
-        teamB,
-        bestOf: Number(bestOf) || league?.defaultBestOf || 3,
+        teamA: sideA,
+        teamB: sideB,
+        bestOf,
         namedLabel: label.trim() || null,
         crownsChampion: crowns,
       });
-      router.replace(`/match/${match.id}`);
+      router.replace({
+        pathname: '/match/[id]',
+        params: midway ? { id: match.id, midway: '1' } : { id: match.id },
+      });
     } catch (error) {
-      Alert.alert('Could not create match', toUserMessage(error));
+      notify.error('Could not create the match', toUserMessage(error));
     } finally {
       setBusy(false);
     }
   }
 
   if (!league) {
-    return null;
+    return (
+      <Screen>
+        <EmptyState
+          icon="people-outline"
+          title="Join or create a league first"
+          message="Matches belong to a league, so friends can follow them live."
+          actionLabel="Set up a league"
+          onAction={() => router.replace('/onboarding')}
+        />
+      </Screen>
+    );
   }
 
-  const preview =
-    selected.length === needed
-      ? format === 'singles'
-        ? {
-            a: players.find((p) => p.id === selected[0])?.displayName ?? '?',
-            b: players.find((p) => p.id === selected[1])?.displayName ?? '?',
-          }
-        : {
-            a: `${players.find((p) => p.id === selected[0])?.displayName ?? '?'} & ${players.find((p) => p.id === selected[1])?.displayName ?? '?'}`,
-            b: `${players.find((p) => p.id === selected[2])?.displayName ?? '?'} & ${players.find((p) => p.id === selected[3])?.displayName ?? '?'}`,
-          }
-      : null;
+  const needed = perSide * 2;
 
   return (
     <Screen>
-      <View style={styles.formatTabs}>
-        <Pressable
-          onPress={() => setMatchFormat('doubles')}
-          style={[styles.formatTab, format === 'doubles' && styles.formatTabOn]}
-        >
-          <Text style={[styles.formatText, format === 'doubles' && styles.formatTextOn]}>
-            Doubles
-          </Text>
-          <Text style={styles.formatHint}>2v2</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setMatchFormat('singles')}
-          style={[styles.formatTab, format === 'singles' && styles.formatTabOn]}
-        >
-          <Text style={[styles.formatText, format === 'singles' && styles.formatTextOn]}>
-            Singles
-          </Text>
-          <Text style={styles.formatHint}>1v1</Text>
-        </Pressable>
+      <HintCard
+        hintKey="match-new"
+        title="Setting up a match"
+        tips={[
+          'Pick singles or doubles, then tap players: the first fill Side A, the rest Side B.',
+          'No account needed for opponents: add them as guests on the Players screen.',
+          'Already playing? Switch on "We are already mid-match" to enter the score so far.',
+        ]}
+      />
+
+      <View style={styles.segment}>
+        {(['singles', 'doubles'] as const).map((f) => (
+          <Pressable
+            key={f}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: format === f }}
+            onPress={() => changeFormat(f)}
+            style={[styles.segmentItem, format === f && styles.segmentOn]}
+          >
+            <Text style={[styles.segmentText, format === f && styles.segmentTextOn]}>
+              {f === 'singles' ? 'Singles · 1v1' : 'Doubles · 2v2'}
+            </Text>
+          </Pressable>
+        ))}
       </View>
 
-      <Text style={typography.subtitle}>
-        {format === 'singles'
-          ? 'Tap two players — first is A, second is B.'
-          : 'Tap four players in order — first two Team A, next two Team B.'}
-      </Text>
+      <View style={styles.sides}>
+        <SideSlot side="a" ids={sideA} perSide={perSide} nameOf={nameOf} onRemove={toggle} />
+        <Text style={styles.vs}>vs</Text>
+        <SideSlot side="b" ids={sideB} perSide={perSide} nameOf={nameOf} onRemove={toggle} />
+      </View>
 
-      {players.length < needed ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>Need more players</Text>
-          <Text style={styles.emptyBody}>
-            {format === 'singles'
-              ? 'Singles needs 2 people. Add a guest from Players.'
-              : 'Doubles needs 4 people. Add guests from the Players screen.'}
-          </Text>
-          <Button label="Go to players" onPress={() => router.push('/(main)/players')} />
-        </View>
+      <SectionTitle title="Players" />
+      {loaded && players.length < needed ? (
+        <EmptyState
+          icon="person-add-outline"
+          title="Need more players"
+          message={`${format === 'singles' ? 'Singles' : 'Doubles'} needs ${needed} players. Add friends as guests, or invite them to the league.`}
+          actionLabel="Add players"
+          onAction={() => router.push('/(main)/players')}
+        />
       ) : (
         <View style={styles.grid}>
           {players.map((p) => {
-            const idx = selected.indexOf(p.id);
-            const active = idx >= 0;
+            const inA = sideA.includes(p.id);
+            const inB = sideB.includes(p.id);
             return (
               <Pressable
                 key={p.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected: inA || inB }}
                 onPress={() => toggle(p.id)}
-                style={[styles.chip, active && styles.chipOn]}
+                style={[
+                  styles.player,
+                  inA && { borderColor: palette.teamA, backgroundColor: palette.teamASoft },
+                  inB && { borderColor: palette.teamB, backgroundColor: palette.teamBSoft },
+                ]}
               >
-                <Text style={[styles.chipText, active && styles.chipTextOn]}>
-                  {active ? `${idx + 1}. ` : ''}
+                <Text
+                  style={[
+                    styles.playerText,
+                    inA && { color: palette.teamA },
+                    inB && { color: palette.teamB },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {inA ? 'A · ' : inB ? 'B · ' : ''}
                   {p.displayName}
                 </Text>
               </Pressable>
@@ -179,165 +215,240 @@ export default function NewMatchScreen(): ReactNode {
         </View>
       )}
 
-      {preview ? (
-        <View style={styles.preview}>
-          <Text style={typography.label}>{format === 'singles' ? 'Players' : 'Teams'}</Text>
-          <Text style={styles.previewLine}>{preview.a}</Text>
-          <Text style={styles.vs}>vs</Text>
-          <Text style={styles.previewLine}>{preview.b}</Text>
-        </View>
-      ) : null}
+      <SectionTitle title="Best of" />
+      <View style={styles.grid}>
+        {BEST_OF_OPTIONS.map((n) => (
+          <Chip
+            key={n}
+            label={`${n} frame${n === 1 ? '' : 's'}`}
+            selected={bestOf === n}
+            onPress={() => setBestOf(n)}
+          />
+        ))}
+      </View>
+      <Text style={styles.hint}>First to {matchService.framesToWin(bestOf)} wins.</Text>
 
-      <TextField
-        label="Best of"
-        value={bestOf}
-        onChangeText={setBestOf}
-        keyboardType="number-pad"
-        hint="Odd numbers work best (3, 5, 7…)"
-      />
+      <SectionTitle title="Extras" />
+      <Card>
+        <ToggleRow
+          title="Title match"
+          hint="The winner becomes the league champion."
+          value={crowns}
+          onChange={setCrowns}
+        />
+        <View style={styles.divider} />
+        <ToggleRow
+          title="We are already mid-match"
+          hint="Enter frames won and the current score next."
+          value={midway}
+          onChange={setMidway}
+        />
+      </Card>
+
       <TextField
         label="Match name (optional)"
         value={label}
         onChangeText={setLabel}
-        placeholder="Masters, Final…"
+        placeholder="e.g. Friday final"
+        maxLength={40}
       />
-      <View style={styles.switchRow}>
-        <View style={styles.switchCopy}>
-          <Text style={styles.switchLabel}>Crowns reigning champions</Text>
-          <Text style={styles.switchHint}>Winner becomes home-screen champ(s)</Text>
-        </View>
-        <Switch
-          value={crowns}
-          onValueChange={setCrowns}
-          trackColor={{ false: colors.feltLight, true: colors.gold }}
-        />
-      </View>
+
       <Button
-        label="Start match"
+        label={ready ? 'Start match' : `Pick ${needed} players`}
+        icon="play"
         loading={busy}
         onPress={() => void create()}
-        disabled={busy || selected.length !== needed}
+        disabled={busy || !ready}
       />
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  formatTabs: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  formatTab: {
-    flex: 1,
-    paddingVertical: spacing.md,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    gap: 2,
-  },
-  formatTabOn: {
-    backgroundColor: colors.gold,
-    borderColor: colors.gold,
-  },
-  formatText: {
-    fontFamily: fonts.bodyBold,
-    color: colors.chalk,
-    fontSize: 16,
-  },
-  formatTextOn: {
-    color: colors.felt,
-  },
-  formatHint: {
-    fontFamily: fonts.body,
-    fontSize: 12,
-    color: colors.chalkMuted,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginVertical: spacing.md,
-  },
-  chip: {
-    paddingVertical: 10,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  chipOn: {
-    backgroundColor: colors.gold,
-    borderColor: colors.gold,
-  },
-  chipText: {
-    fontFamily: fonts.bodyMedium,
-    color: colors.chalk,
-  },
-  chipTextOn: {
-    color: colors.felt,
-    fontFamily: fonts.bodyBold,
-  },
-  preview: {
-    marginBottom: spacing.md,
-    padding: spacing.md,
-    borderRadius: radii.md,
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: spacing.xs,
-  },
-  previewLine: {
-    fontFamily: fonts.bodyBold,
-    color: colors.chalk,
-    fontSize: 16,
-  },
-  vs: {
-    fontFamily: fonts.body,
-    color: colors.chalkMuted,
-    fontSize: 13,
-  },
-  switchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-    gap: spacing.md,
-  },
-  switchCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  switchLabel: {
-    fontFamily: fonts.bodyMedium,
-    color: colors.chalk,
-  },
-  switchHint: {
-    fontFamily: fonts.body,
-    fontSize: 12,
-    color: colors.chalkMuted,
-  },
-  empty: {
-    marginVertical: spacing.lg,
-    gap: spacing.sm,
-    padding: spacing.lg,
-    borderRadius: radii.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  emptyTitle: {
-    fontFamily: fonts.bodyBold,
-    color: colors.chalk,
-    fontSize: 16,
-  },
-  emptyBody: {
-    fontFamily: fonts.body,
-    color: colors.chalkMuted,
-    marginBottom: spacing.sm,
-    lineHeight: 20,
-  },
-});
+function SideSlot({
+  side,
+  ids,
+  perSide,
+  nameOf,
+  onRemove,
+}: {
+  side: 'a' | 'b';
+  ids: string[];
+  perSide: number;
+  nameOf: (id: string) => string;
+  onRemove: (id: string) => void;
+}): ReactNode {
+  const styles = useStyles(makeStyles);
+  const palette = usePalette();
+  const tone = sideColor(palette, side);
+  return (
+    <View style={[styles.slot, { borderColor: tone }]}>
+      <Text style={[styles.slotTitle, { color: tone }]}>Side {side.toUpperCase()}</Text>
+      {Array.from({ length: perSide }, (_, i) => {
+        const id = ids[i];
+        return id ? (
+          <Pressable
+            key={id}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${nameOf(id)} from side ${side.toUpperCase()}`}
+            onPress={() => onRemove(id)}
+            hitSlop={4}
+          >
+            <Text style={styles.slotName} numberOfLines={1}>
+              {nameOf(id)}
+            </Text>
+          </Pressable>
+        ) : (
+          <Text key={`empty-${i}`} style={styles.slotEmpty}>
+            Tap a player
+          </Text>
+        );
+      })}
+    </View>
+  );
+}
+
+function ToggleRow({
+  title,
+  hint,
+  value,
+  onChange,
+}: {
+  title: string;
+  hint: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}): ReactNode {
+  const styles = useStyles(makeStyles);
+  const palette = usePalette();
+  return (
+    <View style={styles.toggleRow}>
+      <View style={styles.toggleText}>
+        <Text style={styles.toggleTitle}>{title}</Text>
+        <Text style={styles.hint}>{hint}</Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        accessibilityLabel={title}
+        trackColor={{ false: palette.cardRaised, true: palette.primary }}
+        thumbColor={palette.text}
+      />
+    </View>
+  );
+}
+
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    segment: {
+      flexDirection: 'row',
+      padding: 4,
+      gap: 4,
+      borderRadius: radii.md,
+      backgroundColor: c.card,
+      borderWidth: 1,
+      borderColor: c.border,
+      marginTop: spacing.sm,
+    },
+    segmentItem: {
+      flex: 1,
+      minHeight: 44,
+      borderRadius: radii.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    segmentOn: {
+      backgroundColor: c.primary,
+    },
+    segmentText: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 14,
+      color: c.textMuted,
+    },
+    segmentTextOn: {
+      color: c.onPrimary,
+    },
+    sides: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginTop: spacing.md,
+    },
+    vs: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 12,
+      color: c.textMuted,
+    },
+    slot: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: 84,
+      padding: spacing.sm,
+      borderRadius: radii.md,
+      borderWidth: 1.5,
+      borderStyle: 'dashed',
+      gap: 4,
+    },
+    slotTitle: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 11,
+      letterSpacing: 1,
+      textTransform: 'uppercase',
+    },
+    slotName: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 15,
+      color: c.text,
+      minHeight: 24,
+    },
+    slotEmpty: {
+      fontFamily: fonts.body,
+      fontSize: 13,
+      color: c.textFaint,
+      minHeight: 24,
+    },
+    grid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+    },
+    player: {
+      maxWidth: '100%',
+      minHeight: 40,
+      justifyContent: 'center',
+      paddingHorizontal: 14,
+      borderRadius: radii.pill,
+      borderWidth: 1.5,
+      borderColor: c.border,
+      backgroundColor: c.card,
+    },
+    playerText: {
+      fontFamily: fonts.bodyMedium,
+      fontSize: 14,
+      color: c.text,
+    },
+    hint: {
+      fontFamily: fonts.body,
+      fontSize: 12,
+      lineHeight: 17,
+      color: c.textMuted,
+      marginTop: 4,
+    },
+    toggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+    },
+    toggleText: {
+      flex: 1,
+      minWidth: 0,
+    },
+    toggleTitle: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 15,
+      color: c.text,
+    },
+    divider: {
+      height: 1,
+      backgroundColor: c.border,
+    },
+  });

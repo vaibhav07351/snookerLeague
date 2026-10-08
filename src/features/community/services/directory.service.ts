@@ -2,6 +2,8 @@ import { getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import { z } from 'zod';
 
 import { AppError } from '@/shared/errors/app-error';
+import { mergeRemoteRows, pendingDocIdsOf } from '@/shared/sync/merge';
+import { withTimeout } from '@/shared/utils/timeout';
 import { logger } from '@/shared/logging/logger';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { isOnline } from '@/shared/sync/connectivity';
@@ -138,22 +140,28 @@ export async function listDirectory(input: {
   const user = getStore().user;
   if (shouldCloudSync(user) && isOnline()) {
     try {
-      const snap = await getDocs(
-        query(
-          directoryListingsCol(),
-          where('cityId', '==', input.cityId),
-          where('kind', '==', input.kind),
-          orderBy('createdAt', 'desc'),
-          limit(PAGE),
+      const snap = await withTimeout(
+        getDocs(
+          query(
+            directoryListingsCol(),
+            where('cityId', '==', input.cityId),
+            where('kind', '==', input.kind),
+            orderBy('createdAt', 'desc'),
+            limit(PAGE),
+          ),
         ),
+        'directory query',
       );
       const remote = snap.docs.map((d) => asListing(d.data(), d.id));
       await updateStore((s) => {
-        const map = new Map(s.directoryListings.map((row) => [row.id, row]));
-        for (const row of remote) {
-          map.set(row.id, row);
-        }
-        return { ...s, directoryListings: [...map.values()] };
+        return {
+          ...s,
+          directoryListings: mergeRemoteRows(
+            s.directoryListings,
+            remote,
+            pendingDocIdsOf(s.pendingOps),
+          ),
+        };
       });
     } catch (error) {
       logger.error('directory.service', 'Directory query failed', {

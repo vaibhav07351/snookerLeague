@@ -14,7 +14,8 @@ import { useHeaderHeight } from 'expo-router/react-navigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FeltAtmosphere } from '@/features/home/components/FeltBackground';
-import { spacing, theme } from '@/theme/tokens';
+import { useStyles } from '@/theme/ThemeProvider';
+import { spacing, type Palette } from '@/theme/tokens';
 
 interface ScreenProps {
   children: ReactNode;
@@ -36,6 +37,7 @@ export function Screen({
   edges,
 }: ScreenProps): ReactNode {
   const headerHeight = useHeaderHeight();
+  const themed = useStyles(makeThemedStyles);
   const scrollRef = useRef<ScrollView>(null);
   // Header already clears the status bar; only inset top when there is no nav header.
   const resolvedEdges =
@@ -93,7 +95,7 @@ export function Screen({
 
   return (
     <SafeAreaView
-      style={[theme.screen, Platform.OS === 'web' ? styles.webClip : null, style]}
+      style={[themed.screen, Platform.OS === 'web' ? styles.webClip : null, style]}
       edges={[...resolvedEdges]}
     >
       <FeltAtmosphere />
@@ -109,6 +111,14 @@ export function Screen({
   );
 }
 
+const makeThemedStyles = (c: Palette) =>
+  StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: c.bg,
+    },
+  });
+
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
@@ -123,7 +133,7 @@ const styles = StyleSheet.create({
   },
   flexContent: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     paddingBottom: spacing.lg,
     // Let nested FlatLists shrink/scroll inside the phone shell on web.
@@ -131,10 +141,10 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     // Extra room so bottom fields (e.g. match name) can scroll above the keyboard.
-    // Web has no native keyboard inset — keep a modest bottom pad only.
+    // Web has no native keyboard inset, so keep a modest bottom pad only.
     paddingBottom: Platform.OS === 'web' ? spacing.xxl : spacing.xxl + 120,
   },
 });

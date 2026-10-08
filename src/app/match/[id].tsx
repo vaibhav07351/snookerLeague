@@ -1,213 +1,230 @@
 import { useLocalSearchParams, useNavigation } from 'expo-router';
-import { useCallback, useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { useSession } from '@/features/auth/hooks/use-session';
 import { Screen } from '@/features/home/components/Screen';
-import { FrameLiveRanks } from '@/features/match/components/FrameLiveRanks';
+import { FrameLiveRanks, type FrameRankView } from '@/features/match/components/FrameLiveRanks';
 import { LiveScoreboard } from '@/features/match/components/LiveScoreboard';
 import { ManualFrameForm } from '@/features/match/components/ManualFrameForm';
 import { MatchCelebration } from '@/features/match/components/MatchCelebration';
-import { MatchFrameList } from '@/features/match/components/MatchFrameList';
-import { MatchScoreHeader } from '@/features/match/components/MatchScoreHeader';
+import { MatchFrameList, type FramePlayerLine } from '@/features/match/components/MatchFrameList';
+import { MatchOptions } from '@/features/match/components/MatchOptions';
+import { MatchScoreHeader, type ScoreSideView } from '@/features/match/components/MatchScoreHeader';
+import { MatchSummaryCard } from '@/features/match/components/MatchSummaryCard';
 import { MatchTimingHeader } from '@/features/match/components/MatchTimingHeader';
-import * as frameRank from '@/features/match/services/frame-rank';
-import * as matchService from '@/features/match/services/match.service';
-import * as shotService from '@/features/match/services/shot.service';
-import * as playersService from '@/features/players/services/players.service';
-import { toUserMessage } from '@/shared/errors/app-error';
-import { useStoreReload } from '@/shared/hooks/use-store-reload';
-import { emptyOpenFrame, type Match, type Player } from '@/shared/types/domain';
+import { MidwaySetup } from '@/features/match/components/MidwaySetup';
+import { ScoringStatus } from '@/features/match/components/ScoringStatus';
+import {
+  matchAdmin,
+  matchService,
+  shotService,
+  useMatchScreen,
+} from '@/features/match/hooks/use-match-screen';
+import { summarizeMatch } from '@/features/match/services/match-summary';
+import { notify } from '@/shared/ui/notify';
+import { Card } from '@/shared/ui/Card';
+import { EmptyState } from '@/shared/ui/EmptyState';
+import { HeaderBack, useSafeBack } from '@/shared/ui/HeaderBack';
+import { HintCard } from '@/shared/ui/HintCard';
+import { SectionTitle } from '@/shared/ui/SectionTitle';
 import { confirmAction } from '@/shared/utils/confirm';
-import { colors, fonts, spacing, typography } from '@/theme/tokens';
+import type { Match } from '@/shared/types/domain';
+import { sideColor } from '@/theme/palettes';
+import { usePalette, useStyles } from '@/theme/ThemeProvider';
+import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
 
 function useLiveElapsed(startedAt: string | null | undefined, enabled: boolean): number {
   const [elapsed, setElapsed] = useState(0);
-
   useEffect(() => {
     if (!enabled || !startedAt) {
       setElapsed(0);
       return undefined;
     }
+    const start = Date.parse(startedAt);
     const tick = (): void => {
-      const start = Date.parse(startedAt);
-      if (Number.isNaN(start)) {
-        setElapsed(0);
-        return;
-      }
-      setElapsed(Math.max(0, Math.floor((Date.now() - start) / 1000)));
+      setElapsed(Number.isNaN(start) ? 0 : Math.max(0, Math.floor((Date.now() - start) / 1000)));
     };
     tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
   }, [startedAt, enabled]);
-
   return elapsed;
 }
 
+function headerTitle(match: Match): string {
+  if (match.namedLabel) {
+    return match.namedLabel;
+  }
+  return match.crownsChampion ? 'Title match' : 'Match';
+}
+
 export default function MatchDetailScreen(): ReactNode {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, midway } = useLocalSearchParams<{ id: string; midway?: string }>();
   const navigation = useNavigation();
-  const { user } = useSession();
-  const [match, setMatch] = useState<Match | null>(null);
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [timingBusy, setTimingBusy] = useState(false);
-  const [manualDraft, setManualDraft] = useState<{
-    teamAPoints: number;
-    teamBPoints: number;
-  } | null>(null);
+  const styles = useStyles(makeStyles);
+  const palette = usePalette();
+  const s = useMatchScreen(id);
+  const { match } = s;
+  const goBack = useSafeBack('/(main)');
+  const [showManual, setShowManual] = useState(false);
+  // Opened from "New match" with "We are already mid-match" switched on.
+  const [showMidway, setShowMidway] = useState(midway === '1');
 
-  const reload = useCallback(async () => {
-    if (!id) {
-      return;
-    }
-    const m = await matchService.getMatch(id);
-    setMatch(m);
-    if (m) {
-      setPlayers(await playersService.listPlayers(m.leagueId));
-    }
-  }, [id]);
-
-  useStoreReload(reload, id ?? null);
-
-  const matchId = match?.id;
-  const timingOn = match?.timingEnabled === true;
   const inProgress = match?.outcome.status === 'in_progress';
-  const canScore = user != null && match != null && shotService.isMatchScorer(match, user.uid);
-  const liveElapsed = useLiveElapsed(match?.frameStartedAt, timingOn && inProgress === true);
-
-  const toggleTiming = useCallback(
-    async (enabled: boolean): Promise<void> => {
-      if (!matchId) {
-        return;
-      }
-      setTimingBusy(true);
-      try {
-        await matchService.setMatchTiming(matchId, enabled);
-      } catch (error) {
-        Alert.alert('Could not update timer', toUserMessage(error));
-      } finally {
-        setTimingBusy(false);
-      }
-    },
-    [matchId],
-  );
+  const timingOn = match?.timingEnabled === true;
+  const elapsed = useLiveElapsed(match?.frameStartedAt, timingOn && inProgress);
+  const matchId = match?.id;
+  const { run, canScore, busy } = s;
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerRight: inProgress
-        ? () => (
-            <MatchTimingHeader
-              enabled={timingOn}
-              elapsedSeconds={liveElapsed}
-              disabled={timingBusy || !canScore}
-              onToggle={(next) => {
-                void toggleTiming(next);
-              }}
-            />
-          )
-        : undefined,
+      title: match ? headerTitle(match) : 'Match',
+      headerLeft: () => <HeaderBack fallback="/(main)" />,
+      headerRight:
+        inProgress && matchId
+          ? () => (
+              <MatchTimingHeader
+                enabled={timingOn}
+                pending={!match?.frameStartedAt}
+                elapsedSeconds={elapsed}
+                disabled={busy || !canScore}
+                onToggle={(next) =>
+                  void run('Could not change the timer', () =>
+                    matchService.setMatchTiming(matchId, next),
+                  )
+                }
+              />
+            )
+          : undefined,
     });
-  }, [navigation, inProgress, timingOn, liveElapsed, timingBusy, canScore, toggleTiming]);
+  }, [navigation, match, matchId, inProgress, timingOn, elapsed, busy, canScore, run]);
 
-  if (!match) {
+  // Per-frame player lines and the live frame's per-player points (short names: first
+  // names, surnames only when two players share a first name).
+  const { shortName } = s;
+  const frameLines = useMemo<FramePlayerLine[][]>(() => {
+    if (!match) {
+      return [];
+    }
+    return match.frames.map((frame) =>
+      summarizeMatch({ ...match, frames: [frame], openFrame: null }).players.map((p) => ({
+        playerId: p.playerId,
+        name: shortName(p.playerId),
+        side: p.side,
+        scored: p.scored,
+        foulPoints: p.foulPoints,
+        highestBreak: p.highestBreak,
+      })),
+    );
+  }, [match, shortName]);
+
+  const liveRanks = useMemo<FrameRankView[]>(() => {
+    if (!match?.openFrame) {
+      return [];
+    }
+    return summarizeMatch({ ...match, frames: [] }, true).players.map((p) => ({
+      playerId: p.playerId,
+      name: shortName(p.playerId),
+      side: p.side,
+      scored: p.scored,
+      foulPoints: p.foulPoints,
+      highestBreak: p.highestBreak,
+    }));
+  }, [match, shortName]);
+  const liveFramePoints = useMemo(
+    () => new Map(liveRanks.map((r) => [r.playerId, r.scored])),
+    [liveRanks],
+  );
+
+  if (match === undefined) {
     return (
       <Screen>
-        <Text style={typography.subtitle}>Loading match…</Text>
+        <ActivityIndicator color={palette.primary} style={styles.loading} />
+      </Screen>
+    );
+  }
+  if (match === null) {
+    return (
+      <Screen>
+        <EmptyState
+          icon="help-circle-outline"
+          title="Match not found"
+          message="It may have been deleted, or it has not synced to this phone yet."
+          actionLabel="Go back"
+          onAction={goBack}
+        />
       </Screen>
     );
   }
 
-  const nameOf = (pid: string): string =>
-    players.find((p) => p.id === pid)?.displayName ?? 'Player';
-  const labels = matchService.playerNamesForMatch(match, nameOf);
-  const isSingles = matchService.matchFormatOf(match) === 'singles';
-  const framesA = match.outcome.framesA;
-  const framesB = match.outcome.framesB;
-  const need = Math.floor(match.bestOf / 2) + 1;
-  const finished = match.outcome.status !== 'in_progress';
-  const viaForfeit = match.outcome.status === 'forfeited';
-  const winnerLabel =
-    match.outcome.status === 'completed' || match.outcome.status === 'forfeited'
-      ? match.outcome.winner === 'a'
-        ? labels.teamA
-        : labels.teamB
-      : null;
-  const forfeitSummary = matchService.describeForfeit(match, nameOf);
-  const scoreLockedLine =
-    match.outcome.status === 'forfeited'
-      ? [
-          `Walked at ${match.outcome.scoreAtForfeit.framesA}–${match.outcome.scoreAtForfeit.framesB}`,
-          (match.outcome.scoreAtForfeit.framePointsA ?? 0) > 0 ||
-          (match.outcome.scoreAtForfeit.framePointsB ?? 0) > 0
-            ? `frame pts ${match.outcome.scoreAtForfeit.framePointsA}–${match.outcome.scoreAtForfeit.framePointsB}`
-            : null,
-          `Final ${match.outcome.framesA}–${match.outcome.framesB}`,
-        ]
-          .filter(Boolean)
-          .join(' · ')
-      : null;
+  const m = match;
+  const open = m.openFrame ?? null;
+  const finished = !inProgress;
+  const labelA = s.sideLabel('a', true);
+  const labelB = s.sideLabel('b', true);
+  const fullA = s.sideLabel('a');
+  const fullB = s.sideLabel('b');
+  const hbByPlayer = new Map(s.summary?.players.map((p) => [p.playerId, p.highestBreak]) ?? []);
 
-  async function clearTime(frameIndex: number): Promise<void> {
-    try {
-      await matchService.clearFrameDuration(match!.id, frameIndex);
-    } catch (error) {
-      Alert.alert('Could not clear time', toUserMessage(error));
-    }
-  }
+  const sideView = (side: 'a' | 'b'): ScoreSideView => {
+    const ids = side === 'a' ? m.teamA : m.teamB;
+    const lastFrame = m.frames[m.frames.length - 1];
+    const framePoints = open
+      ? side === 'a'
+        ? open.teamAPoints
+        : open.teamBPoints
+      : side === 'a'
+        ? (lastFrame?.teamAPoints ?? 0)
+        : (lastFrame?.teamBPoints ?? 0);
+    return {
+      side,
+      framePoints,
+      frames: side === 'a' ? m.outcome.framesA : m.outcome.framesB,
+      players: ids.map((pid) => ({
+        id: pid,
+        name: s.shortName(pid),
+        framePoints: liveFramePoints.get(pid) ?? 0,
+        highestBreak: hbByPlayer.get(pid) ?? 0,
+      })),
+    };
+  };
 
-  async function updateFrame(
-    frameIndex: number,
-    patch: { teamAPoints: number; teamBPoints: number; winner: 'a' | 'b' },
-  ): Promise<void> {
-    try {
-      await matchService.updateFrame(match!.id, frameIndex, patch);
-    } catch (error) {
-      Alert.alert('Could not update frame', toUserMessage(error));
-    }
-  }
+  const deficit = open
+    ? Math.max(
+        0,
+        open.atTable === 'a'
+          ? open.teamBPoints - open.teamAPoints
+          : open.teamAPoints - open.teamBPoints,
+      )
+    : 0;
+  // While scoring, the ball pad sits right under the score so logging needs no scrolling;
+  // status lines and tips move below it.
+  const scoring = inProgress && canScore;
+  const canStartMidway =
+    inProgress &&
+    canScore &&
+    m.frames.length === 0 &&
+    (open?.shots.length ?? 0) === 0 &&
+    !open?.carriedPoints;
 
-  async function deleteFrame(frameIndex: number): Promise<void> {
-    try {
-      await matchService.deleteFrame(match!.id, frameIndex);
-    } catch (error) {
-      Alert.alert('Could not delete frame', toUserMessage(error));
-    }
-  }
-
-  async function forfeitFrame(side: 'a' | 'b'): Promise<void> {
-    const quitting = side === 'a' ? labels.teamA : labels.teamB;
-    const winning = side === 'a' ? labels.teamB : labels.teamA;
-    const live = match!.openFrame;
-    const framePointsA = live?.teamAPoints ?? 0;
-    const framePointsB = live?.teamBPoints ?? 0;
-    const nextA = framesA + (side === 'b' ? 1 : 0);
-    const nextB = framesB + (side === 'a' ? 1 : 0);
-    const remaining = Math.max(0, match!.bestOf - nextA - nextB);
-    const ownAfter = side === 'a' ? nextA : nextB;
-    const matchWouldEnd = ownAfter + remaining < need;
-    const pointsNow =
-      framePointsA > 0 || framePointsB > 0
-        ? `\nCurrent frame points: ${framePointsA}–${framePointsB}`
-        : '';
-    const confirmLabel = matchWouldEnd ? 'Forfeit & end match' : 'Forfeit frame';
-    const ok = await confirmAction(
-      'Forfeit this frame?',
-      matchWouldEnd
-        ? `${quitting} forfeit this frame (${framesA}–${framesB}).${pointsNow}\n\nThey can no longer reach ${need} frames — ${winning} win the match. That counts as a forfeit loss in stats.`
-        : `${quitting} forfeit this frame (${framesA}–${framesB}).${pointsNow}\n\n${winning} take the frame; the match continues.`,
-      confirmLabel,
-    );
-    if (!ok) {
+  async function awardFrame(winner: 'a' | 'b'): Promise<void> {
+    if (!open) {
       return;
     }
-    try {
-      await matchService.forfeitFrame(match!.id, side, {
-        teamAPoints: framePointsA,
-        teamBPoints: framePointsB,
-      });
-    } catch (error) {
-      Alert.alert('Forfeit failed', toUserMessage(error));
+    const name = winner === 'a' ? fullA : fullB;
+    const winnerPts = winner === 'a' ? open.teamAPoints : open.teamBPoints;
+    const loserPts = winner === 'a' ? open.teamBPoints : open.teamAPoints;
+    const behind =
+      winnerPts < loserPts
+        ? `\n\nNote: ${name} are behind on points (${winnerPts}-${loserPts}).`
+        : '';
+    const ok = await confirmAction(
+      `Frame to ${name}?`,
+      `End this frame at ${open.teamAPoints}-${open.teamBPoints} with ${name} winning it. You can undo this.${behind}`,
+      'End frame',
+    );
+    if (ok) {
+      await run('Could not end the frame', () => shotService.completeLiveFrame(m.id, winner));
     }
   }
 
@@ -216,323 +233,345 @@ export default function MatchDetailScreen(): ReactNode {
     teamBPoints: number;
     winner: 'a' | 'b';
   }): Promise<void> {
-    if (!match) {
-      return;
-    }
-    const name = frame.winner === 'a' ? labels.teamA : labels.teamB;
-    const liveShots = match.openFrame?.shots.length ?? 0;
-    const extra = liveShots > 0 ? ' This clears the live shots currently on the table.' : '';
+    const name = frame.winner === 'a' ? fullA : fullB;
+    const shots = open?.shots.length ?? 0;
     const ok = await confirmAction(
-      `${name}?`,
-      `Frame ${frame.teamAPoints}–${frame.teamBPoints} to ${name}.${extra}`,
+      `Frame to ${name}?`,
+      `Log ${frame.teamAPoints}-${frame.teamBPoints} to ${name}.${shots > 0 ? ' The shots logged in this frame are replaced.' : ''}`,
       'Log frame',
     );
-    if (!ok) {
-      return;
-    }
-    try {
-      await matchService.addFrame(match.id, frame);
-      setManualDraft(null);
-    } catch (error) {
-      Alert.alert('Could not add frame', toUserMessage(error));
+    if (ok && (await run('Could not log the frame', () => matchService.addFrame(m.id, frame)))) {
+      setShowManual(false);
     }
   }
 
-  async function awardFrame(winner: 'a' | 'b'): Promise<void> {
-    if (!match) {
-      return;
-    }
-    if (manualDraft) {
-      await logManualFrame({ ...manualDraft, winner });
-      return;
-    }
-    const name = winner === 'a' ? labels.teamA : labels.teamB;
-    const live = match.openFrame;
-    const pts = `${live?.teamAPoints ?? 0}–${live?.teamBPoints ?? 0}`;
-    const nextA = framesA + (winner === 'a' ? 1 : 0);
-    const nextB = framesB + (winner === 'b' ? 1 : 0);
-    const first = await confirmAction(`${name}?`, `Award this frame (${pts}) to ${name}?`, 'Yes');
-    if (!first) {
-      return;
-    }
-    const second = await confirmAction(
-      'Confirm frame',
-      `${name} take this frame. Score becomes ${nextA}–${nextB}. You can undo if this was a mistake.`,
-      'Award',
-    );
-    if (!second) {
-      return;
-    }
-    try {
-      await shotService.completeLiveFrame(match.id, winner);
-    } catch (error) {
-      Alert.alert('Could not complete frame', toUserMessage(error));
-    }
-  }
-
-  async function undoLive(): Promise<void> {
-    if (!match) {
-      return;
-    }
-    const open = match.openFrame;
+  async function undo(): Promise<void> {
     if (open && open.shots.length > 0) {
-      try {
-        await shotService.undoLastShot(match.id);
-      } catch (error) {
-        Alert.alert('Could not undo', toUserMessage(error));
-      }
+      await s.actions.undoShot();
       return;
     }
-    const last = match.frames[match.frames.length - 1];
+    const last = m.frames[m.frames.length - 1];
     if (!last) {
       return;
     }
-    const name = last.winner === 'a' ? labels.teamA : labels.teamB;
+    const name = last.winner === 'a' ? fullA : fullB;
     const ok = await confirmAction(
-      'Undo last frame?',
-      `${name} won ${last.teamAPoints}–${last.teamBPoints}. Put that frame back on the table?`,
+      'Undo the last frame?',
+      `${name} won frame ${m.frames.length}${last.carriedOver ? '' : ` ${last.teamAPoints}-${last.teamBPoints}`}. Put it back on the table?`,
       'Undo frame',
     );
-    if (!ok) {
-      return;
-    }
-    try {
-      await shotService.undoLastFrame(match.id);
-    } catch (error) {
-      Alert.alert('Could not undo frame', toUserMessage(error));
+    if (ok) {
+      await run('Could not undo the frame', () => shotService.undoLastFrame(m.id));
     }
   }
 
-  const liveOpen = match.openFrame;
-  const lastFrame = match.frames[match.frames.length - 1];
-  const liveActive =
-    (liveOpen?.shots.length ?? 0) > 0 ||
-    (liveOpen?.teamAPoints ?? 0) > 0 ||
-    (liveOpen?.teamBPoints ?? 0) > 0;
-  const framePointsA = manualDraft
-    ? manualDraft.teamAPoints
-    : liveActive
-      ? (liveOpen?.teamAPoints ?? 0)
-      : (lastFrame?.teamAPoints ?? 0);
-  const framePointsB = manualDraft
-    ? manualDraft.teamBPoints
-    : liveActive
-      ? (liveOpen?.teamBPoints ?? 0)
-      : (lastFrame?.teamBPoints ?? 0);
-  const framePointsHint = manualDraft
-    ? 'This frame · final score'
-    : liveActive || !lastFrame
-      ? 'This frame · live'
-      : 'Last frame';
+  async function forfeit(side: 'a' | 'b'): Promise<void> {
+    const quitting = side === 'a' ? fullA : fullB;
+    const winning = side === 'a' ? fullB : fullA;
+    const ok = await confirmAction(
+      `${quitting} concede this frame?`,
+      `${winning} take the frame. If ${quitting} can no longer win the match, it ends and counts as a forfeit loss in stats.`,
+      'Concede frame',
+    );
+    if (ok) {
+      await run('Could not concede the frame', () => matchService.forfeitFrame(m.id, side));
+    }
+  }
 
-  const frameRanks = frameRank
-    .rankFramePlayers(match.openFrame?.shots ?? [], [...match.teamA, ...match.teamB], {
-      a: match.teamA,
-      b: match.teamB,
-    })
-    .map((row) => ({
-      ...row,
-      name: nameOf(row.playerId),
-    }));
+  async function toggleTitle(on: boolean): Promise<void> {
+    if (on) {
+      const ok = await confirmAction(
+        'Make this a title match?',
+        'The winner of this match becomes the reigning league champion.',
+        'Make title match',
+      );
+      if (!ok) {
+        return;
+      }
+    }
+    if (await run('Could not update the match', () => matchAdmin.setTitleMatch(m.id, on))) {
+      notify.success(on ? 'This is now a title match' : 'No longer a title match');
+    }
+  }
 
-  const teams = { a: match.teamA, b: match.teamB };
-  const rosterIds = [...match.teamA, ...match.teamB];
-  const matchPlayerRanks = frameRank
-    .rankMatchPlayers(match.frames, rosterIds, teams)
-    .map((row) => ({
-      ...row,
-      name: nameOf(row.playerId),
-    }));
-  const showMatchPlayerPoints = matchPlayerRanks.some((r) => r.scored > 0 || r.foulPoints > 0);
-  const framePlayerPoints = match.frames.map((frame) =>
-    frameRank.rankPlayersForFrame(frame, rosterIds, teams).map((row) => ({
-      playerId: row.playerId,
-      name: nameOf(row.playerId),
-      scored: row.scored,
-      foulPoints: row.foulPoints,
-    })),
+  async function removeMatch(): Promise<void> {
+    const ok = await confirmAction(
+      inProgress ? 'Abandon and delete this match?' : 'Delete this match?',
+      'It is removed for everyone in the league and stats are recalculated. This cannot be undone.',
+      'Delete match',
+    );
+    if (ok && (await run('Could not delete the match', () => matchAdmin.deleteMatch(m.id)))) {
+      notify.success('Match deleted');
+      goBack();
+    }
+  }
+
+  const winnerLabel =
+    m.outcome.status === 'completed' || m.outcome.status === 'forfeited'
+      ? m.outcome.winner === 'a'
+        ? fullA
+        : fullB
+      : null;
+
+  const scoringStatus = (
+    <ScoringStatus
+      canScore={canScore}
+      canTakeOver={s.canTakeOver}
+      scorerName={s.scorerName}
+      busy={busy}
+      onTakeOver={() =>
+        void run('Could not take over scoring', () => matchAdmin.takeOverScoring(m.id))
+      }
+    />
+  );
+
+  const topBreak = s.summary?.topBreak;
+  const frameNotes = (
+    <>
+      {topBreak && topBreak.value > 0 ? (
+        <Text style={styles.topBreak}>
+          Highest break so far: {topBreak.value} by{' '}
+          <Text style={{ color: sideColor(palette, topBreak.side) }}>
+            {topBreak.playerId ? s.shortName(topBreak.playerId) : s.sideLabel(topBreak.side, true)}
+          </Text>
+        </Text>
+      ) : null}
+      {open?.carriedPoints ? (
+        <Text style={styles.banner}>
+          Ball-by-ball scoring started at {open.carriedPoints.a}-{open.carriedPoints.b} in this
+          frame.
+        </Text>
+      ) : null}
+    </>
   );
 
   return (
-    <Screen contentStyle={styles.screenContent}>
+    <Screen contentStyle={styles.content}>
       {finished && winnerLabel ? (
-        <>
-          <MatchCelebration
-            winnersLabel={winnerLabel}
-            framesA={framesA}
-            framesB={framesB}
-            viaForfeit={viaForfeit}
-            crownsChampion={match.crownsChampion}
-            namedLabel={match.namedLabel}
-            forfeitSummary={forfeitSummary}
-            scoreLockedLine={scoreLockedLine}
-          />
-          {showMatchPlayerPoints ? (
-            <View style={styles.playerPoints}>
-              <Text style={styles.playerPointsLabel}>Player points</Text>
-              <FrameLiveRanks ranks={matchPlayerRanks} wide />
-            </View>
-          ) : null}
-        </>
-      ) : (
-        <MatchScoreHeader
-          framesA={framesA}
-          framesB={framesB}
-          openFrame={match.openFrame ?? emptyOpenFrame('a', match.teamA[0] ?? null)}
-          teamALabel={labels.teamA}
-          teamBLabel={labels.teamB}
-          teamAPlayers={match.teamA.map((pid) => ({ id: pid, name: nameOf(pid) }))}
-          teamBPlayers={match.teamB.map((pid) => ({ id: pid, name: nameOf(pid) }))}
-          isDoubles={!isSingles}
-          inProgress
-          meta={`${isSingles ? 'Singles' : 'Doubles'} · Best of ${match.bestOf} · first to ${need}${match.crownsChampion ? ' · Crowns champions' : ''}`}
-          namedLabel={match.namedLabel}
-          canSelectPlayer={canScore}
-          frameRanks={frameRanks}
-          framePointsA={framePointsA}
-          framePointsB={framePointsB}
-          framePointsHint={framePointsHint}
-          onSelectPlayer={(playerId) => {
-            void shotService.setAtTablePlayer(match.id, playerId).catch((error: unknown) => {
-              Alert.alert('Could not set scorer', toUserMessage(error));
-            });
-          }}
+        <MatchCelebration
+          winnersLabel={winnerLabel}
+          framesA={m.outcome.framesA}
+          framesB={m.outcome.framesB}
+          viaForfeit={m.outcome.status === 'forfeited'}
+          crownsChampion={m.crownsChampion}
+          namedLabel={m.namedLabel}
+          forfeitSummary={matchService.describeForfeit(m, s.fullName)}
+          scoreLockedLine={null}
         />
-      )}
+      ) : null}
 
-      {finished && canScore && match.frames.length > 0 ? (
-        <Pressable onPress={() => void undoLive()} style={styles.undoFrame}>
-          <Text style={styles.undoFrameText}>Undo last frame</Text>
+      {inProgress && !scoring ? scoringStatus : null}
+
+      {inProgress ? (
+        <MatchScoreHeader
+          a={sideView('a')}
+          b={sideView('b')}
+          atTable={open ? open.atTable : null}
+          atTablePlayerId={open?.atTablePlayerId ?? null}
+          currentBreak={open?.currentBreak ?? 0}
+          frameNumber={m.frames.length + 1}
+          bestOf={m.bestOf}
+          canSelectPlayer={canScore}
+          onSelectPlayer={s.actions.selectPlayer}
+        />
+      ) : null}
+
+      {inProgress && !scoring ? frameNotes : null}
+
+      {inProgress && liveRanks.some((r) => r.scored > 0 || r.foulPoints > 0) ? (
+        <Card style={styles.ranksCard}>
+          <FrameLiveRanks ranks={liveRanks} title="This frame" />
+        </Card>
+      ) : null}
+
+      {canStartMidway && showMidway ? (
+        <Card>
+          <MidwaySetup
+            teamALabel={labelA}
+            teamBLabel={labelB}
+            framesToWin={matchService.framesToWin(m.bestOf)}
+            onCancel={() => setShowMidway(false)}
+            onSubmit={async (input) => {
+              const ok = await run('Could not set the score', () =>
+                matchAdmin.startFromCurrentScore(m.id, input),
+              );
+              if (ok) {
+                setShowMidway(false);
+                notify.success('Score set', 'Carry on scoring ball by ball from here.');
+              }
+              return ok;
+            }}
+          />
+        </Card>
+      ) : null}
+
+      {inProgress && canScore && open && s.table ? (
+        <LiveScoreboard
+          table={s.table}
+          deficit={deficit}
+          teamALabel={labelA}
+          teamBLabel={labelB}
+          canUndo={open.shots.length > 0 || m.frames.length > 0}
+          onPot={s.actions.pot}
+          onFoul={s.actions.foul}
+          onEndVisit={s.actions.endVisit}
+          onFreeBall={s.actions.freeBall}
+          onUndo={() => void undo()}
+          onFrameWon={(winner) => void awardFrame(winner)}
+        />
+      ) : null}
+
+      {scoring ? (
+        <>
+          {canStartMidway && !showMidway ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setShowMidway(true)}
+              style={styles.linkRow}
+            >
+              <Text style={styles.link}>Already playing? Start from the current score</Text>
+            </Pressable>
+          ) : null}
+          {frameNotes}
+          {scoringStatus}
+          <HintCard
+            hintKey="live-scoring"
+            title="Scoring in three taps"
+            tips={[
+              'Tap a ball each time it is potted. Glowing balls are the ones "on".',
+              'Miss or Safety hands the table to the other side. Foul gives them the points.',
+              'Tap a name to change who is at the table, and Undo fixes any mistake.',
+              'The frame clock starts on the first shot of each frame.',
+            ]}
+          />
+        </>
+      ) : null}
+
+      {scoring ? (
+        showManual ? (
+          <Card>
+            <ManualFrameForm teamALabel={labelA} teamBLabel={labelB} onSubmit={logManualFrame} />
+            <Pressable onPress={() => setShowManual(false)} style={styles.linkRow}>
+              <Text style={styles.linkMuted}>Cancel</Text>
+            </Pressable>
+          </Card>
+        ) : (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setShowManual(true)}
+            style={styles.linkRow}
+          >
+            <Text style={styles.linkMuted}>
+              Not scoring ball by ball? Log a frame by final score
+            </Text>
+          </Pressable>
+        )
+      ) : null}
+
+      {finished && s.summary ? (
+        <MatchSummaryCard
+          summary={s.summary}
+          teamALabel={labelA}
+          teamBLabel={labelB}
+          nameOf={s.shortName}
+        />
+      ) : null}
+
+      {finished && canScore && m.frames.length > 0 ? (
+        <Pressable accessibilityRole="button" onPress={() => void undo()} style={styles.linkRow}>
+          <Text style={styles.link}>Undo last frame and keep playing</Text>
         </Pressable>
       ) : null}
 
-      {match.outcome.status === 'in_progress' ? (
-        <View style={styles.live}>
-          <LiveScoreboard
-            openFrame={match.openFrame ?? emptyOpenFrame('a')}
-            teamALabel={labels.teamA}
-            teamBLabel={labels.teamB}
-            canScore={canScore}
-            canUndo={(match.openFrame?.shots.length ?? 0) > 0 || match.frames.length > 0}
-            onPot={(ball) => {
-              void shotService
-                .recordShot(match.id, { kind: 'pot', ball })
-                .catch((error: unknown) => {
-                  Alert.alert('Could not record shot', toUserMessage(error));
-                });
-            }}
-            onFoul={(points) => {
-              void shotService
-                .recordShot(match.id, { kind: 'foul', points })
-                .catch((error: unknown) => {
-                  Alert.alert('Could not record foul', toUserMessage(error));
-                });
-            }}
-            onEndVisit={(kind) => {
-              void shotService.recordShot(match.id, { kind }).catch((error: unknown) => {
-                Alert.alert('Could not end visit', toUserMessage(error));
-              });
-            }}
-            onFreeBall={() => {
-              void shotService
-                .recordShot(match.id, { kind: 'free_ball' })
-                .catch((error: unknown) => {
-                  Alert.alert('Could not record free ball', toUserMessage(error));
-                });
-            }}
-            onUndo={() => void undoLive()}
-            onFrameWon={(winner) => void awardFrame(winner)}
-          />
-          <View style={styles.toolbar}>
-            <Pressable onPress={() => void forfeitFrame('a')} style={styles.forfeit}>
-              <Text style={styles.forfeitText} numberOfLines={2}>
-                {labels.teamA} forfeit
-              </Text>
-            </Pressable>
-            <Pressable onPress={() => void forfeitFrame('b')} style={styles.forfeit}>
-              <Text style={styles.forfeitText} numberOfLines={2}>
-                {labels.teamB} forfeit
-              </Text>
-            </Pressable>
-          </View>
-          {canScore ? (
-            <ManualFrameForm
-              teamALabel={labels.teamA}
-              teamBLabel={labels.teamB}
-              onDraftChange={setManualDraft}
-              onSubmit={logManualFrame}
-            />
-          ) : null}
-        </View>
-      ) : null}
-
-      <Text style={[typography.label, styles.framesLabel]}>Frames</Text>
+      <SectionTitle title={m.frames.length > 0 ? `Frames (${m.frames.length})` : 'Frames'} />
       <MatchFrameList
-        frames={match.frames}
-        playerPoints={framePlayerPoints}
-        onUpdate={updateFrame}
-        onDelete={deleteFrame}
-        onClearTime={clearTime}
+        frames={m.frames}
+        playerPoints={frameLines}
+        teamALabel={labelA}
+        teamBLabel={labelB}
+        canEdit={canScore || s.canManage}
+        onUpdate={(index, patch) =>
+          run('Could not update the frame', () => matchService.updateFrame(m.id, index, patch))
+        }
+        onDelete={(index) =>
+          run('Could not delete the frame', () => matchService.deleteFrame(m.id, index))
+        }
+        onClearTime={(index) =>
+          run('Could not clear the time', () => matchService.clearFrameDuration(m.id, index))
+        }
       />
+
+      <View style={styles.options}>
+        <MatchOptions
+          match={m}
+          inProgress={inProgress}
+          canScore={canScore}
+          canManage={s.canManage}
+          members={s.memberPlayers}
+          creatorUid={m.createdByUid}
+          teamALabel={labelA}
+          teamBLabel={labelB}
+          busy={busy}
+          onTitleMatch={(on) => void toggleTitle(on)}
+          onPolicy={(policy, allowed) =>
+            void run('Could not update scoring', () =>
+              matchAdmin.setScoringPolicy(m.id, policy, allowed),
+            )
+          }
+          onForfeit={(side) => void forfeit(side)}
+          onDelete={() => void removeMatch()}
+        />
+      </View>
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  screenContent: {
-    paddingBottom: spacing.lg,
-  },
-  live: {
-    gap: 6,
-  },
-  toolbar: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    gap: 8,
-    paddingVertical: 4,
-  },
-  forfeit: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 107, 92, 0.5)',
-    backgroundColor: 'rgba(255, 107, 92, 0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  forfeitText: {
-    fontFamily: fonts.bodyBold,
-    color: colors.danger,
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  undoFrame: {
-    alignSelf: 'flex-start',
-    marginBottom: spacing.sm,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  undoFrameText: {
-    fontFamily: fonts.bodyBold,
-    color: colors.goldSoft,
-    fontSize: 13,
-  },
-  framesLabel: {
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
-  },
-  playerPoints: {
-    marginBottom: spacing.md,
-    gap: 6,
-  },
-  playerPointsLabel: {
-    fontFamily: fonts.bodyBold,
-    color: colors.goldSoft,
-    fontSize: 13,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    content: {
+      gap: spacing.md,
+    },
+    loading: {
+      marginTop: spacing.xxl,
+    },
+    topBreak: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 14,
+      color: c.text,
+      textAlign: 'center',
+    },
+    ranksCard: {
+      padding: spacing.sm,
+      gap: 4,
+    },
+    banner: {
+      fontFamily: fonts.bodyMedium,
+      fontSize: 13,
+      color: c.info,
+      textAlign: 'center',
+      paddingVertical: 6,
+      paddingHorizontal: spacing.sm,
+      borderRadius: radii.sm,
+      backgroundColor: c.card,
+    },
+    linkRow: {
+      minHeight: 40,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    link: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 14,
+      color: c.primary,
+      textAlign: 'center',
+    },
+    linkMuted: {
+      fontFamily: fonts.bodyMedium,
+      fontSize: 13,
+      color: c.textMuted,
+      textAlign: 'center',
+    },
+    options: {
+      marginTop: spacing.sm,
+    },
+  });

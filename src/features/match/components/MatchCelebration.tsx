@@ -12,17 +12,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { colors, fonts, radii, spacing } from '@/theme/tokens';
-
-const PARTICLE_COLORS = [
-  colors.gold,
-  colors.goldSoft,
-  colors.mint,
-  colors.coral,
-  colors.sky,
-  colors.sun,
-  colors.chalk,
-] as const;
+import { usePalette, useStyles } from '@/theme/ThemeProvider';
+import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
 
 const HEADLINES_WIN = [
   'What a finish!',
@@ -46,6 +37,7 @@ interface ParticleSpec {
 }
 
 function Particle({ spec }: { spec: ParticleSpec }): ReactNode {
+  const styles = useStyles(makeStyles);
   const progress = useSharedValue(0);
   const spin = useSharedValue(0);
 
@@ -141,6 +133,8 @@ export function MatchCelebration({
   forfeitSummary,
   scoreLockedLine,
 }: MatchCelebrationProps): ReactNode {
+  const styles = useStyles(makeStyles);
+  const palette = usePalette();
   const hero = useSharedValue(0);
   const pulse = useSharedValue(0);
   const glow = useSharedValue(0);
@@ -165,10 +159,10 @@ export function MatchCelebration({
         delay: (i % 6) * 120,
         duration: 2200 + (i % 5) * 280,
         size: 6 + (i % 4) * 3,
-        color: PARTICLE_COLORS[i % PARTICLE_COLORS.length]!,
+        color: palette.chart[i % palette.chart.length] ?? palette.primary,
         drift: (i % 2 === 0 ? 1 : -1) * (12 + (i % 5) * 6),
       })),
-    [],
+    [palette],
   );
 
   useEffect(() => {
@@ -201,11 +195,9 @@ export function MatchCelebration({
   }));
 
   const ringStyle = useAnimatedStyle(() => ({
-    borderColor: viaForfeit
-      ? `rgba(255, 122, 110, ${0.35 + glow.value * 0.45})`
-      : `rgba(255, 200, 74, ${0.4 + glow.value * 0.5})`,
-    shadowOpacity: 0.25 + glow.value * 0.35,
+    shadowOpacity: 0.2 + glow.value * 0.35,
   }));
+  const ringColor = viaForfeit ? palette.danger : palette.primary;
 
   return (
     <View style={styles.wrap}>
@@ -215,14 +207,21 @@ export function MatchCelebration({
         ))}
       </View>
 
-      <Animated.View style={[styles.card, ringStyle, heroStyle]}>
+      <Animated.View
+        style={[
+          styles.card,
+          { borderColor: ringColor, shadowColor: ringColor },
+          ringStyle,
+          heroStyle,
+        ]}
+      >
         <Text style={styles.kicker}>
           {crownsChampion ? 'Title match' : viaForfeit ? 'Forfeit result' : 'Match complete'}
         </Text>
         <Text style={styles.headline}>{activeHeadline}</Text>
 
         <Animated.Text style={[styles.score, scoreStyle]}>
-          {framesA} – {framesB}
+          {framesA}-{framesB}
         </Animated.Text>
 
         <Text style={styles.winnersLabel}>Winners</Text>
@@ -241,99 +240,99 @@ export function MatchCelebration({
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    marginBottom: spacing.lg,
-    overflow: 'hidden',
-  },
-  particleLayer: {
-    ...StyleSheet.absoluteFill,
-    zIndex: 2,
-  },
-  particle: {
-    position: 'absolute',
-    top: 0,
-  },
-  card: {
-    zIndex: 1,
-    gap: spacing.sm,
-    padding: spacing.lg,
-    borderRadius: radii.lg,
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 2,
-    shadowColor: colors.gold,
-    shadowOffset: { width: 0, height: 8 },
-    shadowRadius: 18,
-    elevation: 6,
-    alignItems: 'center',
-  },
-  kicker: {
-    fontFamily: fonts.bodyBold,
-    fontSize: 11,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-    color: colors.goldSoft,
-  },
-  headline: {
-    fontFamily: fonts.display,
-    fontSize: 26,
-    color: colors.chalk,
-    textAlign: 'center',
-    marginTop: spacing.xs,
-  },
-  score: {
-    fontFamily: fonts.display,
-    fontSize: 52,
-    color: colors.gold,
-    marginVertical: spacing.sm,
-  },
-  winnersLabel: {
-    fontFamily: fonts.bodyBold,
-    fontSize: 11,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    color: colors.mint,
-  },
-  winners: {
-    fontFamily: fonts.bodyBold,
-    fontSize: 20,
-    color: colors.chalk,
-    textAlign: 'center',
-    lineHeight: 28,
-  },
-  named: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 14,
-    color: colors.goldSoft,
-    marginTop: spacing.xs,
-  },
-  crownBadge: {
-    marginTop: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.pill,
-    backgroundColor: colors.surfaceBright,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-  },
-  crownText: {
-    fontFamily: fonts.bodyBold,
-    fontSize: 13,
-    color: colors.gold,
-  },
-  detail: {
-    fontFamily: fonts.body,
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.chalk,
-    textAlign: 'center',
-    marginTop: spacing.sm,
-  },
-  detailMuted: {
-    fontFamily: fonts.body,
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.chalkMuted,
-    textAlign: 'center',
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    wrap: {
+      marginBottom: spacing.lg,
+      overflow: 'hidden',
+    },
+    particleLayer: {
+      ...StyleSheet.absoluteFill,
+      zIndex: 2,
+    },
+    particle: {
+      position: 'absolute',
+      top: 0,
+    },
+    card: {
+      zIndex: 1,
+      gap: spacing.sm,
+      padding: spacing.lg,
+      borderRadius: radii.lg,
+      backgroundColor: c.cardRaised,
+      borderWidth: 2,
+      shadowOffset: { width: 0, height: 8 },
+      shadowRadius: 18,
+      elevation: 6,
+      alignItems: 'center',
+    },
+    kicker: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 11,
+      letterSpacing: 1.4,
+      textTransform: 'uppercase',
+      color: c.primarySoft,
+    },
+    headline: {
+      fontFamily: fonts.display,
+      fontSize: 26,
+      color: c.text,
+      textAlign: 'center',
+      marginTop: spacing.xs,
+    },
+    score: {
+      fontFamily: fonts.display,
+      fontSize: 52,
+      color: c.primary,
+      marginVertical: spacing.sm,
+    },
+    winnersLabel: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 11,
+      letterSpacing: 1.2,
+      textTransform: 'uppercase',
+      color: c.success,
+    },
+    winners: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 20,
+      color: c.text,
+      textAlign: 'center',
+      lineHeight: 28,
+    },
+    named: {
+      fontFamily: fonts.bodyMedium,
+      fontSize: 14,
+      color: c.primarySoft,
+      marginTop: spacing.xs,
+    },
+    crownBadge: {
+      marginTop: spacing.sm,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: radii.pill,
+      backgroundColor: c.cardHighlight,
+      borderWidth: 1,
+      borderColor: c.borderStrong,
+    },
+    crownText: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 13,
+      color: c.primary,
+    },
+    detail: {
+      fontFamily: fonts.body,
+      fontSize: 14,
+      lineHeight: 20,
+      color: c.text,
+      textAlign: 'center',
+      marginTop: spacing.sm,
+    },
+    detailMuted: {
+      fontFamily: fonts.body,
+      fontSize: 13,
+      lineHeight: 18,
+      color: c.textMuted,
+      textAlign: 'center',
+    },
+  });

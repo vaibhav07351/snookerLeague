@@ -7,7 +7,8 @@ import {
   formatIsoDate,
   parseIsoDate,
 } from '@/features/auth/services/division.service';
-import { colors, fonts, radii, spacing, typography } from '@/theme/tokens';
+import { usePalette, useStyles } from '@/theme/ThemeProvider';
+import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
 
 interface DateOfBirthFieldProps {
   value: string;
@@ -39,6 +40,9 @@ function focusNext(ref: RefObject<TextInput | null>): void {
 }
 
 export function DateOfBirthField({ value, onChange, error }: DateOfBirthFieldProps): ReactNode {
+  const styles = useStyles(makeStyles);
+  const typography = useStyles(makeTypography);
+  const palette = usePalette();
   const initial = partsFromIso(value);
   const [day, setDay] = useState(initial.day);
   const [month, setMonth] = useState(initial.month);
@@ -80,7 +84,7 @@ export function DateOfBirthField({ value, onChange, error }: DateOfBirthFieldPro
             }
           }}
           placeholder="DD"
-          placeholderTextColor={colors.chalkMuted}
+          placeholderTextColor={palette.textFaint}
           keyboardType="number-pad"
           maxLength={2}
           returnKeyType="next"
@@ -103,7 +107,7 @@ export function DateOfBirthField({ value, onChange, error }: DateOfBirthFieldPro
             }
           }}
           placeholder="MM"
-          placeholderTextColor={colors.chalkMuted}
+          placeholderTextColor={palette.textFaint}
           keyboardType="number-pad"
           maxLength={2}
           returnKeyType="next"
@@ -123,7 +127,7 @@ export function DateOfBirthField({ value, onChange, error }: DateOfBirthFieldPro
             }
           }}
           placeholder="YYYY"
-          placeholderTextColor={colors.chalkMuted}
+          placeholderTextColor={palette.textFaint}
           keyboardType="number-pad"
           maxLength={4}
           style={[styles.input, styles.year, error ? styles.inputError : null]}
@@ -138,49 +142,50 @@ export function DateOfBirthField({ value, onChange, error }: DateOfBirthFieldPro
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    width: '100%',
-    maxWidth: '100%',
-  },
-  input: {
-    flex: 1,
-    minWidth: 0,
-    backgroundColor: colors.surface,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 14,
-    color: colors.chalk,
-    // 16px on web avoids mobile Safari auto-zoom on focus (looks "zoomed in").
-    fontSize: Platform.OS === 'web' ? 16 : 17,
-    fontFamily: fonts.body,
-    minHeight: 52,
-    textAlign: 'center',
-    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : {}),
-  },
-  year: {
-    flex: 1.4,
-  },
-  inputError: {
-    borderColor: colors.danger,
-  },
-  hint: {
-    fontFamily: fonts.body,
-    fontSize: 13,
-    color: colors.chalkMuted,
-    lineHeight: 18,
-  },
-  error: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 13,
-    color: colors.danger,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    wrap: {
+      gap: spacing.sm,
+      marginBottom: spacing.md,
+    },
+    row: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      width: '100%',
+      maxWidth: '100%',
+    },
+    input: {
+      flex: 1,
+      minWidth: 0,
+      backgroundColor: c.card,
+      borderWidth: 1.5,
+      borderColor: c.border,
+      borderRadius: radii.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 14,
+      color: c.text,
+      // 16px on web avoids mobile Safari auto-zoom on focus (looks "zoomed in").
+      fontSize: Platform.OS === 'web' ? 16 : 17,
+      fontFamily: fonts.body,
+      minHeight: 52,
+      textAlign: 'center',
+      ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : {}),
+    },
+    year: {
+      flex: 1.4,
+    },
+    inputError: {
+      borderColor: c.danger,
+    },
+    hint: {
+      fontFamily: fonts.body,
+      fontSize: 13,
+      color: c.textMuted,
+      lineHeight: 18,
+    },
+    error: {
+      fontFamily: fonts.bodyMedium,
+      fontSize: 13,
+      color: c.danger,
+    },
+  });

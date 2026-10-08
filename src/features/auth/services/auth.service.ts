@@ -9,6 +9,7 @@ import { signOutGoogleNative } from '@/features/auth/services/google-sign-in.ser
 import { getFirebaseAuth, isFirebaseEnabled } from '@/shared/firebase/app';
 import { AppError } from '@/shared/errors/app-error';
 import { logger } from '@/shared/logging/logger';
+import { clearSessionPreferences } from '@/shared/storage/preferences';
 import { createId, nowIso } from '@/shared/utils/id';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { syncAfterGoogleSignIn } from '@/shared/sync';
@@ -38,7 +39,18 @@ function migrateDemoUidInStore(store: AppDataStore, fromUid: string, toUid: stri
         : p,
     ),
     matches: store.matches.map((m) =>
-      m.createdByUid === fromUid ? { ...m, createdByUid: toUid, updatedAt: stamp } : m,
+      m.createdByUid === fromUid || m.scorerUid === fromUid
+        ? {
+            ...m,
+            createdByUid: m.createdByUid === fromUid ? toUid : m.createdByUid,
+            // Keep scoring their own live matches after linking Google.
+            ...(m.scorerUid === fromUid ? { scorerUid: toUid } : {}),
+            ...(m.allowedScorerUids
+              ? { allowedScorerUids: remapUid(m.allowedScorerUids, fromUid, toUid) }
+              : {}),
+            updatedAt: stamp,
+          }
+        : m,
     ),
     races: store.races.map((r) =>
       r.createdByUid === fromUid ? { ...r, createdByUid: toUid, updatedAt: stamp } : r,
@@ -170,6 +182,7 @@ export async function signOut(): Promise<void> {
     });
   }
   await updateStore((s) => ({ ...s, user: null, activeLeagueId: null }));
+  await clearSessionPreferences();
   logger.info('auth.service', 'Signed out');
 }
 

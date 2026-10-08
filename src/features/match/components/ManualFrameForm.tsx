@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { colors, fonts, radii, spacing } from '@/theme/tokens';
+import { usePalette, useStyles } from '@/theme/ThemeProvider';
+import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
 
 interface ManualFrameFormProps {
   teamALabel: string;
@@ -34,6 +35,8 @@ export function ManualFrameForm({
   onDraftChange,
   onSubmit,
 }: ManualFrameFormProps): ReactNode {
+  const styles = useStyles(makeStyles);
+  const palette = usePalette();
   const [ptsA, setPtsA] = useState('');
   const [ptsB, setPtsB] = useState('');
   const [busy, setBusy] = useState(false);
@@ -70,8 +73,10 @@ export function ManualFrameForm({
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.heading}>Or log this frame by final score</Text>
-      <Text style={styles.hint}>Type the finished points, then tap who won the frame.</Text>
+      <Text style={styles.heading}>Log this frame by final score</Text>
+      <Text style={styles.hint}>
+        Type the finished points, then tap who won. Any shots logged in this frame are replaced.
+      </Text>
       <View style={styles.ptsRow}>
         <View style={styles.ptsCol}>
           <Text style={styles.label} numberOfLines={1}>
@@ -85,7 +90,7 @@ export function ManualFrameForm({
             }}
             keyboardType="number-pad"
             placeholder="0"
-            placeholderTextColor={colors.chalkMuted}
+            placeholderTextColor={palette.textFaint}
             editable={!disabled && !busy}
             style={styles.input}
           />
@@ -102,7 +107,7 @@ export function ManualFrameForm({
             }}
             keyboardType="number-pad"
             placeholder="0"
-            placeholderTextColor={colors.chalkMuted}
+            placeholderTextColor={palette.textFaint}
             editable={!disabled && !busy}
             style={styles.input}
           />
@@ -112,19 +117,27 @@ export function ManualFrameForm({
         <Pressable
           disabled={disabled || busy}
           onPress={() => void save('a')}
-          style={[styles.win, (disabled || busy) && styles.disabled]}
+          style={[
+            styles.win,
+            { borderColor: palette.teamA },
+            (disabled || busy) && styles.disabled,
+          ]}
         >
-          <Text style={styles.winText} numberOfLines={2}>
-            {teamALabel} wins
+          <Text style={[styles.winText, { color: palette.teamA }]} numberOfLines={2}>
+            {teamALabel} won
           </Text>
         </Pressable>
         <Pressable
           disabled={disabled || busy}
           onPress={() => void save('b')}
-          style={[styles.win, styles.winB, (disabled || busy) && styles.disabled]}
+          style={[
+            styles.win,
+            { borderColor: palette.teamB },
+            (disabled || busy) && styles.disabled,
+          ]}
         >
-          <Text style={styles.winTextB} numberOfLines={2}>
-            {teamBLabel} wins
+          <Text style={[styles.winText, { color: palette.teamB }]} numberOfLines={2}>
+            {teamBLabel} won
           </Text>
         </Pressable>
       </View>
@@ -132,85 +145,72 @@ export function ManualFrameForm({
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    gap: 6,
-    marginTop: spacing.sm,
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  heading: {
-    fontFamily: fonts.bodyBold,
-    color: colors.goldSoft,
-    fontSize: 13,
-    letterSpacing: 0.4,
-  },
-  hint: {
-    fontFamily: fonts.body,
-    color: colors.chalkMuted,
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  ptsRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  ptsCol: {
-    flex: 1,
-    gap: 4,
-  },
-  label: {
-    fontFamily: fonts.bodyMedium,
-    color: colors.chalkMuted,
-    fontSize: 11,
-  },
-  input: {
-    minHeight: 44,
-    minWidth: 0,
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    color: colors.chalk,
-    fontFamily: fonts.bodyBold,
-    // 16px on web avoids mobile Safari auto-zoom on focus.
-    fontSize: Platform.OS === 'web' ? 16 : 18,
-    paddingHorizontal: 10,
-    textAlign: 'center',
-  },
-  winRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  win: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: radii.sm,
-    backgroundColor: colors.gold,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-  },
-  winB: {
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1.5,
-    borderColor: colors.mint,
-  },
-  winText: {
-    fontFamily: fonts.bodyBold,
-    color: colors.felt,
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  winTextB: {
-    fontFamily: fonts.bodyBold,
-    color: colors.chalk,
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  disabled: {
-    opacity: 0.4,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    wrap: {
+      gap: spacing.sm,
+    },
+    heading: {
+      fontFamily: fonts.bodyBold,
+      color: c.text,
+      fontSize: 13,
+      letterSpacing: 0.4,
+    },
+    hint: {
+      fontFamily: fonts.body,
+      color: c.textMuted,
+      fontSize: 12,
+      lineHeight: 16,
+    },
+    ptsRow: {
+      flexDirection: 'row',
+      gap: 6,
+    },
+    ptsCol: {
+      flex: 1,
+      gap: 4,
+    },
+    label: {
+      fontFamily: fonts.bodyMedium,
+      color: c.textMuted,
+      fontSize: 11,
+    },
+    input: {
+      minHeight: 44,
+      minWidth: 0,
+      borderRadius: radii.sm,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.card,
+      color: c.text,
+      fontFamily: fonts.bodyBold,
+      // 16px on web avoids mobile Safari auto-zoom on focus.
+      fontSize: Platform.OS === 'web' ? 16 : 18,
+      paddingHorizontal: 10,
+      textAlign: 'center',
+    },
+    winRow: {
+      flexDirection: 'row',
+      gap: 6,
+    },
+    win: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: 44,
+      borderRadius: radii.sm,
+      borderWidth: 1.5,
+      backgroundColor: c.card,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 8,
+      paddingVertical: 8,
+    },
+    winText: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 14,
+      textAlign: 'center',
+    },
+    disabled: {
+      opacity: 0.4,
+    },
+  });

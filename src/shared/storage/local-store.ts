@@ -47,6 +47,17 @@ function withUpdatedAt<T extends { createdAt: string; updatedAt?: string }>(
   };
 }
 
+/** Keep one row per key (the last one wins), repairing duplicates saved by older versions. */
+function uniqueBy<T>(rows: T[], key: (row: T) => string): T[] {
+  const map = new Map<string, T>();
+  for (const row of rows) {
+    map.set(key(row), row);
+  }
+  return [...map.values()];
+}
+
+const byId = (row: { id: string }): string => row.id;
+
 /** Normalize older AsyncStorage blobs missing sync fields. */
 export function normalizeStore(raw: Partial<AppDataStore>): AppDataStore {
   const base = emptyStore();
@@ -60,30 +71,41 @@ export function normalizeStore(raw: Partial<AppDataStore>): AppDataStore {
           cityName: raw.user.cityName ?? null,
         }
       : null,
-    leagues: (raw.leagues ?? []).map((l) => withUpdatedAt(l as League)),
-    players: (raw.players ?? []).map((p) => withUpdatedAt(p as Player)),
-    matches: (raw.matches ?? []) as Match[],
-    races: (raw.races ?? []) as Race[],
-    events: (raw.events ?? []).map((e) => {
-      const event = e as FeedEvent;
-      return {
-        ...event,
-        updatedAt:
-          typeof event.updatedAt === 'string' && event.updatedAt.length > 0
-            ? event.updatedAt
-            : event.createdAt,
-      };
-    }),
+    leagues: uniqueBy(
+      (raw.leagues ?? []).map((l) => withUpdatedAt(l as League)),
+      byId,
+    ),
+    players: uniqueBy(
+      (raw.players ?? []).map((p) => withUpdatedAt(p as Player)),
+      byId,
+    ),
+    matches: uniqueBy((raw.matches ?? []) as Match[], byId),
+    races: uniqueBy((raw.races ?? []) as Race[], byId),
+    events: uniqueBy(
+      (raw.events ?? []).map((e) => {
+        const event = e as FeedEvent;
+        return {
+          ...event,
+          updatedAt:
+            typeof event.updatedAt === 'string' && event.updatedAt.length > 0
+              ? event.updatedAt
+              : event.createdAt,
+        };
+      }),
+      byId,
+    ),
     pendingOps: Array.isArray(raw.pendingOps) ? raw.pendingOps : [],
     playerProfiles: Array.isArray(raw.playerProfiles)
-      ? (raw.playerProfiles as PlayerProfile[])
+      ? uniqueBy(raw.playerProfiles as PlayerProfile[], (p) => p.uid)
       : [],
-    challenges: Array.isArray(raw.challenges) ? (raw.challenges as Challenge[]) : [],
-    lookingPosts: Array.isArray(raw.lookingPosts) ? (raw.lookingPosts as LookingPost[]) : [],
+    challenges: Array.isArray(raw.challenges) ? uniqueBy(raw.challenges as Challenge[], byId) : [],
+    lookingPosts: Array.isArray(raw.lookingPosts)
+      ? uniqueBy(raw.lookingPosts as LookingPost[], byId)
+      : [],
     directoryListings: Array.isArray(raw.directoryListings)
-      ? (raw.directoryListings as DirectoryListing[])
+      ? uniqueBy(raw.directoryListings as DirectoryListing[], byId)
       : [],
-    follows: Array.isArray(raw.follows) ? (raw.follows as FollowEdge[]) : [],
+    follows: Array.isArray(raw.follows) ? uniqueBy(raw.follows as FollowEdge[], byId) : [],
   };
 }
 
@@ -91,10 +113,18 @@ let memory: AppDataStore = emptyStore();
 let loaded = false;
 const listeners = new Set<() => void>();
 
-export async function loadStore(): Promise<AppDataStore> {
+let loading: Promise<AppDataStore> | null = null;
+
+/** Load once; concurrent first calls share one read so none can overwrite a newer update. */
+export function loadStore(): Promise<AppDataStore> {
   if (loaded) {
-    return memory;
+    return Promise.resolve(memory);
   }
+  loading ??= readStoreFromDisk();
+  return loading;
+}
+
+async function readStoreFromDisk(): Promise<AppDataStore> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     if (raw) {

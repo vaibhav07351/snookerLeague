@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   collection,
+  documentId,
   getDoc,
   getDocs,
   limit,
@@ -15,7 +16,10 @@ import {
   isSnookerDivision,
   parseAndValidateDob,
 } from '@/features/auth/services/division.service';
+import { memberPlayerId } from '@/features/players/services/players.service';
 import { AppError } from '@/shared/errors/app-error';
+import { pendingDocIdsOf } from '@/shared/sync/merge';
+import { withTimeout } from '@/shared/utils/timeout';
 import { logger } from '@/shared/logging/logger';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { scheduleSync, scheduleUserProfileSync } from '@/shared/sync';
@@ -28,6 +32,7 @@ import {
 import {
   emptyPlayerProfile,
   leagueKindOf,
+  type Player,
   type PlayerProfile,
   type SnookerDivision,
 } from '@/shared/types/domain';
@@ -137,9 +142,40 @@ export async function setOwnDateOfBirth(iso: string): Promise<void> {
   logger.info('profile.service', 'Date of birth saved', { uid: user.uid, division });
 }
 
+/**
+ * One card per person in a city hub. Older app versions could create a second card for
+ * the same account; prefer the stable-id card, then the one with the most games played.
+ */
+function hubCardsByUid(cityLeagueId: string): Map<string, Player> {
+  const best = new Map<string, Player>();
+  for (const p of getStore().players) {
+    if (p.leagueId !== cityLeagueId || !p.authUid) {
+      continue;
+    }
+    const current = best.get(p.authUid);
+    const stableId = memberPlayerId(cityLeagueId, p.authUid);
+    const better =
+      !current ||
+      (p.id === stableId && current.id !== stableId) ||
+      (current.id !== stableId &&
+        (p.stats.standard.played > current.stats.standard.played ||
+          (p.stats.standard.played === current.stats.standard.played &&
+            p.updatedAt > current.updatedAt)));
+    if (better) {
+      best.set(p.authUid, p);
+    }
+  }
+  return best;
+}
+
+/** Copy the signed-in person's city-hub stats into their public profile (own profile only). */
 export async function syncCityRankFromHub(uid: string, cityLeagueId: string): Promise<void> {
   await loadStore();
-  const player = getStore().players.find((p) => p.leagueId === cityLeagueId && p.authUid === uid);
+  if (getStore().user?.uid !== uid) {
+    // Profiles are writable only by their owner; never write someone else's.
+    return;
+  }
+  const player = hubCardsByUid(cityLeagueId).get(uid);
   const existing = profileFromStore(uid);
   if (!existing || !player) {
     return;
@@ -211,6 +247,8 @@ export async function listCityProfiles(input: {
               col,
               where('cityId', '==', input.cityId),
               orderBy('rankScore', 'desc'),
+              // Tie-break on the doc id so equal scores page without repeats or gaps.
+              orderBy(documentId(), 'desc'),
               startAfter(input.cursorRank, input.cursorUid),
               limit(CITY_PAGE),
             )
@@ -218,15 +256,20 @@ export async function listCityProfiles(input: {
               col,
               where('cityId', '==', input.cityId),
               orderBy('rankScore', 'desc'),
+              orderBy(documentId(), 'desc'),
               limit(CITY_PAGE),
             );
-      const snap = await getDocs(q);
+      const snap = await withTimeout(getDocs(q), 'city profiles');
       const items = snap.docs.map((d) => asProfile(d.data(), d.id));
       const last = items[items.length - 1];
       await updateStore((s) => {
+        // Never replace a profile (our own) while an edit of it is still uploading.
+        const pending = pendingDocIdsOf(s.pendingOps);
         const map = new Map(s.playerProfiles.map((p) => [p.uid, p]));
         for (const item of items) {
-          map.set(item.uid, item);
+          if (!pending.has(item.uid)) {
+            map.set(item.uid, item);
+          }
         }
         return { ...s, playerProfiles: [...map.values()] };
       });
@@ -250,8 +293,15 @@ export async function listCityProfiles(input: {
       }
       return a.displayName.localeCompare(b.displayName);
     });
-  const offset =
-    input.cursorUid != null ? local.findIndex((p) => p.uid === input.cursorUid) + 1 : 0;
+  // Same order as the cloud query, so a page boundary never repeats a row.
+  local.sort((a, b) => b.rankScore - a.rankScore || b.uid.localeCompare(a.uid));
+  const cursorIndex =
+    input.cursorUid != null ? local.findIndex((p) => p.uid === input.cursorUid) : -1;
+  if (input.cursorUid != null && cursorIndex < 0) {
+    // Cursor not found locally: there is no next page (never restart from the top).
+    return { items: [], nextCursor: null };
+  }
+  const offset = cursorIndex + 1;
   const items = local.slice(Math.max(0, offset), Math.max(0, offset) + CITY_PAGE);
   const last = items[items.length - 1];
   return {
@@ -274,7 +324,7 @@ export async function getPublicProfile(uid: string): Promise<PlayerProfile | nul
     return null;
   }
   try {
-    const snap = await getDoc(playerProfileDocRef(uid));
+    const snap = await withTimeout(getDoc(playerProfileDocRef(uid)), 'profile');
     if (!snap.exists()) {
       return null;
     }
@@ -310,8 +360,7 @@ export function cityHubPlayersForRank(cityLeagueId: string): PlayerProfile[] {
   if (!league || leagueKindOf(league) !== 'city') {
     return [];
   }
-  return getStore()
-    .players.filter((p) => p.leagueId === cityLeagueId && p.authUid)
+  return [...hubCardsByUid(cityLeagueId).values()]
     .map((p) => {
       const std = p.stats.standard;
       return {

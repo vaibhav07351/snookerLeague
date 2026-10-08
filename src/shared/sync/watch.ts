@@ -1,18 +1,27 @@
-import { onSnapshot, type Unsubscribe } from 'firebase/firestore';
+import { onSnapshot, type QuerySnapshot, type Unsubscribe } from 'firebase/firestore';
 
 import { logger } from '@/shared/logging/logger';
 import { getStore, updateStore } from '@/shared/storage/local-store';
+import {
+  dropUnreachableLeague,
+  markLeaguesInCloud,
+  removeLeagueLocally,
+} from '@/shared/sync/cloud-leagues';
 import { isOnline } from '@/shared/sync/connectivity';
 import { firebaseErrorMeta } from '@/shared/sync/firebase-error';
 import {
+  isCityHubLeagueId,
+  leagueCollectionQuery,
   leagueDocRef,
-  leagueEventsCol,
-  leagueMatchesCol,
-  leaguePlayersCol,
-  leagueRacesCol,
   shouldCloudSync,
 } from '@/shared/sync/firestore-paths';
-import { mergeLeagueScoped, mergeLeagues } from '@/shared/sync/merge';
+import {
+  mergeLeagueScoped,
+  mergeLeagues,
+  reconcileLeagueScoped,
+  resolveMatch,
+  type Resolver,
+} from '@/shared/sync/merge';
 import type { FeedEvent, League, Match, Player, Race } from '@/shared/types/domain';
 import { cityHubId, emptyRaceStats, emptyStandardStats } from '@/shared/types/domain';
 
@@ -29,7 +38,7 @@ function stopWatchers(): void {
   watchedKey = '';
 }
 
-/** Stable fallback — never use nowIso() here or every snapshot looks like a write. */
+/** Stable fallback - never use nowIso() here or every snapshot looks like a write. */
 const MISSING_TS = '1970-01-01T00:00:00.000Z';
 
 function asLeague(data: Record<string, unknown>, id: string): League {
@@ -93,15 +102,80 @@ export function watchActiveLeague(leagueId: string | null): void {
   }
 }
 
+interface RemovalPlan {
+  mode: 'merge' | 'reconcile' | 'explicit';
+  removedIds: Set<string>;
+}
+
+/**
+ * How a collection snapshot may remove local rows that were deleted elsewhere:
+ * - cache snapshot: never (it can be partial);
+ * - first server snapshot after attaching: anything missing from it (catches deletes
+ *   that happened while this phone was not listening);
+ * - later server snapshots: only docs the server reports as removed, so a row saved
+ *   locally a moment before its upload starts is never dropped.
+ */
+function removalPlan(snap: QuerySnapshot, tracker: { reconciled: boolean }): RemovalPlan {
+  if (snap.metadata.fromCache) {
+    return { mode: 'merge', removedIds: new Set() };
+  }
+  if (!tracker.reconciled) {
+    tracker.reconciled = true;
+    return { mode: 'reconcile', removedIds: new Set() };
+  }
+  const removedIds = new Set(
+    snap
+      .docChanges()
+      .filter((change) => change.type === 'removed')
+      .map((change) => change.doc.id),
+  );
+  return { mode: 'explicit', removedIds };
+}
+
+function applyRemote<
+  T extends { id: string; leagueId: string; updatedAt?: string; createdAt?: string },
+>(
+  local: T[],
+  leagueId: string,
+  remote: T[],
+  pending: Set<string>,
+  plan: RemovalPlan,
+  resolve?: Resolver<T>,
+): T[] {
+  if (plan.mode === 'reconcile') {
+    return reconcileLeagueScoped(local, leagueId, remote, pending, resolve);
+  }
+  const kept =
+    plan.mode === 'explicit' && plan.removedIds.size > 0
+      ? local.filter(
+          (r) => r.leagueId !== leagueId || !plan.removedIds.has(r.id) || pending.has(r.id),
+        )
+      : local;
+  return mergeLeagueScoped(kept, leagueId, remote, pending, resolve);
+}
+
 function attachLeagueWatchers(leagueId: string): void {
+  // City hubs sync only their most recent rows, so a snapshot is never the full truth:
+  // remove only what the server reports as deleted, never what is merely beyond the limit.
+  const partial = isCityHubLeagueId(leagueId);
+  const trackers = {
+    players: { reconciled: partial },
+    matches: { reconciled: partial },
+    races: { reconciled: partial },
+    events: { reconciled: partial },
+  };
   unsubscribers.push(
     onSnapshot(
       leagueDocRef(leagueId),
       (snap) => {
         if (!snap.exists()) {
+          if (!snap.metadata.fromCache && !pendingIds().has(leagueId)) {
+            void removeLeagueLocally(leagueId);
+          }
           return;
         }
         const league = asLeague(snap.data(), snap.id);
+        void markLeaguesInCloud([league.id]);
         const pending = pendingIds();
         void updateStore((s) => {
           const leagues = mergeLeagues(s.leagues, [league], pending);
@@ -112,17 +186,23 @@ function attachLeagueWatchers(leagueId: string): void {
         });
       },
       (error) => {
-        logger.error('sync.watch', 'League snapshot error', {
-          ...firebaseErrorMeta(error),
-          leagueId,
-        });
+        const meta = firebaseErrorMeta(error);
+        logger.error('sync.watch', 'League snapshot error', { ...meta, leagueId });
+        watchedKey = '';
+        if (meta.code === 'permission-denied') {
+          // Not a member on the server: drop it and follow whichever league is active now.
+          void dropUnreachableLeague(leagueId).then(() => {
+            stopWatchers();
+            watchActiveLeague(getStore().activeLeagueId);
+          });
+        }
       },
     ),
   );
 
   unsubscribers.push(
     onSnapshot(
-      leaguePlayersCol(leagueId),
+      leagueCollectionQuery(leagueId, 'players'),
       (snap) => {
         const players: Player[] = snap.docs.map((d) => {
           const data = d.data();
@@ -144,8 +224,9 @@ function attachLeagueWatchers(leagueId: string): void {
           };
         });
         const pending = pendingIds();
+        const plan = removalPlan(snap, trackers.players);
         void updateStore((s) => {
-          const next = mergeLeagueScoped(s.players, leagueId, players, pending);
+          const next = applyRemote(s.players, leagueId, players, pending, plan);
           if (JSON.stringify(next) === JSON.stringify(s.players)) {
             return s;
           }
@@ -153,6 +234,8 @@ function attachLeagueWatchers(leagueId: string): void {
         });
       },
       (error) => {
+        // Firestore ends a listener after an error: re-attach on the next watch call.
+        watchedKey = '';
         logger.error('sync.watch', 'Players snapshot error', {
           ...firebaseErrorMeta(error),
           leagueId,
@@ -163,7 +246,7 @@ function attachLeagueWatchers(leagueId: string): void {
 
   unsubscribers.push(
     onSnapshot(
-      leagueMatchesCol(leagueId),
+      leagueCollectionQuery(leagueId, 'matches'),
       (snap) => {
         const matches: Match[] = snap.docs.map((d) => ({
           ...(d.data() as Match),
@@ -171,8 +254,9 @@ function attachLeagueWatchers(leagueId: string): void {
           leagueId: String(d.data().leagueId ?? leagueId),
         }));
         const pending = pendingIds();
+        const plan = removalPlan(snap, trackers.matches);
         void updateStore((s) => {
-          const next = mergeLeagueScoped(s.matches, leagueId, matches, pending);
+          const next = applyRemote(s.matches, leagueId, matches, pending, plan, resolveMatch);
           if (JSON.stringify(next) === JSON.stringify(s.matches)) {
             return s;
           }
@@ -180,6 +264,8 @@ function attachLeagueWatchers(leagueId: string): void {
         });
       },
       (error) => {
+        // Firestore ends a listener after an error: re-attach on the next watch call.
+        watchedKey = '';
         logger.error('sync.watch', 'Matches snapshot error', {
           ...firebaseErrorMeta(error),
           leagueId,
@@ -190,7 +276,7 @@ function attachLeagueWatchers(leagueId: string): void {
 
   unsubscribers.push(
     onSnapshot(
-      leagueRacesCol(leagueId),
+      leagueCollectionQuery(leagueId, 'races'),
       (snap) => {
         const races: Race[] = snap.docs.map((d) => ({
           ...(d.data() as Race),
@@ -198,8 +284,9 @@ function attachLeagueWatchers(leagueId: string): void {
           leagueId: String(d.data().leagueId ?? leagueId),
         }));
         const pending = pendingIds();
+        const plan = removalPlan(snap, trackers.races);
         void updateStore((s) => {
-          const next = mergeLeagueScoped(s.races, leagueId, races, pending);
+          const next = applyRemote(s.races, leagueId, races, pending, plan);
           if (JSON.stringify(next) === JSON.stringify(s.races)) {
             return s;
           }
@@ -207,6 +294,8 @@ function attachLeagueWatchers(leagueId: string): void {
         });
       },
       (error) => {
+        // Firestore ends a listener after an error: re-attach on the next watch call.
+        watchedKey = '';
         logger.error('sync.watch', 'Races snapshot error', {
           ...firebaseErrorMeta(error),
           leagueId,
@@ -217,7 +306,7 @@ function attachLeagueWatchers(leagueId: string): void {
 
   unsubscribers.push(
     onSnapshot(
-      leagueEventsCol(leagueId),
+      leagueCollectionQuery(leagueId, 'events'),
       (snap) => {
         const events: FeedEvent[] = snap.docs.map((d) => {
           const data = d.data();
@@ -234,8 +323,9 @@ function attachLeagueWatchers(leagueId: string): void {
           };
         });
         const pending = pendingIds();
+        const plan = removalPlan(snap, trackers.events);
         void updateStore((s) => {
-          const next = mergeLeagueScoped(s.events, leagueId, events, pending);
+          const next = applyRemote(s.events, leagueId, events, pending, plan);
           if (JSON.stringify(next) === JSON.stringify(s.events)) {
             return s;
           }
@@ -243,6 +333,8 @@ function attachLeagueWatchers(leagueId: string): void {
         });
       },
       (error) => {
+        // Firestore ends a listener after an error: re-attach on the next watch call.
+        watchedKey = '';
         logger.error('sync.watch', 'Events snapshot error', {
           ...firebaseErrorMeta(error),
           leagueId,

@@ -4,6 +4,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 
+import { logger } from '@/shared/logging/logger';
 import { subscribeStore } from '@/shared/storage/local-store';
 
 export function useStoreTick(): number {
@@ -26,6 +27,11 @@ export function useStoreReload(reload: () => void | Promise<void>, readyKey?: st
   reloadRef.current = reload;
 
   useEffect(() => {
-    void reloadRef.current();
+    Promise.resolve(reloadRef.current()).catch((error: unknown) => {
+      logger.error('use-store-reload', 'Screen reload failed', {
+        shape: error instanceof Error ? error.name : 'unknown',
+        message: error instanceof Error ? error.message : undefined,
+      });
+    });
   }, [tick, readyKey]);
 }

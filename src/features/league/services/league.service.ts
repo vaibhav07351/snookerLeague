@@ -1,14 +1,14 @@
+import { FirebaseError } from 'firebase/app';
 import { z } from 'zod';
 
+import { makeMemberPlayer } from '@/features/players/services/players.service';
 import { AppError } from '@/shared/errors/app-error';
+import { waitForFirebaseAuth } from '@/shared/firebase/app';
 import { logger } from '@/shared/logging/logger';
 import { createId, inviteCode, nowIso } from '@/shared/utils/id';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
-import {
-  applyLeagueBundleToLocal,
-  fetchLeagueBundle,
-  findLeagueByInviteCode,
-} from '@/shared/sync/pull';
+import { applyLeagueBundleToLocal, fetchLeagueBundle, fetchLeagueInvite } from '@/shared/sync/pull';
+import { joinLeagueRemote } from '@/shared/sync/push';
 import { isOnline } from '@/shared/sync/connectivity';
 import {
   onActiveLeagueChanged,
@@ -16,14 +16,8 @@ import {
   scheduleUserProfileSync,
   shouldCloudSync,
 } from '@/shared/sync';
-import { uniqueDisplayName } from '@/features/players/services/players.service';
-import {
-  emptyRaceStats,
-  emptyStandardStats,
-  leagueKindOf,
-  type League,
-  type Player,
-} from '@/shared/types/domain';
+import { scheduleProfileLeagueRemoval, type ScheduleItem } from '@/shared/sync/schedule';
+import { leagueKindOf, type League, type LeagueInvite } from '@/shared/types/domain';
 
 const createLeagueSchema = z.object({
   name: z.string().trim().min(2).max(40),
@@ -34,49 +28,93 @@ const createLeagueSchema = z.object({
   defaultBestOf: z.number().int().min(1).max(35).default(3),
 });
 
-const joinLeagueSchema = z.object({
-  code: z.string().trim().min(4).max(8),
-  uid: z.string().min(1),
-  displayName: z.string().trim().min(1),
-  photoUrl: z.string().nullable(),
-});
+const inviteCodeSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z0-9]{4,8}$/);
 
-function makeMemberPlayer(
-  leagueId: string,
-  uid: string,
-  displayName: string,
-  photoUrl: string | null,
-): Player {
-  const now = nowIso();
-  return {
-    id: createId('plr'),
-    leagueId,
-    displayName,
-    kind: 'member',
-    authUid: uid,
-    photoUrl,
-    createdAt: now,
-    updatedAt: now,
-    stats: { standard: emptyStandardStats(), race: emptyRaceStats() },
+export function normalizeInviteCode(raw: string): string {
+  const parsed = inviteCodeSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new AppError(
+      'VALIDATION',
+      'That invite code does not look right. Codes are 4 to 8 letters and numbers.',
+    );
+  }
+  return parsed.data;
+}
+
+function inviteSyncItem(league: League): ScheduleItem {
+  const invite: LeagueInvite = {
+    code: league.inviteCode,
+    leagueId: league.id,
+    leagueName: league.name,
+    createdByUid: league.createdByUid,
+    updatedAt: league.updatedAt,
   };
+  return {
+    entity: 'invite',
+    docId: invite.code,
+    leagueId: null,
+    action: 'upsert',
+    payload: invite,
+    updatedAt: invite.updatedAt,
+  };
+}
+
+function leagueSyncItem(league: League, fieldsOnly?: string[]): ScheduleItem {
+  return {
+    ...(fieldsOnly ? { fieldsOnly } : {}),
+    entity: 'league',
+    docId: league.id,
+    leagueId: null,
+    action: 'upsert',
+    payload: league,
+    updatedAt: league.updatedAt,
+  };
+}
+
+/** The user's first club league (never the city hub), for falling back to. */
+export function firstClubLeagueId(
+  leagues: League[],
+  uid: string | null | undefined,
+): string | null {
+  return (
+    leagues.find((l) => uid != null && l.memberUids.includes(uid) && leagueKindOf(l) !== 'city')
+      ?.id ?? null
+  );
+}
+
+/**
+ * The league the app shows: the stored active league, or the first club league when the
+ * active one is a city hub. Synchronous, so the session can use it on every store change.
+ */
+export function resolveActiveLeague(store: {
+  activeLeagueId: string | null;
+  leagues: League[];
+  user: { uid: string } | null;
+}): League | null {
+  if (!store.activeLeagueId) {
+    return null;
+  }
+  const active = store.leagues.find((l) => l.id === store.activeLeagueId) ?? null;
+  if (active && leagueKindOf(active) === 'city') {
+    const id = firstClubLeagueId(store.leagues, store.user?.uid);
+    return store.leagues.find((l) => l.id === id) ?? null;
+  }
+  return active;
+}
+
+/** Point read of one league from the local store. */
+export async function getLeague(leagueId: string): Promise<League | null> {
+  await loadStore();
+  return getStore().leagues.find((l) => l.id === leagueId) ?? null;
 }
 
 export async function getActiveLeague(): Promise<League | null> {
   await loadStore();
-  const { activeLeagueId, leagues, user } = getStore();
-  if (!activeLeagueId) {
-    return null;
-  }
-  const active = leagues.find((l) => l.id === activeLeagueId) ?? null;
-  if (active && leagueKindOf(active) === 'city') {
-    const uid = user?.uid;
-    return (
-      leagues.find(
-        (l) => uid != null && l.memberUids.includes(uid) && leagueKindOf(l) !== 'city',
-      ) ?? null
-    );
-  }
-  return active;
+  return resolveActiveLeague(getStore());
 }
 
 export async function listLeaguesForUser(uid: string): Promise<League[]> {
@@ -94,7 +132,7 @@ export async function createLeague(input: {
 }): Promise<League> {
   const parsed = createLeagueSchema.safeParse(input);
   if (!parsed.success) {
-    throw new AppError('VALIDATION', 'Invalid league details');
+    throw new AppError('VALIDATION', 'League names are 2 to 40 characters');
   }
 
   const now = nowIso();
@@ -129,14 +167,8 @@ export async function createLeague(input: {
   }));
 
   await scheduleSync([
-    {
-      entity: 'league',
-      docId: league.id,
-      leagueId: null,
-      action: 'upsert',
-      payload: league,
-      updatedAt: league.updatedAt,
-    },
+    leagueSyncItem(league),
+    inviteSyncItem(league),
     {
       entity: 'player',
       docId: player.id,
@@ -153,98 +185,183 @@ export async function createLeague(input: {
   return league;
 }
 
-export async function joinLeague(input: {
-  code: string;
-  uid: string;
-  displayName: string;
-  photoUrl: string | null;
-}): Promise<League> {
-  const parsed = joinLeagueSchema.safeParse(input);
-  if (!parsed.success) {
-    throw new AppError('VALIDATION', 'Invalid invite code');
-  }
+export type InvitePreview =
+  | { status: 'member'; league: League; hasPlayer: boolean }
+  | { status: 'joinable'; leagueId: string; leagueName: string; local: boolean };
 
+function hasOwnPlayer(leagueId: string, uid: string): boolean {
+  return getStore().players.some((p) => p.leagueId === leagueId && p.authUid === uid);
+}
+
+/**
+ * Look up an invite before joining, so the join screen can name the league and tell an
+ * existing member they are already in. Never writes.
+ */
+export async function previewInvite(rawCode: string, uid: string): Promise<InvitePreview> {
+  const code = normalizeInviteCode(rawCode);
+  // On a cold start (every link open on web) Firebase Auth restores the session a moment
+  // after the app; without this a Google user would be told to sign in.
+  await waitForFirebaseAuth();
   await loadStore();
-  const code = parsed.data.code.toUpperCase();
-  let league = getStore().leagues.find((l) => l.inviteCode === code) ?? null;
-
-  // Cloud users can join leagues that exist only remotely.
-  if (!league && shouldCloudSync(getStore().user) && isOnline()) {
-    try {
-      const remote = await findLeagueByInviteCode(code);
-      if (remote) {
-        const bundle = await fetchLeagueBundle(remote.id);
-        await applyLeagueBundleToLocal(bundle);
-        league = getStore().leagues.find((l) => l.id === remote.id) ?? remote;
-      }
-    } catch (error) {
-      logger.error('league.service', 'Remote invite lookup failed', {
-        shape: error instanceof Error ? error.name : 'unknown',
-      });
-    }
+  const store = getStore();
+  const local = store.leagues.find((l) => l.inviteCode === code);
+  if (local && local.memberUids.includes(uid)) {
+    return { status: 'member', league: local, hasPlayer: hasOwnPlayer(local.id, uid) };
+  }
+  const cloud = shouldCloudSync(store.user);
+  if (local && !cloud) {
+    return { status: 'joinable', leagueId: local.id, leagueName: local.name, local: true };
+  }
+  if (!cloud) {
+    throw new AppError(
+      'NEEDS_ACCOUNT',
+      "Sign in with Google to join a friend's league. Demo mode keeps everything on this phone only.",
+    );
+  }
+  if (!isOnline()) {
+    throw new AppError('OFFLINE', 'You are offline. Connect to the internet to join a league.');
   }
 
-  if (!league) {
-    throw new AppError('NOT_FOUND', 'No league found for that invite code');
+  let invite: LeagueInvite | null;
+  try {
+    invite = await fetchLeagueInvite(code);
+  } catch (error) {
+    logger.error('league.service', 'Invite lookup failed', {
+      firebaseCode: error instanceof FirebaseError ? error.code : 'unknown',
+    });
+    throw new AppError('NETWORK', 'Could not check the invite. Try again in a moment.');
   }
+  if (!invite) {
+    throw new AppError(
+      'NOT_FOUND',
+      'This invite is not valid any more. Ask your friend to share a fresh link.',
+    );
+  }
+  const known = store.leagues.find((l) => l.id === invite.leagueId);
+  if (known && known.memberUids.includes(uid)) {
+    return { status: 'member', league: known, hasPlayer: hasOwnPlayer(known.id, uid) };
+  }
+  return {
+    status: 'joinable',
+    leagueId: invite.leagueId,
+    leagueName: invite.leagueName,
+    local: false,
+  };
+}
 
-  const alreadyMember = league.memberUids.includes(parsed.data.uid);
-  const existingPlayer = getStore().players.find(
-    (p) => p.leagueId === league!.id && p.authUid === parsed.data.uid,
-  );
-
+/**
+ * Join a league with its invite code and make it the active league. Joining adds
+ * membership only; picking "which player are you" is a separate step (players.service),
+ * so nobody ends up with an extra card. Safe to repeat: already a member just opens it.
+ */
+export async function joinLeague(input: { code: string; uid: string }): Promise<League> {
+  const preview = await previewInvite(input.code, input.uid);
+  if (preview.status === 'member') {
+    return setActiveLeague(preview.league.id, input.uid);
+  }
+  const code = normalizeInviteCode(input.code);
   const now = nowIso();
-  const newPlayer =
-    existingPlayer != null
-      ? null
-      : makeMemberPlayer(
-          league.id,
-          parsed.data.uid,
-          uniqueDisplayName(league.id, parsed.data.displayName),
-          parsed.data.photoUrl,
-        );
 
-  const updatedLeague: League = alreadyMember
-    ? { ...league, updatedAt: now }
-    : {
-        ...league,
-        memberUids: [...league.memberUids, parsed.data.uid],
-        updatedAt: now,
-      };
+  if (preview.local) {
+    // A local-only (demo) league on this same phone.
+    const league = getStore().leagues.find((l) => l.id === preview.leagueId);
+    if (!league) {
+      throw new AppError('NOT_FOUND', 'League not found');
+    }
+    const joined: League = {
+      ...league,
+      memberUids: [...league.memberUids, input.uid],
+      updatedAt: now,
+    };
+    await updateStore((s) => ({
+      ...s,
+      leagues: s.leagues.map((l) => (l.id === joined.id ? joined : l)),
+      activeLeagueId: joined.id,
+    }));
+    logger.info('league.service', 'Joined local league', { leagueId: joined.id });
+    return joined;
+  }
 
-  await updateStore((s) => {
-    const leagues = s.leagues.map((l) => (l.id === updatedLeague.id ? updatedLeague : l));
-    const players = newPlayer ? [...s.players, newPlayer] : s.players;
-    return { ...s, leagues, players, activeLeagueId: updatedLeague.id };
-  });
+  try {
+    await joinLeagueRemote(preview.leagueId, code, input.uid, now);
+  } catch (error) {
+    const firebaseCode = error instanceof FirebaseError ? error.code : 'unknown';
+    logger.error('league.service', 'Join write failed', {
+      leagueId: preview.leagueId,
+      firebaseCode,
+    });
+    if (firebaseCode === 'permission-denied') {
+      throw new AppError(
+        'INVITE_INVALID',
+        'The league owner changed this invite code. Ask for a fresh link.',
+      );
+    }
+    throw new AppError('NETWORK', 'Could not join right now. Check your connection and try again.');
+  }
 
-  await scheduleSync([
-    {
-      entity: 'league',
-      docId: updatedLeague.id,
-      leagueId: null,
-      action: 'upsert',
-      payload: updatedLeague,
-      updatedAt: updatedLeague.updatedAt,
-    },
-    ...(newPlayer
-      ? [
-          {
-            entity: 'player' as const,
-            docId: newPlayer.id,
-            leagueId: updatedLeague.id,
-            action: 'upsert' as const,
-            payload: newPlayer,
-            updatedAt: newPlayer.updatedAt,
-          },
-        ]
-      : []),
-  ]);
+  const bundle = await fetchLeagueBundle(preview.leagueId);
+  await applyLeagueBundleToLocal(bundle);
+  const league = getStore().leagues.find((l) => l.id === preview.leagueId);
+  if (!league) {
+    throw new AppError('NETWORK', 'You joined, but the league did not load yet. Try again.');
+  }
+  await updateStore((s) => ({ ...s, activeLeagueId: league.id }));
   await scheduleUserProfileSync();
-  await onActiveLeagueChanged(updatedLeague.id);
+  await onActiveLeagueChanged(league.id);
+  logger.info('league.service', 'Joined league', { leagueId: league.id });
+  return league;
+}
 
-  logger.info('league.service', 'Joined league', { leagueId: updatedLeague.id });
-  return updatedLeague;
+/**
+ * Make sure the league's invite code works online (leagues made before invite documents
+ * existed have none). Idempotent; any member may call it.
+ */
+const ensuredInvites = new Set<string>();
+
+export async function ensureInviteDoc(leagueId: string): Promise<void> {
+  await loadStore();
+  const league = getStore().leagues.find((l) => l.id === leagueId);
+  if (!league || leagueKindOf(league) === 'city' || !shouldCloudSync(getStore().user)) {
+    return;
+  }
+  // Once per code per app session is enough; the write is idempotent anyway.
+  const key = `${league.id}:${league.inviteCode}`;
+  if (ensuredInvites.has(key)) {
+    return;
+  }
+  ensuredInvites.add(key);
+  await scheduleSync([inviteSyncItem(league)]);
+}
+
+/** Owner only: issue a new invite code. Old links and codes stop working. */
+export async function regenerateInviteCode(leagueId: string, uid: string): Promise<League> {
+  await loadStore();
+  const league = getStore().leagues.find((l) => l.id === leagueId);
+  if (!league) {
+    throw new AppError('NOT_FOUND', 'League not found');
+  }
+  if (league.createdByUid !== uid) {
+    throw new AppError('FORBIDDEN', 'Only the league owner can change the invite code');
+  }
+  const next: League = { ...league, inviteCode: inviteCode(), updatedAt: nowIso() };
+  await updateStore((s) => ({
+    ...s,
+    leagues: s.leagues.map((l) => (l.id === leagueId ? next : l)),
+  }));
+  await scheduleSync([
+    leagueSyncItem(next, ['inviteCode', 'updatedAt']),
+    inviteSyncItem(next),
+    {
+      entity: 'invite',
+      docId: league.inviteCode,
+      leagueId: null,
+      action: 'delete',
+      payload: null,
+      updatedAt: next.updatedAt,
+    },
+  ]);
+  logger.info('league.service', 'Invite code regenerated', { leagueId });
+  return next;
 }
 
 export async function setActiveLeague(leagueId: string, uid: string): Promise<League> {
@@ -283,14 +400,9 @@ export async function updateLeagueDefaults(
     leagues: s.leagues.map((l) => (l.id === leagueId ? next : l)),
   }));
   await scheduleSync([
-    {
-      entity: 'league',
-      docId: next.id,
-      leagueId: null,
-      action: 'upsert',
-      payload: next,
-      updatedAt: next.updatedAt,
-    },
+    leagueSyncItem(next, ['name', 'defaultRaceTarget', 'defaultBestOf', 'updatedAt']),
+    // Keep the name shown on the join screen in step with the league.
+    ...(next.name !== league.name ? [inviteSyncItem(next)] : []),
   ]);
   return next;
 }
@@ -320,69 +432,53 @@ export async function deleteLeague(input: {
   }
 
   const store = getStore();
-  const playerIds = store.players.filter((p) => p.leagueId === input.leagueId).map((p) => p.id);
-  const matchIds = store.matches.filter((m) => m.leagueId === input.leagueId).map((m) => m.id);
-  const raceIds = store.races.filter((r) => r.leagueId === input.leagueId).map((r) => r.id);
-  const eventIds = store.events.filter((e) => e.leagueId === input.leagueId).map((e) => e.id);
+  const inLeague = <T extends { leagueId: string; id: string }>(rows: T[]): string[] =>
+    rows.filter((r) => r.leagueId === input.leagueId).map((r) => r.id);
+  const playerIds = inLeague(store.players);
+  const matchIds = inLeague(store.matches);
+  const raceIds = inLeague(store.races);
+  const eventIds = inLeague(store.events);
 
   await updateStore((s) => {
     const leagues = s.leagues.filter((l) => l.id !== input.leagueId);
-    const players = s.players.filter((p) => p.leagueId !== input.leagueId);
-    const matches = s.matches.filter((m) => m.leagueId !== input.leagueId);
-    const races = s.races.filter((r) => r.leagueId !== input.leagueId);
-    const events = s.events.filter((e) => e.leagueId !== input.leagueId);
-
     let activeLeagueId = s.activeLeagueId;
     if (activeLeagueId === input.leagueId) {
-      const next = leagues.find((l) => l.memberUids.includes(input.uid));
-      activeLeagueId = next?.id ?? null;
+      activeLeagueId = firstClubLeagueId(leagues, input.uid);
     }
-
     return {
       ...s,
       leagues,
-      players,
-      matches,
-      races,
-      events,
+      players: s.players.filter((p) => p.leagueId !== input.leagueId),
+      matches: s.matches.filter((m) => m.leagueId !== input.leagueId),
+      races: s.races.filter((r) => r.leagueId !== input.leagueId),
+      events: s.events.filter((e) => e.leagueId !== input.leagueId),
       activeLeagueId,
     };
   });
 
   const now = nowIso();
+  const deletes = (entity: 'player' | 'match' | 'race' | 'event', ids: string[]): ScheduleItem[] =>
+    ids.map((docId) => ({
+      entity,
+      docId,
+      leagueId: input.leagueId,
+      action: 'delete' as const,
+      payload: null,
+      updatedAt: now,
+    }));
   await scheduleSync([
-    ...playerIds.map((docId) => ({
-      entity: 'player' as const,
-      docId,
-      leagueId: input.leagueId,
-      action: 'delete' as const,
+    ...deletes('player', playerIds),
+    ...deletes('match', matchIds),
+    ...deletes('race', raceIds),
+    ...deletes('event', eventIds),
+    {
+      entity: 'invite',
+      docId: league.inviteCode,
+      leagueId: null,
+      action: 'delete',
       payload: null,
       updatedAt: now,
-    })),
-    ...matchIds.map((docId) => ({
-      entity: 'match' as const,
-      docId,
-      leagueId: input.leagueId,
-      action: 'delete' as const,
-      payload: null,
-      updatedAt: now,
-    })),
-    ...raceIds.map((docId) => ({
-      entity: 'race' as const,
-      docId,
-      leagueId: input.leagueId,
-      action: 'delete' as const,
-      payload: null,
-      updatedAt: now,
-    })),
-    ...eventIds.map((docId) => ({
-      entity: 'event' as const,
-      docId,
-      leagueId: input.leagueId,
-      action: 'delete' as const,
-      payload: null,
-      updatedAt: now,
-    })),
+    },
     {
       entity: 'league',
       docId: input.leagueId,
@@ -392,6 +488,7 @@ export async function deleteLeague(input: {
       updatedAt: now,
     },
   ]);
+  await scheduleProfileLeagueRemoval(input.leagueId);
   await scheduleUserProfileSync();
   await onActiveLeagueChanged(getStore().activeLeagueId);
 

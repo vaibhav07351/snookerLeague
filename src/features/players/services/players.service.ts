@@ -71,6 +71,133 @@ export async function addGuestPlayer(input: {
   return player;
 }
 
+/**
+ * Deterministic id for a person's own player card in a league. The same person joining
+ * twice (retry, second phone, reinstall) always maps to the same document, so it can never
+ * create a duplicate card.
+ */
+export function memberPlayerId(leagueId: string, uid: string): string {
+  return `pm_${leagueId}_${uid}`;
+}
+
+export function makeMemberPlayer(
+  leagueId: string,
+  uid: string,
+  displayName: string,
+  photoUrl: string | null,
+): Player {
+  const now = nowIso();
+  return {
+    id: memberPlayerId(leagueId, uid),
+    leagueId,
+    displayName,
+    kind: 'member',
+    authUid: uid,
+    photoUrl,
+    createdAt: now,
+    updatedAt: now,
+    stats: { standard: emptyStandardStats(), race: emptyRaceStats() },
+  };
+}
+
+/** Guest cards nobody has claimed yet: the "is one of these you?" list when joining. */
+export async function listClaimablePlayers(leagueId: string): Promise<Player[]> {
+  await loadStore();
+  return getStore()
+    .players.filter((p) => p.leagueId === leagueId && p.authUid == null)
+    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+}
+
+function requireNoCardYet(leagueId: string, uid: string): void {
+  const existing = getStore().players.find((p) => p.leagueId === leagueId && p.authUid === uid);
+  if (existing) {
+    throw new AppError('CONFLICT', `You already play as ${existing.displayName} in this league`);
+  }
+}
+
+async function savePlayer(player: Player): Promise<void> {
+  await updateStore((s) => ({
+    ...s,
+    players: s.players.some((p) => p.id === player.id)
+      ? s.players.map((p) => (p.id === player.id ? player : p))
+      : [...s.players, player],
+  }));
+  await scheduleSync([
+    {
+      entity: 'player',
+      docId: player.id,
+      leagueId: player.leagueId,
+      action: 'upsert',
+      payload: player,
+      updatedAt: player.updatedAt,
+    },
+  ]);
+}
+
+/**
+ * "That's me": link an existing guest card (and its match history) to this account.
+ * Firestore rules allow this only while the card has no owner.
+ */
+export async function claimPlayer(input: {
+  playerId: string;
+  uid: string;
+  photoUrl: string | null;
+}): Promise<Player> {
+  await loadStore();
+  const player = getStore().players.find((p) => p.id === input.playerId);
+  if (!player) {
+    throw new AppError('NOT_FOUND', 'That player is no longer on the roster');
+  }
+  if (player.authUid === input.uid) {
+    return player;
+  }
+  if (player.authUid != null) {
+    throw new AppError('CONFLICT', 'Someone else has already claimed this player');
+  }
+  requireNoCardYet(player.leagueId, input.uid);
+  const claimed: Player = {
+    ...player,
+    kind: 'member',
+    authUid: input.uid,
+    photoUrl: player.photoUrl ?? input.photoUrl,
+    updatedAt: nowIso(),
+  };
+  await savePlayer(claimed);
+  logger.info('players.service', 'Player claimed', {
+    playerId: claimed.id,
+    leagueId: claimed.leagueId,
+  });
+  return claimed;
+}
+
+/** "I'm new here": create this person's own card with the name they chose. */
+export async function createOwnPlayer(input: {
+  leagueId: string;
+  uid: string;
+  displayName: string;
+  photoUrl: string | null;
+}): Promise<Player> {
+  const name = z.string().trim().min(2).max(40).safeParse(input.displayName);
+  if (!name.success) {
+    throw new AppError('VALIDATION', 'Your name must be 2 to 40 characters');
+  }
+  await loadStore();
+  const id = memberPlayerId(input.leagueId, input.uid);
+  const existing = getStore().players.find((p) => p.id === id);
+  if (existing) {
+    return existing;
+  }
+  requireNoCardYet(input.leagueId, input.uid);
+  requireUniqueDisplayName(input.leagueId, name.data);
+  const player = makeMemberPlayer(input.leagueId, input.uid, name.data, input.photoUrl);
+  await savePlayer(player);
+  logger.info('players.service', 'Own player created', {
+    playerId: player.id,
+    leagueId: player.leagueId,
+  });
+  return player;
+}
+
 function normalizePlayerName(name: string): string {
   return name.trim().toLowerCase();
 }
@@ -172,7 +299,7 @@ export async function deletePlayer(playerId: string, actorUid: string): Promise<
     throw new AppError('NOT_FOUND', 'Player not found');
   }
   if (player.authUid && player.authUid === actorUid) {
-    throw new AppError('FORBIDDEN', 'You can’t delete your own player card');
+    throw new AppError('FORBIDDEN', "You can't delete your own player card");
   }
   const league = getStore().leagues.find((l) => l.id === player.leagueId);
   if (!league || league.createdByUid !== actorUid) {

@@ -12,6 +12,8 @@ import * as authService from '@/features/auth/services/auth.service';
 import * as leagueService from '@/features/league/services/league.service';
 import { refreshLeaguePlayerStats } from '@/features/stats/services/stats.service';
 import { loadStore, subscribeStore, getStore } from '@/shared/storage/local-store';
+import { waitForFirebaseAuth } from '@/shared/firebase/app';
+import { logger } from '@/shared/logging/logger';
 import { startSyncRuntime } from '@/shared/sync';
 import type { League, SessionUser } from '@/shared/types/domain';
 import { leagueKindOf } from '@/shared/types/domain';
@@ -47,16 +49,29 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactNod
   const [tick, setTick] = useState(0);
 
   const refresh = useCallback(async () => {
-    await loadStore();
-    const current = await authService.getCurrentUser();
-    setUser(current);
-    const active = await leagueService.getActiveLeague();
-    if (active) {
-      await refreshLeaguePlayerStats(active.id);
+    try {
+      await loadStore();
+      const current = await authService.getCurrentUser();
+      if (current && !current.isDemo) {
+        // Let Firebase Auth restore its session first, so cloud reads made right after
+        // start-up (an invite link, the first pull) are signed in.
+        await waitForFirebaseAuth();
+      }
+      setUser(current);
+      const active = await leagueService.getActiveLeague();
+      if (active) {
+        await refreshLeaguePlayerStats(active.id);
+      }
+      setLeague(active);
+      setLeagues(leaguesForUser(current?.uid));
+    } catch (error) {
+      logger.error('use-session', 'Session refresh failed', {
+        shape: error instanceof Error ? error.name : 'unknown',
+      });
+    } finally {
+      // Never leave the app on the start-up spinner.
+      setReady(true);
     }
-    setLeague(active);
-    setLeagues(leaguesForUser(current?.uid));
-    setReady(true);
   }, []);
 
   const switchLeague = useCallback(async (leagueId: string): Promise<void> => {
@@ -92,7 +107,8 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactNod
     }
     const store = getStore();
     const nextUser = store.user;
-    const active = store.leagues.find((l) => l.id === store.activeLeagueId) ?? null;
+    // Same rule as getActiveLeague: a city hub is never shown as "your league".
+    const active = leagueService.resolveActiveLeague(store);
     const nextLeagues = leaguesForUser(nextUser?.uid);
     setUser((prev) => (prev === nextUser ? prev : nextUser));
     setLeague((prev) => (prev === active ? prev : active));

@@ -1,196 +1,310 @@
-import type { ReactNode } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import type { ComponentProps, ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { SnookerBall } from '@/features/match/components/SnookerBall';
-import type { BallValue, OpenFrame } from '@/shared/types/domain';
-import { colors, fonts, radii, spacing } from '@/theme/tokens';
+import { describeBallOn, isBallOn, type TableState } from '@/features/match/services/table-state';
+import { useLayout } from '@/shared/hooks/use-layout';
+import type { BallValue } from '@/shared/types/domain';
+import { usePalette, useStyles } from '@/theme/ThemeProvider';
+import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
 
 const BALL_ORDER: BallValue[] = [1, 2, 3, 4, 5, 6, 7];
+const FOUL_VALUES = [4, 5, 6, 7] as const;
+
+type IconName = ComponentProps<typeof Ionicons>['name'];
 
 interface LiveScoreboardProps {
-  openFrame: OpenFrame;
+  table: TableState;
+  /** Points behind the side at the table (0 when level or ahead). */
+  deficit: number;
   teamALabel: string;
   teamBLabel: string;
-  canScore: boolean;
+  canUndo: boolean;
   onPot: (ball: BallValue) => void;
   onFoul: (points: number) => void;
   onEndVisit: (kind: 'miss' | 'safety') => void;
   onFreeBall: () => void;
   onUndo: () => void;
   onFrameWon: (winner: 'a' | 'b') => void;
-  canUndo: boolean;
 }
 
+/** Ball pad for the scorer. Balls that are "on" are raised; the rest stay tappable but dimmed. */
 export function LiveScoreboard({
-  openFrame,
+  table,
+  deficit,
   teamALabel,
   teamBLabel,
-  canScore,
+  canUndo,
   onPot,
   onFoul,
   onEndVisit,
   onFreeBall,
   onUndo,
   onFrameWon,
-  canUndo,
 }: LiveScoreboardProps): ReactNode {
+  const styles = useStyles(makeStyles);
+  const palette = usePalette();
+  const { width } = useLayout();
+  // 7 balls across the pad: cloth padding (2 x 8) + gaps (6 x 4) inside the screen gutters (2 x 16).
+  const ballSize = Math.max(30, Math.min(46, Math.floor((width - 32 - 16 - 24) / 7) - 6));
+  const snookersNeeded = deficit > table.pointsRemaining;
+
   return (
     <View style={styles.wrap}>
-      {!canScore ? (
-        <Text style={styles.watch}>Watching live — scores update as shots are recorded.</Text>
-      ) : (
-        <>
-          <View style={styles.balls}>
-            {BALL_ORDER.map((value) => (
-              <Pressable
-                key={value}
-                onPress={() => onPot(value)}
-                style={styles.ballHit}
-                accessibilityRole="button"
-              >
-                <SnookerBall value={value} size={40} />
-              </Pressable>
-            ))}
-          </View>
-          <View style={styles.row}>
-            <Action label="Miss" onPress={() => onEndVisit('miss')} />
-            <Action label="Safety" onPress={() => onEndVisit('safety')} />
-            <Action label="Free" onPress={onFreeBall} />
-            <Action label="Undo" onPress={onUndo} disabled={!canUndo} muted />
-          </View>
-          <View style={styles.row}>
-            {[4, 5, 6, 7].map((pts) => (
-              <Pressable key={pts} onPress={() => onFoul(pts)} style={styles.foul}>
-                <Text style={styles.foulText}>Foul {pts}</Text>
-              </Pressable>
-            ))}
-          </View>
-          <View style={styles.row}>
-            <Pressable onPress={() => onFrameWon('a')} style={styles.win}>
-              <Text style={styles.winText} numberOfLines={2}>
-                {teamALabel} wins
-              </Text>
+      <View style={styles.statusRow}>
+        <Text style={styles.onText} numberOfLines={1}>
+          {describeBallOn(table)}
+        </Text>
+        <Text
+          style={[styles.remaining, snookersNeeded && { color: palette.warning }]}
+          numberOfLines={1}
+        >
+          {table.pointsRemaining} left on the table
+          {snookersNeeded ? ` · snookers needed (${deficit} behind)` : ''}
+        </Text>
+      </View>
+
+      <View style={styles.cloth}>
+        {BALL_ORDER.map((value) => {
+          const on = isBallOn(table, value);
+          return (
+            <Pressable
+              key={value}
+              onPress={() => onPot(value)}
+              accessibilityRole="button"
+              accessibilityLabel={`Pot ${BALL_LABEL[value]}${on ? ', ball on' : ''}`}
+              style={({ pressed }) => [
+                styles.ballHit,
+                !on && styles.ballOff,
+                pressed && styles.ballPressed,
+              ]}
+            >
+              <View style={[styles.ring, on && styles.ringOn]}>
+                <SnookerBall value={value} size={ballSize} />
+              </View>
             </Pressable>
-            <Pressable onPress={() => onFrameWon('b')} style={[styles.win, styles.winB]}>
-              <Text style={styles.winTextB} numberOfLines={2}>
-                {teamBLabel} wins
-              </Text>
-            </Pressable>
-          </View>
-        </>
-      )}
+          );
+        })}
+      </View>
+
+      <View style={styles.row}>
+        <Action icon="close-circle-outline" label="Miss" onPress={() => onEndVisit('miss')} />
+        <Action icon="shield-outline" label="Safety" onPress={() => onEndVisit('safety')} />
+        <Action icon="sparkles-outline" label="Free ball" onPress={onFreeBall} />
+        <Action icon="arrow-undo-outline" label="Undo" onPress={onUndo} disabled={!canUndo} />
+      </View>
+
+      <View style={styles.row}>
+        {FOUL_VALUES.map((pts) => (
+          <Pressable
+            key={pts}
+            onPress={() => onFoul(pts)}
+            accessibilityRole="button"
+            accessibilityLabel={`Foul, ${pts} points to the opponent`}
+            style={({ pressed }) => [styles.foul, pressed && styles.pressed]}
+          >
+            <Text style={styles.foulText}>Foul {pts}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <View style={styles.row}>
+        <FrameButton side="a" label={teamALabel} onPress={() => onFrameWon('a')} />
+        <FrameButton side="b" label={teamBLabel} onPress={() => onFrameWon('b')} />
+      </View>
     </View>
   );
 }
 
+const BALL_LABEL: Record<BallValue, string> = {
+  1: 'red',
+  2: 'yellow',
+  3: 'green',
+  4: 'brown',
+  5: 'blue',
+  6: 'pink',
+  7: 'black',
+};
+
 function Action({
+  icon,
   label,
   onPress,
   disabled,
-  muted,
 }: {
+  icon: IconName;
   label: string;
   onPress: () => void;
   disabled?: boolean;
-  muted?: boolean;
 }): ReactNode {
+  const styles = useStyles(makeStyles);
+  const palette = usePalette();
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      style={[styles.action, muted && styles.actionMuted, disabled && styles.disabled]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => [
+        styles.action,
+        pressed && styles.pressed,
+        disabled && styles.disabled,
+      ]}
     >
-      <Text style={styles.actionText}>{label}</Text>
+      <Ionicons name={icon} size={18} color={palette.text} />
+      <Text style={styles.actionText} numberOfLines={1}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    gap: 6,
-    marginBottom: spacing.sm,
-  },
-  watch: {
-    fontFamily: fonts.body,
-    color: colors.mint,
-    fontSize: 13,
-  },
-  balls: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  ballHit: {
-    minWidth: 40,
-    minHeight: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  action: {
-    flex: 1,
-    minHeight: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radii.sm,
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  actionMuted: {
-    backgroundColor: 'transparent',
-  },
-  actionText: {
-    fontFamily: fonts.bodyBold,
-    color: colors.chalk,
-    fontSize: 13,
-  },
-  disabled: {
-    opacity: 0.4,
-  },
-  foul: {
-    flex: 1,
-    minHeight: 36,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.coral,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 2,
-  },
-  foulText: {
-    fontFamily: fonts.bodyBold,
-    color: colors.coral,
-    fontSize: 12,
-  },
-  win: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: radii.sm,
-    backgroundColor: colors.gold,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-  },
-  winB: {
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1.5,
-    borderColor: colors.mint,
-  },
-  winText: {
-    fontFamily: fonts.bodyBold,
-    color: colors.felt,
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  winTextB: {
-    fontFamily: fonts.bodyBold,
-    color: colors.chalk,
-    fontSize: 13,
-    textAlign: 'center',
-  },
-});
+function FrameButton({
+  side,
+  label,
+  onPress,
+}: {
+  side: 'a' | 'b';
+  label: string;
+  onPress: () => void;
+}): ReactNode {
+  const styles = useStyles(makeStyles);
+  const palette = usePalette();
+  const tone = side === 'a' ? palette.teamA : palette.teamB;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`End frame, ${label} wins it`}
+      style={({ pressed }) => [styles.win, { borderColor: tone }, pressed && styles.pressed]}
+    >
+      <Text style={styles.winKicker}>Frame to</Text>
+      <Text style={[styles.winText, { color: tone }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    wrap: {
+      gap: spacing.sm,
+    },
+    statusRow: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
+    },
+    onText: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 15,
+      color: c.text,
+    },
+    remaining: {
+      fontFamily: fonts.body,
+      fontSize: 12,
+      flexShrink: 1,
+      textAlign: 'right',
+      color: c.textMuted,
+    },
+    cloth: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: 10,
+      paddingHorizontal: 8,
+      borderRadius: radii.md,
+      backgroundColor: c.table,
+      borderWidth: 3,
+      borderColor: c.tableEdge,
+    },
+    ballHit: {
+      minHeight: TOUCH_TARGET + 4,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    ballOff: {
+      opacity: 0.85,
+    },
+    ballPressed: {
+      transform: [{ scale: 0.9 }],
+    },
+    ring: {
+      padding: 2,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: 'transparent',
+    },
+    ringOn: {
+      borderColor: 'rgba(255, 255, 255, 0.35)',
+    },
+    row: {
+      flexDirection: 'row',
+      gap: 6,
+    },
+    action: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: TOUCH_TARGET + 4,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 2,
+      borderRadius: radii.sm,
+      backgroundColor: c.cardRaised,
+      borderWidth: 1,
+      borderColor: c.border,
+      paddingHorizontal: 2,
+    },
+    actionText: {
+      fontFamily: fonts.bodyBold,
+      color: c.text,
+      fontSize: 12,
+    },
+    pressed: {
+      opacity: 0.75,
+    },
+    disabled: {
+      opacity: 0.35,
+    },
+    foul: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: TOUCH_TARGET,
+      borderRadius: radii.sm,
+      backgroundColor: c.dangerSoft,
+      borderWidth: 1,
+      borderColor: c.danger,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 2,
+    },
+    foulText: {
+      fontFamily: fonts.bodyBold,
+      color: c.danger,
+      fontSize: 13,
+    },
+    win: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: 52,
+      borderRadius: radii.sm,
+      borderWidth: 1.5,
+      backgroundColor: c.card,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+    },
+    winKicker: {
+      fontFamily: fonts.bodyMedium,
+      fontSize: 11,
+      color: c.textMuted,
+    },
+    winText: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 15,
+    },
+  });

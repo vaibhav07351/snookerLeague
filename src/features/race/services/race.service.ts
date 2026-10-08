@@ -136,9 +136,8 @@ export async function persistRace(race: Race, event?: FeedEvent): Promise<Race> 
       events = [...events, withTs];
     }
 
-    const players = applyPlayerStats(s.players, race.leagueId, s.matches, races).map((p) =>
-      p.leagueId === race.leagueId ? { ...p, updatedAt: nowIso() } : p,
-    );
+    // Derived stats: not an edit of the player, so no updatedAt bump.
+    const players = applyPlayerStats(s.players, race.leagueId, s.matches, races);
 
     return { ...s, races, leagues, events, players };
   });
@@ -169,6 +168,7 @@ export async function persistRace(race: Race, event?: FeedEvent): Promise<Race> 
       action: 'upsert',
       payload: syncedLeague,
       updatedAt: syncedLeague.updatedAt,
+      fieldsOnly: ['raceKing', 'updatedAt'],
     });
   }
   if (syncedEvent) {
@@ -189,6 +189,8 @@ export async function persistRace(race: Race, event?: FeedEvent): Promise<Race> 
       action: 'upsert',
       payload: player,
       updatedAt: player.updatedAt,
+      // Derived stats only: never overwrite a name or owner from this phone's copy.
+      fieldsOnly: ['stats'],
     });
   }
   await scheduleSync(items);
@@ -301,7 +303,7 @@ export async function undoDnf(raceId: string, playerId: string): Promise<Race> {
     throw new AppError('NOT_FOUND', 'Race not found');
   }
   if (race.status !== 'in_progress') {
-    throw new AppError('INVALID_STATE', 'Race already finished — cannot undo');
+    throw new AppError('INVALID_STATE', 'Race already finished - cannot undo');
   }
 
   const target = race.entrants.find((e) => e.playerId === playerId);

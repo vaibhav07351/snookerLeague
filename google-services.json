@@ -38,6 +38,14 @@
           }
         },
         {
+          "client_id": "134168091127-q1a2e2pnu963rlsv8u8sb2tjk62glrff.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.snooker.league",
+            "certificate_hash": "058fc0db6fb03677254fa2818c7d3b759eb47ba0"
+          }
+        },
+        {
           "client_id": "134168091127-3jjquh77bqp7qhbgd8geaqjg0afhbmb0.apps.googleusercontent.com",
           "client_type": 3
         }

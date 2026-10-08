@@ -1,13 +1,20 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { useFollowGraph } from '@/features/community/hooks/use-follow-graph';
 import { displayNameForUid } from '@/features/community/services/follow.service';
 import { Screen } from '@/features/home/components/Screen';
-import { colors, fonts, spacing, typography } from '@/theme/tokens';
+import { Card } from '@/shared/ui/Card';
+import { EmptyState } from '@/shared/ui/EmptyState';
+import { usePalette, useStyles } from '@/theme/ThemeProvider';
+import { fonts, makeTypography, spacing, type Palette } from '@/theme/tokens';
 
 export default function FollowsScreen(): ReactNode {
+  const styles = useStyles(makeStyles);
+  const typography = useStyles(makeTypography);
+  const palette = usePalette();
   const { uid, kind } = useLocalSearchParams<{ uid?: string; kind?: string }>();
   const graph = useFollowGraph(uid ?? null);
   const followingMode = kind === 'following';
@@ -18,59 +25,77 @@ export default function FollowsScreen(): ReactNode {
 
   return (
     <Screen>
-      <Text style={typography.title}>{followingMode ? 'Following' : 'Followers'}</Text>
+      <Text style={[typography.title, styles.heading]}>
+        {followingMode ? 'Following' : 'Followers'}
+      </Text>
       {rows.length === 0 ? (
-        <Text style={typography.subtitle}>
-          {followingMode ? 'Not following anyone yet.' : 'No followers yet.'}
-        </Text>
+        <EmptyState
+          icon="people-outline"
+          title={followingMode ? 'Not following anyone yet' : 'No followers yet'}
+          message="Follow players from the city leaderboard to keep up with their games."
+        />
       ) : (
-        rows.map((row) => {
-          const otherUid = followingMode ? row.followingUid : row.followerUid;
-          return (
-            <Pressable
-              key={row.id}
-              style={styles.row}
-              onPress={() => router.push(`/(main)/city-player?uid=${otherUid}`)}
-            >
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {displayNameForUid(otherUid).trim().charAt(0).toUpperCase()}
+        <View style={styles.list}>
+          {rows.map((row) => {
+            const otherUid = followingMode ? row.followingUid : row.followerUid;
+            const name = displayNameForUid(otherUid);
+            return (
+              <Card
+                key={row.id}
+                style={styles.row}
+                accessibilityLabel={`Open ${name}`}
+                onPress={() => router.push(`/(main)/city-player?uid=${otherUid}`)}
+              >
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>{name.trim().charAt(0).toUpperCase()}</Text>
+                </View>
+                <Text style={styles.name} numberOfLines={1}>
+                  {name}
                 </Text>
-              </View>
-              <Text style={styles.name}>{displayNameForUid(otherUid)}</Text>
-            </Pressable>
-          );
-        })
+                <Ionicons name="chevron-forward" size={18} color={palette.textFaint} />
+              </Card>
+            );
+          })}
+        </View>
       )}
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.gold,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    fontFamily: fonts.bodyBold,
-    color: colors.felt,
-    fontSize: 16,
-  },
-  name: {
-    fontFamily: fonts.bodyBold,
-    fontSize: 16,
-    color: colors.chalk,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    heading: {
+      marginBottom: spacing.md,
+    },
+    list: {
+      gap: spacing.sm,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      paddingVertical: spacing.sm + 4,
+    },
+    avatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: c.cardHighlight,
+      borderWidth: 1,
+      borderColor: c.borderStrong,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarText: {
+      fontFamily: fonts.bodyBold,
+      color: c.primary,
+      fontSize: 16,
+    },
+    name: {
+      flex: 1,
+      minWidth: 0,
+      fontFamily: fonts.bodyBold,
+      fontSize: 16,
+      color: c.text,
+    },
+  });

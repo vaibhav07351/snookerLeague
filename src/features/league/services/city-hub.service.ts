@@ -2,20 +2,13 @@ import { z } from 'zod';
 
 import { AppError } from '@/shared/errors/app-error';
 import { logger } from '@/shared/logging/logger';
-import { createId, inviteCode, nowIso } from '@/shared/utils/id';
+import { inviteCode, nowIso } from '@/shared/utils/id';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { applyLeagueBundleToLocal, fetchLeagueBundle } from '@/shared/sync/pull';
 import { isOnline } from '@/shared/sync/connectivity';
 import { scheduleSync, shouldCloudSync } from '@/shared/sync';
-import { uniqueDisplayName } from '@/features/players/services/players.service';
-import {
-  cityHubId,
-  emptyRaceStats,
-  emptyStandardStats,
-  leagueKindOf,
-  type League,
-  type Player,
-} from '@/shared/types/domain';
+import { makeMemberPlayer, uniqueDisplayName } from '@/features/players/services/players.service';
+import { cityHubId, leagueKindOf, type League } from '@/shared/types/domain';
 
 const ensureSchema = z.object({
   cityId: z.string().min(2).max(48),
@@ -25,26 +18,6 @@ const ensureSchema = z.object({
   photoUrl: z.string().nullable(),
   leaveCityId: z.string().nullable(),
 });
-
-function makeMemberPlayer(
-  leagueId: string,
-  uid: string,
-  displayName: string,
-  photoUrl: string | null,
-): Player {
-  const now = nowIso();
-  return {
-    id: createId('plr'),
-    leagueId,
-    displayName,
-    kind: 'member',
-    authUid: uid,
-    photoUrl,
-    createdAt: now,
-    updatedAt: now,
-    stats: { standard: emptyStandardStats(), race: emptyRaceStats() },
-  };
-}
 
 export function getLocalCityHub(cityId: string): League | null {
   const id = cityHubId(cityId);
@@ -76,6 +49,7 @@ async function leaveCityHub(cityId: string, uid: string): Promise<void> {
       action: 'upsert',
       payload: updated,
       updatedAt: updated.updatedAt,
+      membership: { remove: uid },
     },
   ]);
 }
@@ -162,7 +136,10 @@ export async function ensureCityHub(input: {
     const leagues = has
       ? s.leagues.map((l) => (l.id === hubId ? league! : l))
       : [...s.leagues, league!];
-    const players = newPlayer ? [...s.players, newPlayer] : s.players;
+    const players =
+      newPlayer && !s.players.some((p) => p.id === newPlayer.id)
+        ? [...s.players, newPlayer]
+        : s.players;
     return { ...s, leagues, players };
   });
 
@@ -174,6 +151,8 @@ export async function ensureCityHub(input: {
       action: 'upsert',
       payload: league,
       updatedAt: league.updatedAt,
+      // Join by adding only yourself (creates the hub if it does not exist yet).
+      membership: { add: parsed.data.uid },
     },
     ...(newPlayer
       ? [

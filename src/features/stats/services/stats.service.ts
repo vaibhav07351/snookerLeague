@@ -8,9 +8,8 @@ import type {
 } from '@/shared/types/domain';
 import { emptyRaceStats, emptyStandardStats } from '@/shared/types/domain';
 import { updateStore } from '@/shared/storage/local-store';
-import { nowIso } from '@/shared/utils/id';
 import { playerShotTotals } from '@/features/match/services/frame-rank';
-import { visitBreaks } from '@/features/match/services/shot.service';
+import { visitBreaks } from '@/features/match/services/frame-engine';
 
 function pct(part: number, whole: number): number {
   if (whole <= 0) {
@@ -256,35 +255,6 @@ export function resetPlayerStats(player: Player): Player {
   };
 }
 
-export function sortStandardLeaderboard(players: Player[]): Player[] {
-  return [...players].sort((a, b) => {
-    if (b.stats.standard.winPct !== a.stats.standard.winPct) {
-      return b.stats.standard.winPct - a.stats.standard.winPct;
-    }
-    if (b.stats.standard.wins !== a.stats.standard.wins) {
-      return b.stats.standard.wins - a.stats.standard.wins;
-    }
-    return a.displayName.localeCompare(b.displayName);
-  });
-}
-
-export function sortRaceLeaderboard(players: Player[]): Player[] {
-  return [...players].sort((a, b) => {
-    if (b.stats.race.firstPct !== a.stats.race.firstPct) {
-      return b.stats.race.firstPct - a.stats.race.firstPct;
-    }
-    if (b.stats.race.firsts !== a.stats.race.firsts) {
-      return b.stats.race.firsts - a.stats.race.firsts;
-    }
-    const avgA = a.stats.race.avgPlace ?? 99;
-    const avgB = b.stats.race.avgPlace ?? 99;
-    if (avgA !== avgB) {
-      return avgA - avgB;
-    }
-    return a.displayName.localeCompare(b.displayName);
-  });
-}
-
 export function listFeed(events: FeedEvent[], leagueId: string, limit = 20): FeedEvent[] {
   return events
     .filter((e) => e.leagueId === leagueId)
@@ -307,10 +277,8 @@ export async function refreshLeaguePlayerStats(leagueId: string): Promise<void> 
     if (!changed && nextPlayers.length === s.players.length) {
       return s;
     }
-    const stamp = nowIso();
-    return {
-      ...s,
-      players: nextPlayers.map((p) => (p.leagueId === leagueId ? { ...p, updatedAt: stamp } : p)),
-    };
+    // Stats are derived from matches and races, so they do not count as an edit of the
+    // player (no updatedAt bump that would make this copy beat a real rename elsewhere).
+    return { ...s, players: nextPlayers };
   });
 }

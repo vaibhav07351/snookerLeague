@@ -144,6 +144,18 @@ export interface League {
   cityId?: string | null;
 }
 
+/**
+ * Public pointer from an invite code to its league (Firestore `leagueInvites/{code}`).
+ * Readable by anyone who knows the code; the league itself is members-only.
+ */
+export interface LeagueInvite {
+  code: string;
+  leagueId: string;
+  leagueName: string;
+  createdByUid: string;
+  updatedAt: string;
+}
+
 export function leagueKindOf(league: League): LeagueKind {
   return league.kind === 'city' ? 'city' : 'club';
 }
@@ -163,6 +175,15 @@ export interface FrameScore {
   shots?: Shot[];
   highestBreakA?: number;
   highestBreakB?: number;
+  /** Side that broke off this frame (breaks alternate frame to frame). */
+  breakerSide?: 'a' | 'b';
+  /** Result logged from before the app was used (no points, shots or time). */
+  carriedOver?: boolean;
+  /** Points already on the board when ball-by-ball scoring started mid-frame. */
+  carriedPoints?: { a: number; b: number };
+  /** Table seed, kept so an undone frame can be put back exactly. */
+  startingReds?: number;
+  redsRemoved?: number;
 }
 
 export type ShotKind = 'pot' | 'foul' | 'miss' | 'safety' | 'free_ball';
@@ -190,7 +211,18 @@ export interface OpenFrame {
   /** Player currently scoring; points on this visit count under them. */
   atTablePlayerId?: string | null;
   lastPlayerIdBySide?: { a: string | null; b: string | null };
+  /** Side (and player) that broke off; replay starts from here. */
+  breakerSide?: 'a' | 'b';
+  breakerPlayerId?: string | null;
+  /** Reds on the table when scoring started (15 unless joined mid-frame). */
+  startingReds?: number;
+  /** Reds taken off without a pot being logged (e.g. knocked in on a foul). */
+  redsRemoved?: number;
+  /** Points already on the board when ball-by-ball scoring started mid-frame. */
+  carriedPoints?: { a: number; b: number };
 }
+
+export const FULL_RACK_REDS = 15;
 
 export function emptyOpenFrame(
   atTable: 'a' | 'b' = 'a',
@@ -208,6 +240,10 @@ export function emptyOpenFrame(
       a: atTable === 'a' ? atTablePlayerId : null,
       b: atTable === 'b' ? atTablePlayerId : null,
     },
+    breakerSide: atTable,
+    breakerPlayerId: atTablePlayerId,
+    startingReds: FULL_RACK_REDS,
+    redsRemoved: 0,
   };
 }
 
@@ -261,9 +297,31 @@ export interface Match {
   frameStartedAt?: string | null;
   /** Live frame in progress; null when scoring a finished frame manually. */
   openFrame?: OpenFrame | null;
-  /** Auth uid allowed to record shots. Defaults to createdByUid. */
+  /** Auth uid currently recording shots (one scorer at a time). Defaults to createdByUid. */
   scorerUid?: string;
+  /**
+   * Who may take over scoring: any league member ('anyone', default) or only the creator,
+   * the league owner and `allowedScorerUids` ('chosen').
+   */
+  scoringPolicy?: ScoringPolicy;
+  allowedScorerUids?: string[];
+  /**
+   * When the settings above (scorer, policy, title match) last changed. Settings are written
+   * on their own and merged by this stamp, so a scorer's shot never undoes a settings change.
+   */
+  settingsUpdatedAt?: string;
 }
+
+/** Match fields that only change through settings updates, never through a scorer's save. */
+export const MATCH_SETTINGS_FIELDS = [
+  'scorerUid',
+  'scoringPolicy',
+  'allowedScorerUids',
+  'crownsChampion',
+  'settingsUpdatedAt',
+] as const;
+
+export type ScoringPolicy = 'anyone' | 'chosen';
 
 export type RacePlace = number | 'dnf';
 
@@ -330,7 +388,8 @@ export type SyncEntity =
   | 'challenge'
   | 'looking'
   | 'directory'
-  | 'follow';
+  | 'follow'
+  | 'invite';
 
 export type SyncAction = 'upsert' | 'delete';
 
@@ -346,6 +405,10 @@ export interface PendingOp {
   payload: unknown | null;
   updatedAt: string;
   attempts: number;
+  /** Write only these top-level fields (e.g. match settings), never the whole document. */
+  fieldsOnly?: string[];
+  /** League membership change for one person (join or leave), applied atomically. */
+  membership?: { add?: string; remove?: string };
 }
 
 /** Amateur snooker age band, derived from date of birth. */
@@ -362,7 +425,7 @@ export interface CloudUserProfile {
   updatedAt: string;
   cityId: string | null;
   cityName: string | null;
-  /** ISO date YYYY-MM-DD. Private — not copied to public playerProfiles. */
+  /** ISO date YYYY-MM-DD. Private - not copied to public playerProfiles. */
   dateOfBirth: string | null;
 }
 
@@ -411,7 +474,7 @@ export interface PlayerProfile {
   centuries: number;
   breaks50: number;
   maximums: number;
-  /** Public age band only — never the raw date of birth. */
+  /** Public age band only - never the raw date of birth. */
   division?: SnookerDivision | null;
 }
 
@@ -495,4 +558,6 @@ export interface AppDataStore {
   lookingPosts: LookingPost[];
   directoryListings: DirectoryListing[];
   follows: FollowEdge[];
+  /** Leagues known to exist in the cloud (so a missing one means deleted, not "never uploaded"). */
+  cloudLeagueIds?: string[];
 }
