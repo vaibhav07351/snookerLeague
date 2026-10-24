@@ -1,62 +1,50 @@
 # Snookit
 
-Phone-first Expo app for live snooker scoring, city rankings, doubles matches, and race-to-score games.
+Phone-first snooker scoring, leagues and city rankings.
 
-## Stack
+## Repository layout
 
-- Expo (React Native) + TypeScript + Expo Router
-- Firebase Auth (Google) + Cloud Firestore when configured
-- Local AsyncStorage demo mode by default (`EXPO_PUBLIC_USE_LOCAL_DATA=true`)
-- Modular layering: screens → hooks → services → storage
+| Folder             | What it is                                                                     |
+| ------------------ | ------------------------------------------------------------------------------ |
+| `frontend/`        | Expo (React Native) + TypeScript app, with a web build                         |
+| `backend/`         | Go + PostgreSQL API, deployed with Docker on an Oracle Cloud Always Free VM    |
+| `docs/`            | Plans and Play Store notes. Start with `docs/PRODUCTION_PLAN.md`               |
+| `legacy-firebase/` | Old Firestore rules and config, kept only until the Firebase data move is done |
 
-## Run
+Engineering conventions for both live in [claude.md](claude.md).
+
+## Frontend
 
 ```bash
+cd frontend
 npm install --legacy-peer-deps
 cp .env.example .env
 npm start
 ```
 
-Demo sign-in works without Firebase. For Google SSO + cloud sync, fill Firebase keys in `.env` and set `EXPO_PUBLIC_USE_LOCAL_DATA=false`. Deploy [`firestore.rules`](firestore.rules) from the Firebase console.
+Demo sign-in works without a server and keeps data on one phone. Google sign-in and sync need the backend (see below).
 
-## Play Store (Android)
+| Command                           | Purpose                                         |
+| --------------------------------- | ----------------------------------------------- |
+| `npm run typecheck`               | `tsc --noEmit`                                  |
+| `npm test`                        | Unit tests (jest-expo): scoring engine, storage |
+| `npm run lint`                    | ESLint (no mutate)                              |
+| `npm run format` / `format:check` | Prettier                                        |
+| `npm run eas:build:android`       | Production AAB for Play Store                   |
+| `npm run eas:build:preview`       | Internal APK for sideload                       |
 
-- **[PLAY_STORE.md](PLAY_STORE.md)** - EAS build, env vars, SHA-1
-- **[PLAY_STORE_SCREENS.md](PLAY_STORE_SCREENS.md)** - Play Console **screen-by-screen** (what to enter on each page)
+Play Store steps: [docs/PLAY_STORE.md](docs/PLAY_STORE.md) and [docs/PLAY_STORE_SCREENS.md](docs/PLAY_STORE_SCREENS.md).
+EAS builds should be started from `frontend/`.
+
+## Backend
 
 ```bash
-npx eas login
-npx eas init
-npm run eas:build:android
+cd backend
+go build ./... && go vet ./... && go test ./...
 ```
 
-## Scripts
-
-| Command                           | Purpose                                           |
-| --------------------------------- | ------------------------------------------------- |
-| `npm install --legacy-peer-deps`  | Install deps (also enforced via `.npmrc` for EAS) |
-| `npm run typecheck`               | `tsc --noEmit`                                    |
-| `npm test`                        | Unit tests (jest-expo): scoring engine, access    |
-| `npm run lint`                    | ESLint (no mutate)                                |
-| `npm run format` / `format:check` | Prettier                                          |
-| `npm run eas:build:android`       | Production AAB for Play Store                     |
-| `npm run eas:build:preview`       | Internal APK for sideload                         |
-| `npm run eas:submit:android`      | Upload AAB to Play (after Console setup)          |
-
-See [claude.md](claude.md) for engineering conventions.
-
-## Inviting friends
-
-- Each league has an invite code and an https link: `EXPO_PUBLIC_WEB_ORIGIN/join/CODE`.
-  The code resolves through `leagueInvites/{code}`; leagues themselves are readable by members only.
-- Joining needs Google sign-in (demo mode is local to one phone). After joining, people pick
-  an unclaimed guest card ("that's me") or add themselves.
-- **Deploy `firestore.rules` before shipping the app** (`firebase deploy --only firestore:rules`);
-  older rules reject the join and scorer-handover writes.
-- Links open the web app. Opening the installed Android app from the link needs Android App
-  Links (an `intentFilters` entry plus `/.well-known/assetlinks.json` on the web host) and a new build.
+Deployment (Docker Compose, shared Oracle VM): see [backend/deploy/](backend/deploy/) and [docs/PRODUCTION_PLAN.md](docs/PRODUCTION_PLAN.md).
 
 ## Scoring
 
-One phone scores a match at a time; everyone else in the league watches live and can
-"Take over scoring" (the match creator can limit who). Firestore rules enforce the same.
+One phone scores a match at a time; everyone else in the league watches live and can "Take over scoring" (the match creator can limit who).

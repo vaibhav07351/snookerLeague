@@ -1,0 +1,16 @@
+# NOT used by Snookit's own compose file (Snookit runs no proxy).
+# This is the block to ADD to IronCoach's Caddyfile on the VM
+# (ironcoach/backend/Caddyfile), next to the existing ironcoach.duckdns.org block.
+# Replace the hostname with your Snookit DuckDNS name, then reload Caddy:
+#   docker compose -f <ironcoach compose> exec caddy caddy reload --config /etc/caddy/Caddyfile
+#
+# Caddy gets and renews the HTTPS certificate by itself (Let's Encrypt).
+
+snookit.duckdns.org {
+	encode gzip
+	reverse_proxy snookit-api:8080 {
+		# Replace any client-supplied X-Forwarded-For with the real peer address, which is
+		# what the API trusts for rate limiting.
+		header_up X-Forwarded-For {remote_host}
+	}
+}

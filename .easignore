@@ -2,6 +2,12 @@
 # It mirrors .gitignore, except that .env is uploaded so builds get the
 # EXPO_PUBLIC_* config. Keep the two files in step when adding new entries.
 
+# The mobile build never needs the server, docs or the old Firebase files
+# (and backend/deploy/.env must never be uploaded).
+backend/
+docs/
+legacy-firebase/
+
 # dependencies
 node_modules/
 
@@ -56,5 +62,5 @@ eas-raw.bin
 *.tsbuildinfo
 
 # generated native folders
-/ios
-/android
+/frontend/ios
+/frontend/android

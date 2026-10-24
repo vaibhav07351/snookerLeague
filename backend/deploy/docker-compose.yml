@@ -1,0 +1,75 @@
+# Snookit backend: API + PostgreSQL, sharing the VM with IronCoach.
+#
+# IronCoach's Caddy already owns ports 80/443 and the HTTPS certificates, so Snookit has NO
+# proxy of its own. The API joins IronCoach's Docker network ("edge") under the name
+# "snookit-api", and one route in IronCoach's Caddyfile points the Snookit hostname at it
+# (see Caddyfile in this folder).
+#
+# Postgres is on a private network shared only with the API and publishes no host port.
+
+name: snookit
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: snookit
+      POSTGRES_USER: snookit
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    # Small settings for a shared 1-core, ~6 GB VM.
+    command: ["postgres", "-c", "shared_buffers=192MB", "-c", "max_connections=40", "-c", "work_mem=4MB"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U snookit -d snookit"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    mem_limit: 768m
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  api:
+    # Built on the VM itself (it is arm64 already), so no image registry is needed.
+    build:
+      context: ..
+    image: snookit-api:local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: "8080"
+      DATABASE_URL: postgres://snookit:${POSTGRES_PASSWORD}@postgres:5432/snookit?sslmode=disable
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY in .env}
+      GOOGLE_WEB_CLIENT_ID: ${GOOGLE_WEB_CLIENT_ID:?set GOOGLE_WEB_CLIENT_ID in .env}
+      GOOGLE_ANDROID_CLIENT_IDS: ${GOOGLE_ANDROID_CLIENT_IDS:?set GOOGLE_ANDROID_CLIENT_IDS in .env}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      MIN_APP_VERSION: ${MIN_APP_VERSION:-0.0.0}
+    expose:
+      - "8080"
+    stop_grace_period: 20s
+    mem_limit: 256m
+    networks:
+      internal:
+      edge:
+        aliases:
+          - snookit-api
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+networks:
+  internal:
+  edge:
+    external: true
+    # The network IronCoach's Caddy is on. Confirm the exact name on the VM with:
+    #   docker network ls
+    name: ${EDGE_NETWORK:-ironcoach-backend_ironcoach}
+
+volumes:
+  pgdata:

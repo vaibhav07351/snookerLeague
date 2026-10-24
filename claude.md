@@ -1,26 +1,29 @@
 # Engineering conventions — snooker
 
-Expo (React Native) + TypeScript + Expo Router + Firebase Auth/Firestore.
+Frontend: Expo (React Native) + TypeScript + Expo Router. Backend: Go + PostgreSQL (replacing Firebase Auth/Firestore, see `docs/PRODUCTION_PLAN.md`).
 These conventions apply across the app unless a feature-local note overrides them.
 
 ## Projects & commands
 
-| Path | What it is | Build / test / lint |
-|------|-----------|---------------------|
-| `.` (repo root) | Expo app — phone-first snooker league tracker | `npm start` · `npm run android` / `ios` · `npm run lint` · `npm run format` · `npm run format:check` · `npx tsc --noEmit` |
+| Path               | What it is                                                                 | Build / test / lint                                                                                                                    |
+| ------------------ | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `frontend/`        | Expo app, phone-first snooker league tracker                               | `npm start` · `npm run android` / `ios` · `npm run lint` · `npm run format` · `npm run format:check` · `npx tsc --noEmit` · `npm test` |
+| `backend/`         | Go + PostgreSQL API (Oracle VM)                                            | `go build ./...` · `go vet ./...` · `go test ./...` · `gofmt -l .`                                                                     |
+| `docs/`            | Plans and store docs (`PRODUCTION_PLAN.md` is the roadmap)                 | none                                                                                                                                   |
+| `legacy-firebase/` | Old Firestore rules/config, kept only until the Firebase data move is done | none                                                                                                                                   |
 
-Run commands from the repo root.
+Run commands from inside the project folder they belong to (`frontend/` or `backend/`). Every path in the rest of this file that starts with `src/` means `frontend/src/`.
 
 ## Formatting & lint
 
 **Prettier is the formatter of record.** Shared `.prettierrc` (2-space, single quotes, semicolons, `printWidth` 100, trailing commas, LF) plus `.editorconfig` and `.gitattributes` pinning `eol=lf`. Don't hand-format against it.
 
-| Script | What it does |
-|--------|--------------|
-| `npm run format` | Rewrites files to Prettier style |
+| Script                 | What it does                               |
+| ---------------------- | ------------------------------------------ |
+| `npm run format`       | Rewrites files to Prettier style           |
 | `npm run format:check` | Verifies only — **CI should gate on this** |
-| `npm run lint` | Reports ESLint problems, never mutates |
-| `npm run lint:fix` | The mutating variant, run deliberately |
+| `npm run lint`         | Reports ESLint problems, never mutates     |
+| `npm run lint:fix`     | The mutating variant, run deliberately     |
 
 - `lint` and `lint:fix` stay separate. Never put `--fix` into `lint`.
 - After `lint:fix`, run `format` — removing code can leave formatting drift.
@@ -30,7 +33,7 @@ Run commands from the repo root.
 
 - Write and review code as a senior engineer would: correct, secure, maintainable.
 - Prefer low time complexity; call out deliberate slower tradeoffs.
-- No half-finished implementations, no speculative abstractions — but build for the *known* future shape (swappable repos, clear domain services).
+- No half-finished implementations, no speculative abstractions — but build for the _known_ future shape (swappable repos, clear domain services).
 - After writing code, self-review before calling the task done:
   - Logic bugs, off-by-ones, unhandled edges, broken control flow
   - Architectural fit: correct feature module, no cross-feature repo reaches, no UI→Firestore
@@ -67,13 +70,13 @@ Strict layering:
 
 **Screens / components → feature hooks → domain services → repositories → Firebase SDK**
 
-| Layer | Owns | Must not |
-|-------|------|----------|
-| Screens / components | Render, navigation, local UI state | Firestore, Auth SDK, stats math, doc paths |
-| Feature hooks | Wire UI to services, loading/error for the screen | Query strings, collection paths, business rules |
-| Domain services | Match/race/stats/league rules, Zod validation before write | Direct Firestore calls |
-| Repositories | Firestore/Auth reads & writes only | Business rules, UI concerns |
-| `src/shared` | Firebase init, logger, errors, generic utils | Feature-specific branching |
+| Layer                | Owns                                                       | Must not                                        |
+| -------------------- | ---------------------------------------------------------- | ----------------------------------------------- |
+| Screens / components | Render, navigation, local UI state                         | Firestore, Auth SDK, stats math, doc paths      |
+| Feature hooks        | Wire UI to services, loading/error for the screen          | Query strings, collection paths, business rules |
+| Domain services      | Match/race/stats/league rules, Zod validation before write | Direct Firestore calls                          |
+| Repositories         | Firestore/Auth reads & writes only                         | Business rules, UI concerns                     |
+| `src/shared`         | Firebase init, logger, errors, generic utils               | Feature-specific branching                      |
 
 - One service file per domain concept (e.g. `match.service.ts`, `race.service.ts`).
 - Keep UI files under ~300 lines; services/repos under ~500 — extract rather than grow.
@@ -100,7 +103,7 @@ Before writing a new util, check `src/shared/` first. If logic is reusable acros
 
 - Never hardcode secrets, API keys, or tokens. Client Firebase config lives in env (`EXPO_PUBLIC_FIREBASE_*`); placeholders in `.env.example`. Never commit service account keys.
 - Validate and sanitize all external / user input at the service boundary with Zod before repository writes.
-- `firestore.rules` is the **backend auth contract** — versioned in-repo, reviewed like API guards. Client UI hiding is not protection.
+- The backend's permission checks (Go services under `backend/internal/`) are the **auth contract**; client UI hiding is not protection. (`legacy-firebase/firestore.rules` applies only until cutover.)
 - Don't log tokens, full emails beyond what's needed for support, or other sensitive PII. Prefer ids and shapes.
 
 ## Data hygiene (Firestore)
@@ -142,3 +145,17 @@ Before writing a new util, check `src/shared/` first. If logic is reusable acros
 7. New Firestore queries paginated / free of N+1 / free of unparameterized paths?
 8. New env vars only in config + `.env.example` placeholders?
 9. Touched surfaces: filters, counts, empty/error states still correct?
+
+## Backend conventions (Go, `backend/`)
+
+Layout: `cmd/api` (starts the server, nothing else), `internal/platform/*` (config, db, httpx: shared infrastructure, no business rules), `internal/app` (builds the router and wires modules), and one package per domain module (`auth`, later `leagues`, `matches`, `sync`, ...).
+
+Inside a module (omit what isn't needed): `model.go` (types + repository interfaces), `service.go` (business rules and permissions), `handler.go` (HTTP only), `pgrepo.go` (SQL only), `*_test.go`.
+
+- Handlers decode, call a service, encode. No SQL and no rules in handlers.
+- Services depend on repository **interfaces** defined in the module, so tests use in-memory fakes.
+- A module never imports another module's `pgrepo`; it calls that module's service or a small interface it declares itself.
+- Every query is parameterised; every list endpoint is paginated; every error is wrapped with context (`fmt.Errorf("...: %w", err)`), never ignored.
+- Errors to clients use `httpx.APIError` `{ code, message }`; unknown errors are logged and returned as a generic 500.
+- Migrations live in `internal/platform/db/migrations`, expand/contract style (never drop a column in the same release that stops using it).
+- Secrets only from environment variables; placeholders in `deploy/.env.example`.

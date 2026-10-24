@@ -57,5 +57,5 @@ eas-raw.bin
 *.tsbuildinfo
 
 # generated native folders
-/ios
-/android
+/frontend/ios
+/frontend/android
