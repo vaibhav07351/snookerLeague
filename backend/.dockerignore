@@ -1,0 +1,8 @@
+# The Docker build context is the backend folder. Keep secrets and junk out of it.
+deploy/.env
+**/.env
+.env*
+!deploy/.env.example
+*.test
+bin/
+.git

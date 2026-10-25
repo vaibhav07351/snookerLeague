@@ -347,3 +347,27 @@ func TestPullPagesAndHidesOtherLeagues(t *testing.T) {
 		t.Error("negative cursor must be refused")
 	}
 }
+
+func TestCannotReadOrOverwriteAnotherLeaguesDocument(t *testing.T) {
+	svc, store := setup(t)
+	secret := push1(t, svc, "member", op(EntityPlayer, "p_secret", "lg1", 0,
+		`{"id":"p_secret","leagueId":"lg1","displayName":"Private"}`))
+
+	// A user of a different league names THEIR league but lg1's document id.
+	store.members["lg2|intruder"] = RoleOwner
+	for _, base := range []int64{0, secret.Version} {
+		res := push1(t, svc, "intruder", op(EntityPlayer, "p_secret", "lg2", base,
+			`{"id":"p_secret","leagueId":"lg2","displayName":"Hijacked"}`))
+		wantStatus(t, res, StatusRejected, "id_taken")
+		if res.Current != nil {
+			t.Fatal("a refusal must never carry the other league's document")
+		}
+	}
+	del := del(EntityPlayer, "p_secret", "lg2", secret.Version)
+	wantStatus(t, push1(t, svc, "intruder", del), StatusRejected, "id_taken")
+
+	got, _ := store.Get(context.Background(), EntityPlayer, "p_secret")
+	if got.LeagueID != "lg1" || !strings.Contains(string(got.Data), "Private") || got.Deleted {
+		t.Fatalf("the original document must be untouched: %+v", got)
+	}
+}

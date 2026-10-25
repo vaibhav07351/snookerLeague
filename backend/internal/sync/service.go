@@ -85,6 +85,14 @@ func (s *Service) apply(ctx context.Context, tx Tx, userID string, op Op) (OpRes
 		return OpResult{}, fmt.Errorf("load document: %w", err)
 	}
 
+	// Document ids are unique across ALL leagues, so an id that exists must belong to the league
+	// named in the request. Without this check a member of league A could name their own league
+	// but another league's document id: they would read it through the conflict reply, or move
+	// and overwrite it. The refusal reveals nothing about the other document.
+	if current != nil && current.LeagueID != op.LeagueID {
+		slog.Warn("sync op names another league's document", "op", op.OpID, "entity", op.Entity)
+		return refused(op, "id_taken", "That id is already in use."), nil
+	}
 	if current == nil && op.Action == ActionDelete {
 		return refused(op, "not_found", "Nothing to delete."), nil
 	}
