@@ -148,8 +148,11 @@ func TestSyncAgainstPostgres(t *testing.T) {
 		t.Fatalf("add member: %v", err)
 	}
 
+	// Ids are unique across leagues and other runs share this database, so they must be random.
+	p1, p2, p3 := randID("p_"), randID("p_"), randID("p_")
+
 	// Idempotent retry: same op id, same answer, no new version.
-	op := upsert(syncmod.EntityPlayer, "p_1", league, 0, fmt.Sprintf(`{"id":"p_1","leagueId":%q,"displayName":"A"}`, league))
+	op := upsert(syncmod.EntityPlayer, p1, league, 0, fmt.Sprintf(`{"id":%q,"leagueId":%q,"displayName":"A"}`, p1, league))
 	first := put(t, svc, member.ID, op)
 	retry := put(t, svc, member.ID, op)
 	if first.Version != retry.Version || first.Status != syncmod.StatusApplied {
@@ -157,14 +160,14 @@ func TestSyncAgainstPostgres(t *testing.T) {
 	}
 
 	// Stale base version conflicts and hands back the current copy.
-	_ = put(t, svc, member.ID, upsert(syncmod.EntityPlayer, "p_1", league, first.Version, fmt.Sprintf(`{"id":"p_1","leagueId":%q,"displayName":"B"}`, league)))
-	stale := put(t, svc, owner.ID, upsert(syncmod.EntityPlayer, "p_1", league, first.Version, fmt.Sprintf(`{"id":"p_1","leagueId":%q,"displayName":"C"}`, league)))
+	_ = put(t, svc, member.ID, upsert(syncmod.EntityPlayer, p1, league, first.Version, fmt.Sprintf(`{"id":%q,"leagueId":%q,"displayName":"B"}`, p1, league)))
+	stale := put(t, svc, owner.ID, upsert(syncmod.EntityPlayer, p1, league, first.Version, fmt.Sprintf(`{"id":%q,"leagueId":%q,"displayName":"C"}`, p1, league)))
 	if stale.Status != syncmod.StatusConflict || stale.Current == nil {
 		t.Fatalf("expected conflict with current copy: %+v", stale)
 	}
 
 	// A non-member is refused and sees nothing.
-	denied := put(t, svc, stranger.ID, upsert(syncmod.EntityPlayer, "p_2", league, 0, fmt.Sprintf(`{"id":"p_2","leagueId":%q}`, league)))
+	denied := put(t, svc, stranger.ID, upsert(syncmod.EntityPlayer, p2, league, 0, fmt.Sprintf(`{"id":%q,"leagueId":%q}`, p2, league)))
 	if denied.Status != syncmod.StatusRejected {
 		t.Fatalf("stranger must be rejected: %+v", denied)
 	}
@@ -173,8 +176,8 @@ func TestSyncAgainstPostgres(t *testing.T) {
 	}
 
 	// Delete leaves a tombstone the member receives.
-	cur := put(t, svc, owner.ID, upsert(syncmod.EntityPlayer, "p_3", league, 0, fmt.Sprintf(`{"id":"p_3","leagueId":%q}`, league)))
-	del := syncmod.Op{OpID: randID("op_"), Entity: syncmod.EntityPlayer, ID: "p_3", LeagueID: league,
+	cur := put(t, svc, owner.ID, upsert(syncmod.EntityPlayer, p3, league, 0, fmt.Sprintf(`{"id":%q,"leagueId":%q}`, p3, league)))
+	del := syncmod.Op{OpID: randID("op_"), Entity: syncmod.EntityPlayer, ID: p3, LeagueID: league,
 		Action: syncmod.ActionDelete, BaseVersion: cur.Version}
 	if r := put(t, svc, owner.ID, del); r.Status != syncmod.StatusApplied {
 		t.Fatalf("delete: %+v", r)
@@ -185,7 +188,7 @@ func TestSyncAgainstPostgres(t *testing.T) {
 	}
 	tomb := false
 	for _, d := range page.Docs {
-		if d.ID == "p_3" && d.Deleted && len(d.Data) == 0 {
+		if d.ID == p3 && d.Deleted && len(d.Data) == 0 {
 			tomb = true
 		}
 	}

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the Snookit database backup every night at 03:00
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+# Run a missed backup at the next boot if the VM was off at 03:00.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
