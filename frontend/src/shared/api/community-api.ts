@@ -1,7 +1,16 @@
 import { ApiError, apiRequest } from '@/shared/api/client';
 
 /** Documents that live outside any league (see backend/internal/community). */
-export type CommunityKind = 'user' | 'profile' | 'directory' | 'looking' | 'follow' | 'challenge';
+export type CommunityKind =
+  | 'user'
+  | 'profile'
+  | 'directory'
+  | 'looking'
+  | 'follow'
+  | 'challenge'
+  | 'block'
+  | 'report'
+  | 'device';
 
 export interface CommunityListParams {
   city?: string;

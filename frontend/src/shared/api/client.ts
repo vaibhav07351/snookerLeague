@@ -136,6 +136,11 @@ async function endExpiredSession(): Promise<void> {
   }
 }
 
+/** A valid access token, refreshed first when it is about to expire (for the live socket). */
+export async function freshAccessToken(): Promise<string> {
+  return accessToken();
+}
+
 async function accessToken(): Promise<string> {
   let tokens = getTokens();
   if (!tokens) {

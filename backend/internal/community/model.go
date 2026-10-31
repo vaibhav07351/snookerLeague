@@ -22,11 +22,15 @@ const (
 	KindLooking   Kind = "looking"
 	KindFollow    Kind = "follow"
 	KindChallenge Kind = "challenge"
+	KindBlock     Kind = "block"
+	KindReport    Kind = "report"
+	KindDevice    Kind = "device"
 )
 
 func (k Kind) valid() bool {
 	switch k {
-	case KindUser, KindProfile, KindDirectory, KindLooking, KindFollow, KindChallenge:
+	case KindUser, KindProfile, KindDirectory, KindLooking, KindFollow, KindChallenge,
+		KindBlock, KindReport, KindDevice:
 		return true
 	}
 	return false
@@ -80,6 +84,8 @@ type Repository interface {
 	Put(ctx context.Context, d Doc) error
 	Delete(ctx context.Context, kind Kind, id string) error
 	List(ctx context.Context, q ListQuery) ([]Doc, error)
+	// DeleteForUser removes every row the user owns or that is about them.
+	DeleteForUser(ctx context.Context, userID string) error
 }
 
 // Errors the handler maps to client responses.
@@ -87,4 +93,8 @@ var (
 	ErrNotFound   = errors.New("not found")
 	ErrForbidden  = errors.New("forbidden")
 	ErrBadRequest = errors.New("bad request")
+	// ErrTermsRequired: the user must accept the community rules before posting.
+	ErrTermsRequired = errors.New("terms not accepted")
+	// ErrTooManyPosts: the daily posting limit is reached.
+	ErrTooManyPosts = errors.New("posting limit reached")
 )

@@ -68,3 +68,22 @@ func contains(s, sub string) bool {
 	}
 	return false
 }
+
+func TestMiddlewareByCountsPerKey(t *testing.T) {
+	l := NewRateLimiter(1, time.Minute)
+	ok := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	h := l.MiddlewareBy(func(r *http.Request) string { return r.Header.Get("X-User") })(ok)
+	call := func(user string) int {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("X-User", user)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if call("a") != http.StatusOK || call("b") != http.StatusOK {
+		t.Fatal("each user gets their own allowance")
+	}
+	if call("a") != http.StatusTooManyRequests {
+		t.Fatal("a second request from the same user must be limited")
+	}
+}

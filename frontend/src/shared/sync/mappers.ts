@@ -1,5 +1,5 @@
 import type { DocEntity } from '@/shared/api/sync-api';
-import type { FeedEvent, League, Match, Player, Race } from '@/shared/types/domain';
+import type { FeedEvent, League, Match, Player, Race, Tournament } from '@/shared/types/domain';
 import { emptyRaceStats, emptyStandardStats } from '@/shared/types/domain';
 
 /** Stable fallback - never use nowIso() in mappers or every read looks like a change. */
@@ -77,6 +77,21 @@ export function asEvent(data: Data, id: string, leagueId: string): FeedEvent {
     title: String(data.title ?? ''),
     body: String(data.body ?? ''),
     relatedIds: Array.isArray(data.relatedIds) ? (data.relatedIds as string[]) : [],
+  };
+}
+
+export function asTournament(data: Data, id: string, leagueId: string): Tournament {
+  const createdAt = String(data.createdAt ?? MISSING_TS);
+  return {
+    id,
+    leagueId: String(data.leagueId ?? leagueId),
+    name: String(data.name ?? ''),
+    format: data.format === 'round_robin' ? 'round_robin' : 'knockout',
+    entrants: Array.isArray(data.entrants) ? (data.entrants as string[]) : [],
+    bestOf: Number(data.bestOf ?? 3),
+    createdByUid: String(data.createdByUid ?? ''),
+    createdAt,
+    updatedAt: String(data.updatedAt ?? createdAt),
   };
 }
 

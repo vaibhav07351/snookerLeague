@@ -39,6 +39,21 @@ module.exports = ({ config }) => ({
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: 'resize',
     permissions: ['ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION'],
+    // Android App Links: shared match, player, city and tournament pages open in the app when
+    // it is installed. Verified by https://snookit.duckdns.org/.well-known/assetlinks.json
+    // (set ANDROID_CERT_SHA256 on the server). Paths are mapped in src/app/+native-intent.tsx.
+    intentFilters: [
+      {
+        action: 'VIEW',
+        autoVerify: true,
+        data: ['/m/', '/p/', '/c/', '/t/', '/claim/'].map((pathPrefix) => ({
+          scheme: 'https',
+          host: 'snookit.duckdns.org',
+          pathPrefix,
+        })),
+        category: ['BROWSABLE', 'DEFAULT'],
+      },
+    ],
   },
   web: {
     favicon: './assets/favicon.png',
@@ -51,6 +66,8 @@ module.exports = ({ config }) => ({
     'expo-splash-screen',
     '@react-native-google-signin/google-signin',
     'expo-secure-store',
+    '@sentry/react-native/expo',
+    'expo-notifications',
     [
       'expo-location',
       {
@@ -64,6 +81,7 @@ module.exports = ({ config }) => ({
       projectId: '66106947-8796-4241-8d9a-de50e4f04021',
     },
     EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
+    EXPO_PUBLIC_SENTRY_DSN: process.env.EXPO_PUBLIC_SENTRY_DSN,
     EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
     EXPO_PUBLIC_WEB_ORIGIN: process.env.EXPO_PUBLIC_WEB_ORIGIN,
     EXPO_PUBLIC_USE_LOCAL_DATA: process.env.EXPO_PUBLIC_USE_LOCAL_DATA,

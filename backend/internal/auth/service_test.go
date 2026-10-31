@@ -31,6 +31,8 @@ func (m *memUsers) Create(_ context.Context, u User) error { m.byID[u.ID] = u; r
 
 func (m *memUsers) UpdateProfile(context.Context, string, string, string) error { return nil }
 
+func (m *memUsers) Delete(context.Context, string) error { return nil }
+
 type memSessions struct{ byID map[string]Session }
 
 func (m *memSessions) Create(_ context.Context, s Session) error { m.byID[s.ID] = s; return nil }

@@ -18,6 +18,11 @@ export function isCloudEnabled(): boolean {
   return env('EXPO_PUBLIC_USE_LOCAL_DATA') !== 'true' && getApiBaseUrl().length > 0;
 }
 
+/** Sentry project DSN for crash and error reports ('' turns reporting off). */
+export function getSentryDsn(): string {
+  return env('EXPO_PUBLIC_SENTRY_DSN');
+}
+
 export function getGoogleWebClientId(): string {
   return env('EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID');
 }

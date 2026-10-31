@@ -7,6 +7,7 @@ import { useSession } from '@/features/auth/hooks/use-session';
 import * as authService from '@/features/auth/services/auth.service';
 import { parseAndValidateDob } from '@/features/auth/services/division.service';
 import * as profileService from '@/features/community/services/profile.service';
+import { AgreeTerms } from '@/features/auth/components/AgreeTerms';
 import { BrandLogo } from '@/features/home/components/BrandLogo';
 import { BrandWordmark } from '@/features/home/components/BrandWordmark';
 import { Button } from '@/features/home/components/Button';
@@ -32,8 +33,23 @@ export default function LoginScreen(): ReactNode {
   const [busy, setBusy] = useState(false);
   const [nameError, setNameError] = useState<string | undefined>();
   const [dobError, setDobError] = useState<string | undefined>();
+  const [agreed, setAgreed] = useState(false);
+
+  function needsAgreement(): boolean {
+    if (agreed) {
+      return false;
+    }
+    notify.info(
+      'One quick step',
+      'Tick the box to confirm you are 13 or older and accept the rules.',
+    );
+    return true;
+  }
 
   async function onDemo(): Promise<void> {
+    if (needsAgreement()) {
+      return;
+    }
     const trimmed = name.trim();
     if (trimmed.length < 2) {
       setNameError('Enter your name (at least 2 letters)');
@@ -51,6 +67,7 @@ export default function LoginScreen(): ReactNode {
     setBusy(true);
     try {
       await authService.signInDemo(trimmed, dateOfBirth);
+      await authService.acceptTerms();
       await profileService.setOwnDateOfBirth(dateOfBirth);
       await refresh();
       router.replace('/');
@@ -62,6 +79,9 @@ export default function LoginScreen(): ReactNode {
   }
 
   async function onGoogle(): Promise<void> {
+    if (needsAgreement()) {
+      return;
+    }
     if (!isCloudEnabled()) {
       notify.info(
         'Almost there',
@@ -85,6 +105,7 @@ export default function LoginScreen(): ReactNode {
       }
       setBusy(true);
       await authService.signInWithGoogleIdToken(idToken);
+      await authService.acceptTerms();
       if (dob.trim()) {
         try {
           await profileService.setOwnDateOfBirth(parseAndValidateDob(dob));
@@ -111,6 +132,8 @@ export default function LoginScreen(): ReactNode {
           Live-score snooker with your friends and see who rules the table in your city.
         </Text>
       </View>
+
+      <AgreeTerms checked={agreed} onChange={setAgreed} />
 
       <Card tone="highlight" style={styles.googleCard}>
         <View style={styles.badge}>

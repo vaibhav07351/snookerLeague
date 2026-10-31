@@ -7,6 +7,7 @@ import { mergeRemoteRows, pendingDocIdsOf } from '@/shared/sync/merge';
 import { logger } from '@/shared/logging/logger';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { isOnline } from '@/shared/sync/connectivity';
+import { isBlocked } from '@/features/community/services/safety.service';
 import { shouldCloudSync } from '@/shared/sync/cloud-session';
 import { scheduleSync } from '@/shared/sync';
 import { createId, nowIso } from '@/shared/utils/id';
@@ -155,7 +156,7 @@ export async function listLookingPosts(input: {
   const includeClosed = input.includeClosed === true;
   return getStore()
     .lookingPosts.filter((p) => {
-      if (p.cityId !== input.cityId) {
+      if (p.cityId !== input.cityId || isBlocked(p.createdByUid)) {
         return false;
       }
       if (kind !== 'all' && p.kind !== kind) {

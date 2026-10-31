@@ -18,9 +18,17 @@ type Config struct {
 	GoogleAndroidClients []string
 	SentryDSN            string
 	MinAppVersion        string
-	AccessTokenTTL       time.Duration
-	RefreshTokenTTL      time.Duration
-	RefreshGrace         time.Duration
+	// SupportEmail is shown on public pages for account requests ("" hides it).
+	SupportEmail string
+	// PublicBaseURL is this server's public address, used in share links and page previews.
+	PublicBaseURL string
+	// AndroidCertSHA256 are the app signing certificate fingerprints for Android App Links.
+	AndroidCertSHA256 []string
+	// ExpoPushAccessToken is needed only with Expo "enhanced push security" on.
+	ExpoPushAccessToken string
+	AccessTokenTTL      time.Duration
+	RefreshTokenTTL     time.Duration
+	RefreshGrace        time.Duration
 }
 
 const minSigningKeyBytes = 32
@@ -35,6 +43,10 @@ func Load() (Config, error) {
 		GoogleAndroidClients: splitList(os.Getenv("GOOGLE_ANDROID_CLIENT_IDS")),
 		SentryDSN:            os.Getenv("SENTRY_DSN"),
 		MinAppVersion:        getenv("MIN_APP_VERSION", "0.0.0"),
+		SupportEmail:         os.Getenv("SUPPORT_EMAIL"),
+		PublicBaseURL:        strings.TrimRight(getenv("PUBLIC_BASE_URL", "https://snookit.duckdns.org"), "/"),
+		AndroidCertSHA256:    splitList(os.Getenv("ANDROID_CERT_SHA256")),
+		ExpoPushAccessToken:  os.Getenv("EXPO_PUSH_ACCESS_TOKEN"),
 		AccessTokenTTL:       30 * time.Minute,
 		RefreshTokenTTL:      60 * 24 * time.Hour,
 		RefreshGrace:         60 * time.Second,

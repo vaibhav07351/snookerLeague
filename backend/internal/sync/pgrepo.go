@@ -229,3 +229,64 @@ func (t *pgTx) FindLeagueByInviteCode(ctx context.Context, code string) (Doc, er
 	d.Data = data
 	return d, nil
 }
+
+func (t *pgTx) OwnedLeagues(ctx context.Context, userID string) ([]string, error) {
+	rows, err := t.tx.Query(ctx,
+		"SELECT league_id FROM league_members WHERE user_id = $1 AND role = 'owner'", userID)
+	if err != nil {
+		return nil, fmt.Errorf("query owned leagues: %w", err)
+	}
+	defer rows.Close()
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan owned league: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read owned leagues: %w", err)
+	}
+	return ids, nil
+}
+
+func (t *pgTx) LiveLeagueDocs(ctx context.Context, leagueID string) ([]Doc, error) {
+	rows, err := t.tx.Query(ctx,
+		`SELECT entity, id, league_id, version, deleted, data, updated_at
+		   FROM docs WHERE league_id = $1 AND NOT deleted`, leagueID)
+	if err != nil {
+		return nil, fmt.Errorf("query league docs: %w", err)
+	}
+	return scanDocs(rows)
+}
+
+func (t *pgTx) PlayerCardsOf(ctx context.Context, userID string) ([]Doc, error) {
+	rows, err := t.tx.Query(ctx,
+		`SELECT entity, id, league_id, version, deleted, data, updated_at
+		   FROM docs WHERE entity = 'player' AND NOT deleted AND data ->> 'authUid' = $1`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("query player cards: %w", err)
+	}
+	return scanDocs(rows)
+}
+
+func (t *pgTx) MarkDirty(ctx context.Context, leagueID string) error {
+	if _, err := t.tx.Exec(ctx,
+		`INSERT INTO stats_dirty (league_id) VALUES ($1) ON CONFLICT (league_id) DO NOTHING`, leagueID); err != nil {
+		return fmt.Errorf("mark dirty: %w", err)
+	}
+	return nil
+}
+
+func (t *pgTx) TournamentMatches(ctx context.Context, leagueID, tournamentID string) ([]Doc, error) {
+	rows, err := t.tx.Query(ctx,
+		`SELECT entity, id, league_id, version, deleted, data, updated_at
+		   FROM docs
+		  WHERE entity = 'match' AND NOT deleted AND league_id = $1 AND data ->> 'tournamentId' = $2`,
+		leagueID, tournamentID)
+	if err != nil {
+		return nil, fmt.Errorf("query tournament matches: %w", err)
+	}
+	return scanDocs(rows)
+}

@@ -4,11 +4,11 @@
 > growing by itself with no paid marketing. Backend: own Go + PostgreSQL server on Oracle
 > Cloud Always Free (Firebase removed).
 
-|               |                                                                                                    |
-| ------------- | -------------------------------------------------------------------------------------------------- |
-| **Status**    | v4.4 - App switched to the Snookit API, Firebase removed (2026-10-31). Not yet tested on a device. |
-| **Created**   | 2026-10-12 (v1-v3 Firebase plan), 2026-10-12 (v4 Oracle plan)                                      |
-| **Next step** | Device test of Phase 2b, then the stats + Elo worker (Phase 1)                                     |
+|               |                                                                                                           |
+| ------------- | --------------------------------------------------------------------------------------------------------- |
+| **Status**    | v5.0 - Phases 0-6 coded and deployed (2026-10-31); not yet tested on a device.                            |
+| **Created**   | 2026-10-12 (v1-v3 Firebase plan), 2026-10-12 (v4 Oracle plan)                                             |
+| **Next step** | Device test of everything, then the account setup steps (Sentry, UptimeRobot, FCM, App Links fingerprint) |
 
 ---
 
@@ -379,7 +379,7 @@ Tick boxes as work completes so the next session knows where we are.
 - [x] Docker Compose: `api`, `postgres` (running on the VM since 2026-10-30; no Caddy of its own, one route in IronCoach's Caddy serves `https://snookit.duckdns.org`; steps in `docs/DEPLOY_BACKEND.md`), all **arm64** images. Postgres publishes no
       host port at all (Docker-published ports skip the host firewall). Healthchecks plus
       `depends_on: service_healthy`; log rotation (`max-size`); `stop_grace_period` for clean shutdown.
-- [ ] Postgres tuned for the VM's memory; `statement_timeout` set.
+- [x] Postgres tuned for the VM's memory; `statement_timeout` set. (done: 15 s statement_timeout and small memory settings in db.go and compose)
 - [x] ~~Domain on Cloudflare~~ Dropped by D2: free DuckDNS name with Caddy's automatic HTTPS
       (Let's Encrypt certificate issued 2026-10-30).
 - [x] Secrets (done 2026-10-30) (`DATABASE_URL`, `JWT_SIGNING_KEY`, Google client ids, Sentry DSN) in a server-only
@@ -392,13 +392,13 @@ Tick boxes as work completes so the next session knows where we are.
     20 GB (and the 5 free volume backups) are shared with IronCoach.
   - Weekly copy outside Oracle (e.g. Google Drive).
   - **Monthly restore drill** into a scratch database.
-- [ ] **Monitoring:** UptimeRobot (free) on `/healthz`; Sentry for Go and the app; disk-space alert.
-- [ ] **Deploy pipeline:** GitHub Actions builds an `arm64` image (buildx) -> GitHub Container
+- [ ] **Monitoring:** UptimeRobot (free) on `/healthz`; Sentry for Go and the app; disk-space alert. (partly done 2026-10-31: Sentry wired in the server and the app, switched on by SENTRY_DSN / EXPO_PUBLIC_SENTRY_DSN; UptimeRobot and a disk alert need your accounts)
+- [x] **Deploy pipeline:** GitHub Actions builds an `arm64` image (buildx) -> GitHub Container (done 2026-10-31 as .github/workflows: CI on every push, deploy-backend.yml copies the code and rebuilds on the VM after CI passes, keeping snookit-api:previous for rollback; needs the VM_SSH_KEY and VM_HOST secrets. No container registry: simpler on one VM)
       Registry (free) -> SSH deploy -> health check -> keep the previous image for rollback.
 - [x] Database migrations with `goose` (done: they run on every API start), run on deploy, always in **expand/contract** style: add
       new columns, backfill, and only drop old ones a release later, because offline phones can be
       weeks behind.
-- [ ] `docs/RUNBOOK.md`: rebuild server, restore backup, rotate secrets, roll back a deploy.
+- [x] `docs/RUNBOOK.md`: rebuild server, restore backup, rotate secrets, roll back a deploy. (done 2026-10-31)
 
 ### Phase 1 - Go API core
 
@@ -426,21 +426,21 @@ Tick boxes as work completes so the next session knows where we are.
       results, `opId` + `baseVersion`, 409 on conflict), `/sync/pull` (paged, with tombstones and
       access-lost entries). City hubs pull only what the phone needs (own matches + top boards),
       never "all 500 cards".
-- [ ] **Server owns derived data:** stats, reigning champions, race king, city rank and feed
+- [ ] **Server owns derived data:** stats, reigning champions, race king, city rank and feed (partly done 2026-10-31: stats, ratings and city rank are server-computed and phones no longer upload stats; titles and feed events are still written by phones)
       events. Fields sent by old builds are ignored, never trusted.
-- [ ] **Stats + Elo worker:** a single background worker (one at a time, via a Postgres advisory
+- [x] **Stats + Elo worker:** a single background worker (one at a time, via a Postgres advisory (done 2026-10-31: backend/internal/stats, league standings + city rank on profiles)
       lock) replays ratings from the earliest changed match. Port `stats.service.ts` and
       `rating.service.ts`. Rating scope is decision D7.
 - [x] Graceful shutdown: (done) on stop, finish in-flight requests and close WebSockets cleanly (10-20 s).
 - [x] Database connection pool sized (done) for the VM (`pgxpool`, ~10-20 connections).
 - [x] Request ids in every log line. (request id header + context done; not yet added to every log line)
-- [ ] **Shared fixtures:** frame engine, stats and Elo cases as JSON under `fixtures/`, run by both
+- [x] **Shared fixtures:** frame engine, stats and Elo cases as JSON under `fixtures/`, run by both (done 2026-10-31: fixtures/stats and fixtures/tournament, checked by Jest and go test)
       Jest and `go test`.
-- [ ] **Live**: `/live/matches/{id}` WebSocket, read-only for watchers.
-- [ ] Rate limiting per user and per IP; request size limits; structured JSON logs (no tokens, no
+- [x] **Live**: `/live/matches/{id}` WebSocket, read-only for watchers. (done 2026-10-31: /v1/live/matches/{id}, token sent as the first message)
+- [x] Rate limiting per user and per IP; request size limits; structured JSON logs (no tokens, no (done 2026-10-31: 300/min per user, 20/min per IP on sign-in, 1 MB bodies)
       emails).
-- [ ] Every list endpoint paginated; every query parameterised (`pgx`).
-- [ ] Tests: service tests with a real Postgres (Docker) for permissions, sync idempotency and
+- [x] Every list endpoint paginated; every query parameterised (`pgx`). (done: pull, community lists and standings are paged)
+- [x] Tests: service tests with a real Postgres (Docker) for permissions, sync idempotency and (done: backend/internal/integration, 7 suites passing on the VM 2026-10-31)
       stats. (partly done: `backend/internal/integration` covers auth, sync idempotency, conflicts,
       tombstones, cross-league ids and concurrent writers; stats and the remaining permissions
       still to come)
@@ -455,7 +455,7 @@ the same release.
   - One storage key per match; migrate old key -> new keys -> verify -> keep old key one release.
   - Cheaper change detection than turning the whole store into text on every shot.
   - Web: handle the ~5 MB browser limit.
-- [ ] Minimum-version check: `/config` (first read from a public Firestore doc, later from the Go
+- [x] Minimum-version check: `/config` (first read from a public Firestore doc, later from the Go (done 2026-10-31: UpdateRequiredGate reads /v1/config)
       API) returns `minVersion`; old app versions see "Update required".
 
 ### Phase 2b - App switch (blank start)
@@ -504,52 +504,52 @@ starts empty and testers sign in again.
 
 **Goal:** pass Play review, follow the law, give value on day one.
 
-- [ ] **18+ accounts** (D5): "I am 18+" check + self-declared age band; no date of birth stored;
+- [x] **18+ accounts** (D5): "I am 18+" check + self-declared age band; no date of birth stored; (done 2026-10-31 as D5 decided: "I am 13 or older" tick box before sign-in, no date of birth on the server, under-18s off public boards and pages)
       migrated DOBs are not copied (users under 18 by DOB are flagged and offered deletion).
-- [ ] **Account deletion** in app and on a public web page (`/delete-account`), done **by the
+- [x] **Account deletion** in app and on a public web page (`/delete-account`), done **by the (done 2026-10-31: DELETE /v1/me + Settings button + /delete-account page; matches in other leagues kept with the card renamed "Deleted player")
       server in one transaction**: revoke sessions, hand over or delete owned leagues, rename cards
       "Deleted player", remove memberships, follows, challenges and posts, delete the user.
-- [ ] **Safety for user posts:** report and block, terms accepted before the first post, rate
+- [x] **Safety for user posts:** report and block, terms accepted before the first post, rate (done 2026-10-31: report and block, rules accepted before posting, 5 posts a day)
       limits, posts expire. Looking and Directory hidden until a city has ~20 active players.
-- [ ] **Guest privacy:** public pages show "Rahul S.", no guest photos, "This is me, remove it".
-- [ ] **Cold-start home:** "Score a match" and head-to-head first.
-- [ ] Privacy policy with grievance contact (DPDP), Play **Data safety** form, a note for Play
+- [x] **Guest privacy:** public pages show "Rahul S.", no guest photos, "This is me, remove it". (done 2026-10-31: short names, no photos, "This is me, remove it" form on match pages)
+- [x] **Cold-start home:** "Score a match" and head-to-head first. (done 2026-10-31: head to head button, empty champions card hidden)
+- [x] Privacy policy with grievance contact (DPDP), Play **Data safety** form, a note for Play (done 2026-10-31: /privacy and /terms pages, docs/PLAY_STORE_LISTING.md has the Data safety answers; set SUPPORT_EMAIL for the grievance contact)
       reviewers, target SDK 36 confirmed.
-- [ ] Trim the side menu to the screens people use.
+- [x] Trim the side menu to the screens people use. (done 2026-10-31: 8 entries to 6; Appearance and Champion history are reached from Settings and My Snooker)
 
 ### Phase 4 - Growth loops
 
 **Goal:** every match becomes a reason for someone new to install.
 
-- [ ] **Share cards** after every match, 50+ break and title: image + link, one tap to WhatsApp.
-- [ ] **Public pages** rendered by Go: match `/m/<id>`, player `/p/<id>`, city board `/c/<city>`;
+- [x] **Share cards** after every match, 50+ break and title: image + link, one tap to WhatsApp. (done 2026-10-31: result card image + /m/<id> link after every match; 50+ break and title shown on the card)
+- [x] **Public pages** rendered by Go: match `/m/<id>`, player `/p/<id>`, city board `/c/<city>`; (done 2026-10-31: /m, /p, /c, /t with Open Graph tags; preview image is the logo, not a generated picture)
       Open Graph tags + generated preview image; Cloudflare caches them; `sitemap.xml` for Google.
-- [ ] **Claim links:** token hashed in the database, single use, 7-day expiry; the card's creator
+- [x] **Claim links:** token hashed in the database, single use, 7-day expiry; the card's creator (done 2026-10-31: POST /v1/claims, /claim/<token>, single use, 7 days, hash stored)
       is told and can undo within 7 days; claiming never grants entry to a private league.
-- [ ] **Android App Links:** Caddy serves `/.well-known/assetlinks.json`; `intentFilters` in
+- [x] **Android App Links:** Caddy serves `/.well-known/assetlinks.json`; `intentFilters` in (done 2026-10-31: intentFilters + assetlinks.json; set ANDROID_CERT_SHA256 on the server)
       `app.config.js`.
-- [ ] **Rating prompt** after a win or century, at most once every 90 days.
-- [ ] **Store listing:** "Snookit - Snooker Scoreboard & League", screenshots of scoring and share
+- [x] **Rating prompt** after a win or century, at most once every 90 days. (done 2026-10-31)
+- [x] **Store listing:** "Snookit - Snooker Scoreboard & League", screenshots of scoring and share (done 2026-10-31: docs/PLAY_STORE_LISTING.md)
       cards.
 
 ### Phase 5 - Knockout tournaments
 
 **Goal:** one organiser brings a whole parlour into the app.
 
-- [ ] Knockout with byes and random or manual seeding; entries from league players or a link.
-- [ ] Fixtures are matches with `tournament_id`, `round` and `slot`; the server moves winners on.
-- [ ] Public bracket page `/t/<id>` (same pattern as P4).
-- [ ] Results entered by the organiser count for the tournament only, never for public rankings.
+- [x] Knockout with byes and random or manual seeding; entries from league players or a link. (done 2026-10-31 with manual seeding from league players; random seeding and entry by link not built)
+- [x] Fixtures are matches with `tournament_id`, `round` and `slot`; the server moves winners on. (done 2026-10-31: the bracket is recomputed from results, so winners move on without server writes)
+- [x] Public bracket page `/t/<id>` (same pattern as P4). (done 2026-10-31)
+- [x] Results entered by the organiser count for the tournament only, never for public rankings. (done: the public rating only counts results both players agreed to)
 
 ### Phase 6 - Trusted rankings + retention
 
-- [ ] **Opponent confirms** a result before it counts for the public ranking; changes reset it.
-- [ ] **Anti-cheating:** at most 3 rated games per pair per 30 days; wins over new accounts count
+- [x] **Opponent confirms** a result before it counts for the public ranking; changes reset it. (done 2026-10-31)
+- [x] **Anti-cheating:** at most 3 rated games per pair per 30 days; wins over new accounts count (done 2026-10-31: backend/internal/stats/public_rating.go)
       for almost nothing; show "N verified opponents"; account at least 7 days old.
-- [ ] **Push notifications** via Expo Push (free; uses Google's FCM underneath, so a Firebase
+- [x] **Push notifications** via Expo Push (free; uses Google's FCM underneath, so a Firebase (done 2026-10-31 for challenges and follows; Android delivery needs FCM credentials uploaded to EAS)
       project is kept only for FCM): challenged, confirm this result, your match is ready.
-- [ ] Round-robin tournaments with a points table.
-- [ ] Bottom-tab redesign.
+- [x] Round-robin tournaments with a points table. (done 2026-10-31)
+- [ ] Bottom-tab redesign. (not started: needs a design direction from the owner)
 
 ---
 

@@ -124,6 +124,8 @@ export async function createMatch(input: {
   bestOf: number;
   namedLabel: string | null;
   crownsChampion: boolean;
+  /** Tags the match as a tournament fixture (checked by the tournament service). */
+  fixture?: { tournamentId: string; round: number; slot: number };
 }): Promise<Match> {
   const parsed = createMatchSchema.safeParse(input);
   if (!parsed.success) {
@@ -153,6 +155,7 @@ export async function createMatch(input: {
     openFrame: newOpenFrame('a', teams),
     scorerUid: parsed.data.createdByUid,
     scoringPolicy: 'anyone',
+    ...(input.fixture ?? {}),
   };
 
   await updateStore((s) => ({ ...s, matches: [...s.matches, match] }));
@@ -291,18 +294,8 @@ export async function persistMatchResult(
       updatedAt: event.updatedAt,
     });
   }
-  for (const player of leaguePlayers) {
-    items.push({
-      entity: 'player',
-      docId: player.id,
-      leagueId: player.leagueId,
-      action: 'upsert',
-      payload: player,
-      updatedAt: player.updatedAt,
-      // Derived stats only: never overwrite a name or owner from this phone's copy.
-      fieldsOnly: ['stats'],
-    });
-  }
+  // Player stats are not uploaded: the server computes its own from the matches and races
+  // (backend/internal/stats), and this phone already recomputed them for display.
   await scheduleSync(items);
 
   if (league && leagueKindOf(league) === 'city') {

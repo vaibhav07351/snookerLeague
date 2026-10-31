@@ -48,10 +48,10 @@ function CustomDrawer(props: DrawerContentComponentProps): ReactNode {
   const items: Array<{ label: string; route: string; hint: string }> = [
     { label: 'Home', route: '(tabs)', hint: 'Tabs · city & club' },
     { label: 'Game history', route: 'history', hint: 'Matches & races' },
-    { label: 'Champion history', route: 'champions', hint: 'Titles & race kings' },
     { label: 'Stats', route: 'stats', hint: 'Rating, breaks & rivals' },
     { label: 'Leaderboard', route: 'leaderboard', hint: "Who's hot" },
     { label: 'Players', route: 'players/index', hint: 'Roster & guests' },
+    { label: 'Tournaments', route: 'tournaments', hint: 'Knockouts & round robins' },
     { label: 'League', route: 'league', hint: 'Invite friends · settings' },
   ];
 
@@ -129,20 +129,6 @@ function CustomDrawer(props: DrawerContentComponentProps): ReactNode {
           />
         );
       })}
-      <DrawerItem
-        label={() => (
-          <View>
-            <Text style={styles.itemLabel}>Appearance</Text>
-            <Text style={styles.itemHint}>Choose a colour theme</Text>
-          </View>
-        )}
-        inactiveTintColor={palette.text}
-        style={styles.item}
-        onPress={() => {
-          props.navigation.closeDrawer();
-          router.push('/settings/theme');
-        }}
-      />
     </DrawerContentScrollView>
   );
 }
@@ -176,7 +162,14 @@ export default function MainDrawerLayout(): ReactNode {
     >
       <Drawer.Screen name="(tabs)" options={{ headerShown: false, title: 'Home' }} />
       <Drawer.Screen name="history" options={{ title: 'Game history' }} />
-      <Drawer.Screen name="champions" options={{ title: 'Champion history' }} />
+      <Drawer.Screen
+        name="champions"
+        options={{
+          ...DETAIL_BACK,
+          title: 'Champion history',
+          drawerItemStyle: { display: 'none' },
+        }}
+      />
       <Drawer.Screen name="stats" options={{ title: 'Stats' }} />
       <Drawer.Screen name="leaderboard" options={{ title: 'Leaderboard' }} />
       <Drawer.Screen
@@ -200,6 +193,7 @@ export default function MainDrawerLayout(): ReactNode {
         name="follows"
         options={{ ...DETAIL_BACK, title: 'Follows', drawerItemStyle: { display: 'none' } }}
       />
+      <Drawer.Screen name="tournaments" options={{ title: 'Tournaments' }} />
       <Drawer.Screen name="league" options={{ title: 'League' }} />
     </Drawer>
   );

@@ -148,7 +148,6 @@ export async function persistRace(race: Race, event?: FeedEvent): Promise<Race> 
       ? (store.leagues.find((l) => l.id === race.leagueId) ?? null)
       : null;
   const syncedEvent = eventId ? store.events.find((e) => e.id === eventId) : undefined;
-  const syncedPlayers = store.players.filter((p) => p.leagueId === race.leagueId);
 
   const items: ScheduleItem[] = [
     {
@@ -181,18 +180,8 @@ export async function persistRace(race: Race, event?: FeedEvent): Promise<Race> 
       updatedAt: syncedEvent.updatedAt,
     });
   }
-  for (const player of syncedPlayers) {
-    items.push({
-      entity: 'player',
-      docId: player.id,
-      leagueId: player.leagueId,
-      action: 'upsert',
-      payload: player,
-      updatedAt: player.updatedAt,
-      // Derived stats only: never overwrite a name or owner from this phone's copy.
-      fieldsOnly: ['stats'],
-    });
-  }
+  // Player stats are not uploaded: the server computes its own from the matches and races
+  // (backend/internal/stats), and this phone already recomputed them for display.
   await scheduleSync(items);
   return race;
 }

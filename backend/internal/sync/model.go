@@ -19,11 +19,13 @@ const (
 	EntityMatch  Entity = "match"
 	EntityRace   Entity = "race"
 	EntityEvent  Entity = "event"
+	// EntityTournament is a knockout or round-robin; its fixtures are matches tagged with it.
+	EntityTournament Entity = "tournament"
 )
 
 func (e Entity) valid() bool {
 	switch e {
-	case EntityLeague, EntityPlayer, EntityMatch, EntityRace, EntityEvent:
+	case EntityLeague, EntityPlayer, EntityMatch, EntityRace, EntityEvent, EntityTournament:
 		return true
 	}
 	return false
@@ -113,6 +115,16 @@ type Tx interface {
 	Members(ctx context.Context, leagueID string) ([]string, error)
 	// FindLeagueByInviteCode returns the live league whose inviteCode is code.
 	FindLeagueByInviteCode(ctx context.Context, code string) (Doc, error)
+	// OwnedLeagues lists the leagues the user owns.
+	OwnedLeagues(ctx context.Context, userID string) ([]string, error)
+	// LiveLeagueDocs returns every document of a league that is not a tombstone.
+	LiveLeagueDocs(ctx context.Context, leagueID string) ([]Doc, error)
+	// PlayerCardsOf returns the live player cards owned by the user (authUid), in any league.
+	PlayerCardsOf(ctx context.Context, userID string) ([]Doc, error)
+	// TournamentMatches returns the live fixtures of a tournament in its league.
+	TournamentMatches(ctx context.Context, leagueID, tournamentID string) ([]Doc, error)
+	// MarkDirty queues the league for the stats worker (idempotent).
+	MarkDirty(ctx context.Context, leagueID string) error
 	AppliedResult(ctx context.Context, userID, opID string) (OpResult, error)
 	SaveResult(ctx context.Context, opID, userID string, r OpResult) error
 }

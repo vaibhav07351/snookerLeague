@@ -42,6 +42,10 @@ function syncPriority(op: PendingOp): number {
       follow: 0,
       profile: 0,
       invite: 0,
+      block: 0,
+      report: 0,
+      device: 0,
+      tournament: 0,
       league: 1,
       user: 2,
     };
@@ -60,6 +64,10 @@ function syncPriority(op: PendingOp): number {
     directory: 2,
     follow: 2,
     invite: 2,
+    block: 2,
+    report: 2,
+    device: 2,
+    tournament: 2,
   };
   return upsertOrder[op.entity] ?? 9;
 }
@@ -88,6 +96,7 @@ function buildCloudUserPayload(user: SessionUser, store = getStore()): CloudUser
     cityName: user.cityName,
     // D5: the date of birth never leaves the phone.
     dateOfBirth: null,
+    termsAcceptedAt: user.termsAcceptedAt ?? null,
   };
 }
 

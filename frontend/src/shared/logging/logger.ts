@@ -7,6 +7,18 @@ export interface LogFields {
   [key: string]: unknown;
 }
 
+type ErrorReporter = (layer: string, message: string, extra: Record<string, unknown>) => void;
+
+let reportError: ErrorReporter | null = null;
+
+/**
+ * Send error-level logs to a crash reporter as well (see shared/monitoring). Log fields are
+ * ids and shapes by convention, never tokens or personal data, so they are safe to send.
+ */
+export function setErrorReporter(reporter: ErrorReporter | null): void {
+  reportError = reporter;
+}
+
 function emit(fields: LogFields): void {
   const payload = {
     timestamp: new Date().toISOString(),
@@ -35,5 +47,6 @@ export const logger = {
   },
   error(layer: string, message: string, extra?: Record<string, unknown>): void {
     emit({ layer, message, level: 'error', ...extra });
+    reportError?.(layer, message, extra ?? {});
   },
 };

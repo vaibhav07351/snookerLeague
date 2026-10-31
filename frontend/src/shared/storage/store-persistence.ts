@@ -35,6 +35,7 @@ const COLLECTIONS = [
   'lookingPosts',
   'directoryListings',
   'follows',
+  'tournaments',
   'serverVersions',
 ] as const satisfies readonly (keyof AppDataStore)[];
 

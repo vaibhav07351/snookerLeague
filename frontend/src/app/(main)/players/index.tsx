@@ -4,6 +4,7 @@ import { useCallback, useState, type ReactNode } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
+import { shareClaimLink } from '@/features/players/services/claim-link.service';
 import { Button } from '@/features/home/components/Button';
 import { Screen } from '@/features/home/components/Screen';
 import { TextField } from '@/features/home/components/TextField';
@@ -166,6 +167,20 @@ export default function PlayersScreen(): ReactNode {
                 </Text>
               </Pressable>
               <View style={styles.actions}>
+                {item.kind === 'guest' && !item.authUid && user && !user.isDemo ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Send ${item.displayName} a link to claim this player`}
+                    onPress={() => {
+                      shareClaimLink(item.id, item.displayName).catch((error: unknown) => {
+                        notify.error('Could not send the link', toUserMessage(error));
+                      });
+                    }}
+                    style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+                  >
+                    <Ionicons name="paper-plane-outline" size={20} color={palette.textMuted} />
+                  </Pressable>
+                ) : null}
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`Edit ${item.displayName}`}

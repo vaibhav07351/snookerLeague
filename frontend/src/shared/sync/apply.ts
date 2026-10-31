@@ -1,28 +1,48 @@
 import type { DocEntity, ServerDoc } from '@/shared/api/sync-api';
 import { updateStore } from '@/shared/storage/local-store';
 import { withoutLeague } from '@/shared/sync/cloud-leagues';
-import { asEvent, asLeague, asMatch, asPlayer, asRace, versionKey } from '@/shared/sync/mappers';
+import {
+  asEvent,
+  asLeague,
+  asMatch,
+  asPlayer,
+  asRace,
+  asTournament,
+  versionKey,
+} from '@/shared/sync/mappers';
 import {
   mergeEvents,
   mergeLeagues,
   mergeMatches,
   mergePlayers,
   mergeRaces,
+  mergeTournaments,
   pendingDocIdsOf,
 } from '@/shared/sync/merge';
-import type { AppDataStore, FeedEvent, League, Match, Player, Race } from '@/shared/types/domain';
+import type {
+  AppDataStore,
+  FeedEvent,
+  League,
+  Match,
+  Player,
+  Race,
+  Tournament,
+} from '@/shared/types/domain';
 
-type RowKey = 'players' | 'matches' | 'races' | 'events';
+type RowKey = 'players' | 'matches' | 'races' | 'events' | 'tournaments';
 
 const ROW_KEY: Record<Exclude<DocEntity, 'league'>, RowKey> = {
   player: 'players',
   match: 'matches',
   race: 'races',
   event: 'events',
+  tournament: 'tournaments',
 };
 
 /** Server copy of one document as the app's local type. */
-export function localRowOf(doc: ServerDoc): League | Player | Match | Race | FeedEvent | null {
+export function localRowOf(
+  doc: ServerDoc,
+): League | Player | Match | Race | FeedEvent | Tournament | null {
   if (doc.deleted || !doc.data) {
     return null;
   }
@@ -37,6 +57,8 @@ export function localRowOf(doc: ServerDoc): League | Player | Match | Race | Fee
       return asRace(doc.data, doc.id, doc.leagueId);
     case 'event':
       return asEvent(doc.data, doc.id, doc.leagueId);
+    case 'tournament':
+      return asTournament(doc.data, doc.id, doc.leagueId);
   }
 }
 
@@ -48,6 +70,7 @@ function mergeDocs(s: AppDataStore, docs: ServerDoc[]): AppDataStore {
   const matches: Match[] = [];
   const races: Race[] = [];
   const events: FeedEvent[] = [];
+  const tournaments: Tournament[] = [];
   const deletedLeagues: string[] = [];
   const deleted = new Map<RowKey, Set<string>>();
 
@@ -79,6 +102,9 @@ function mergeDocs(s: AppDataStore, docs: ServerDoc[]): AppDataStore {
       case 'event':
         events.push(row as FeedEvent);
         break;
+      case 'tournament':
+        tournaments.push(row as Tournament);
+        break;
     }
   }
 
@@ -90,6 +116,10 @@ function mergeDocs(s: AppDataStore, docs: ServerDoc[]): AppDataStore {
     matches: matches.length > 0 ? mergeMatches(s.matches, matches, pending) : s.matches,
     races: races.length > 0 ? mergeRaces(s.races, races, pending) : s.races,
     events: events.length > 0 ? mergeEvents(s.events, events, pending) : s.events,
+    tournaments:
+      tournaments.length > 0
+        ? mergeTournaments(s.tournaments, tournaments, pending)
+        : s.tournaments,
   };
   // Deleted on the server: remove here too, with any queued write the server would refuse.
   for (const [key, ids] of deleted) {
@@ -144,7 +174,7 @@ export async function replaceWithServerDoc(doc: ServerDoc): Promise<void> {
 /** Store one rebased row and the server version it is now based on. */
 export async function storeRebasedRow(
   entity: DocEntity,
-  row: League | Player | Match | Race | FeedEvent,
+  row: League | Player | Match | Race | FeedEvent | Tournament,
   version: number,
 ): Promise<void> {
   await updateStore((s) => {

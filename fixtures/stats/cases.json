@@ -1,0 +1,549 @@
+{
+  "about": "Shared stats and rating cases. Inputs are app documents; expected is produced by the app's TypeScript (frontend/src/features/stats/services/shared-fixtures.test.ts, run with WRITE_FIXTURES=1) and checked by both Jest and go test (backend/internal/stats).",
+  "players": [
+    "p1",
+    "p2",
+    "p3",
+    "p4"
+  ],
+  "matches": [
+    {
+      "id": "m1",
+      "updatedAt": "2026-01-02T10:00:00.000Z",
+      "teamA": [
+        "p1"
+      ],
+      "teamB": [
+        "p2"
+      ],
+      "crownsChampion": true,
+      "frames": [
+        {
+          "teamAPoints": 72,
+          "teamBPoints": 30,
+          "winner": "a",
+          "durationSeconds": 900,
+          "shots": [
+            {
+              "side": "a",
+              "kind": "pot",
+              "points": 1
+            },
+            {
+              "side": "a",
+              "kind": "pot",
+              "points": 7
+            },
+            {
+              "side": "a",
+              "kind": "pot",
+              "points": 1
+            },
+            {
+              "side": "a",
+              "kind": "pot",
+              "points": 7
+            },
+            {
+              "side": "a",
+              "kind": "miss",
+              "points": 0
+            },
+            {
+              "side": "b",
+              "kind": "pot",
+              "points": 1
+            },
+            {
+              "side": "b",
+              "kind": "foul",
+              "points": 4
+            },
+            {
+              "side": "a",
+              "kind": "free_ball",
+              "points": 1
+            },
+            {
+              "side": "a",
+              "kind": "pot",
+              "points": 7
+            }
+          ]
+        },
+        {
+          "teamAPoints": 20,
+          "teamBPoints": 60,
+          "winner": "b",
+          "durationSeconds": 1200,
+          "shots": []
+        },
+        {
+          "teamAPoints": 64,
+          "teamBPoints": 12,
+          "winner": "a",
+          "shots": []
+        }
+      ],
+      "outcome": {
+        "status": "completed",
+        "winner": "a",
+        "framesA": 2,
+        "framesB": 1
+      }
+    },
+    {
+      "id": "m2",
+      "updatedAt": "2026-01-03T10:00:00.000Z",
+      "teamA": [
+        "p1",
+        "p3"
+      ],
+      "teamB": [
+        "p2",
+        "p4"
+      ],
+      "crownsChampion": false,
+      "frames": [
+        {
+          "teamAPoints": 10,
+          "teamBPoints": 55,
+          "winner": "b",
+          "durationSeconds": 600,
+          "shots": [
+            {
+              "side": "b",
+              "kind": "pot",
+              "points": 1,
+              "playerId": "p2"
+            },
+            {
+              "side": "b",
+              "kind": "pot",
+              "points": 6
+            },
+            {
+              "side": "b",
+              "kind": "pot",
+              "points": 1,
+              "playerId": "p4"
+            },
+            {
+              "side": "b",
+              "kind": "safety",
+              "points": 0
+            },
+            {
+              "side": "a",
+              "kind": "foul",
+              "points": 5,
+              "playerId": "p3"
+            },
+            {
+              "side": "a",
+              "kind": "pot",
+              "points": 1
+            },
+            {
+              "side": "a",
+              "kind": "pot",
+              "points": 4,
+              "playerId": "p1"
+            }
+          ]
+        }
+      ],
+      "outcome": {
+        "status": "completed",
+        "winner": "b",
+        "framesA": 0,
+        "framesB": 1
+      }
+    },
+    {
+      "id": "m3",
+      "updatedAt": "2026-01-04T10:00:00.000Z",
+      "teamA": [
+        "p3"
+      ],
+      "teamB": [
+        "p1"
+      ],
+      "crownsChampion": true,
+      "frames": [],
+      "outcome": {
+        "status": "forfeited",
+        "winner": "b",
+        "forfeitedBy": "a",
+        "framesA": 0,
+        "framesB": 0
+      }
+    },
+    {
+      "id": "m4",
+      "updatedAt": "2026-01-05T10:00:00.000Z",
+      "teamA": [
+        "p2"
+      ],
+      "teamB": [
+        "p4"
+      ],
+      "crownsChampion": false,
+      "frames": [],
+      "outcome": {
+        "status": "in_progress",
+        "framesA": 0,
+        "framesB": 0
+      }
+    },
+    {
+      "id": "m5",
+      "updatedAt": "2026-01-06T10:00:00.000Z",
+      "teamA": [
+        "p4"
+      ],
+      "teamB": [
+        "p1"
+      ],
+      "crownsChampion": false,
+      "frames": [
+        {
+          "teamAPoints": 101,
+          "teamBPoints": 0,
+          "winner": "a",
+          "durationSeconds": 450,
+          "shots": [
+            {
+              "side": "a",
+              "kind": "pot",
+              "points": 50
+            },
+            {
+              "side": "a",
+              "kind": "pot",
+              "points": 51
+            }
+          ]
+        }
+      ],
+      "outcome": {
+        "status": "completed",
+        "winner": "a",
+        "framesA": 1,
+        "framesB": 0
+      }
+    }
+  ],
+  "races": [
+    {
+      "id": "r1",
+      "updatedAt": "2026-01-02T12:00:00.000Z",
+      "status": "completed",
+      "crownsRaceChampion": true,
+      "entrants": [
+        {
+          "playerId": "p1",
+          "place": 2
+        },
+        {
+          "playerId": "p2",
+          "place": 1
+        },
+        {
+          "playerId": "p3",
+          "place": "dnf"
+        },
+        {
+          "playerId": "p4",
+          "place": 3
+        }
+      ]
+    },
+    {
+      "id": "r2",
+      "updatedAt": "2026-01-05T12:00:00.000Z",
+      "status": "completed",
+      "crownsRaceChampion": false,
+      "entrants": [
+        {
+          "playerId": "p1",
+          "place": 1
+        },
+        {
+          "playerId": "p3",
+          "place": 1
+        },
+        {
+          "playerId": "p2",
+          "place": null
+        }
+      ]
+    },
+    {
+      "id": "r3",
+      "updatedAt": "2026-01-07T12:00:00.000Z",
+      "status": "in_progress",
+      "crownsRaceChampion": false,
+      "entrants": [
+        {
+          "playerId": "p1",
+          "place": null
+        },
+        {
+          "playerId": "p4",
+          "place": null
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "standard": {
+      "p1": {
+        "played": 4,
+        "wins": 2,
+        "winPct": 50,
+        "lastPlayedAt": "2026-01-06T10:00:00.000Z",
+        "streak": 0,
+        "titles": 2,
+        "forfeits": 0,
+        "winsByForfeit": 1,
+        "timedFrames": 4,
+        "totalFrameSeconds": 3150,
+        "avgFrameSeconds": 788,
+        "timedFramesWon": 1,
+        "avgWinFrameSeconds": 900,
+        "timedFramesLost": 3,
+        "avgLossFrameSeconds": 750,
+        "fastestFrameSeconds": 450,
+        "slowestFrameSeconds": 1200,
+        "highestBreak": 16,
+        "breaks50": 0,
+        "centuries": 0,
+        "maximums": 0,
+        "pointsScored": 160,
+        "fouls": 0,
+        "foulPoints": 0,
+        "netPoints": 160
+      },
+      "p2": {
+        "played": 2,
+        "wins": 1,
+        "winPct": 50,
+        "lastPlayedAt": "2026-01-03T10:00:00.000Z",
+        "streak": 1,
+        "titles": 0,
+        "forfeits": 0,
+        "winsByForfeit": 0,
+        "timedFrames": 3,
+        "totalFrameSeconds": 2700,
+        "avgFrameSeconds": 900,
+        "timedFramesWon": 2,
+        "avgWinFrameSeconds": 900,
+        "timedFramesLost": 1,
+        "avgLossFrameSeconds": 900,
+        "fastestFrameSeconds": 600,
+        "slowestFrameSeconds": 1200,
+        "highestBreak": 7,
+        "breaks50": 0,
+        "centuries": 0,
+        "maximums": 0,
+        "pointsScored": 109,
+        "fouls": 0,
+        "foulPoints": 0,
+        "netPoints": 109
+      },
+      "p3": {
+        "played": 2,
+        "wins": 0,
+        "winPct": 0,
+        "lastPlayedAt": "2026-01-04T10:00:00.000Z",
+        "streak": 0,
+        "titles": 0,
+        "forfeits": 1,
+        "winsByForfeit": 0,
+        "timedFrames": 1,
+        "totalFrameSeconds": 600,
+        "avgFrameSeconds": 600,
+        "timedFramesWon": 0,
+        "avgWinFrameSeconds": null,
+        "timedFramesLost": 1,
+        "avgLossFrameSeconds": 600,
+        "fastestFrameSeconds": 600,
+        "slowestFrameSeconds": 600,
+        "highestBreak": 0,
+        "breaks50": 0,
+        "centuries": 0,
+        "maximums": 0,
+        "pointsScored": 1,
+        "fouls": 1,
+        "foulPoints": 5,
+        "netPoints": -4
+      },
+      "p4": {
+        "played": 2,
+        "wins": 2,
+        "winPct": 100,
+        "lastPlayedAt": "2026-01-06T10:00:00.000Z",
+        "streak": 2,
+        "titles": 0,
+        "forfeits": 0,
+        "winsByForfeit": 0,
+        "timedFrames": 2,
+        "totalFrameSeconds": 1050,
+        "avgFrameSeconds": 525,
+        "timedFramesWon": 2,
+        "avgWinFrameSeconds": 525,
+        "timedFramesLost": 0,
+        "avgLossFrameSeconds": null,
+        "fastestFrameSeconds": 450,
+        "slowestFrameSeconds": 600,
+        "highestBreak": 101,
+        "breaks50": 1,
+        "centuries": 1,
+        "maximums": 0,
+        "pointsScored": 102,
+        "fouls": 0,
+        "foulPoints": 0,
+        "netPoints": 102
+      }
+    },
+    "race": {
+      "p1": {
+        "played": 2,
+        "firsts": 1,
+        "seconds": 1,
+        "thirds": 0,
+        "podiumPct": 100,
+        "avgPlace": 1.5,
+        "firstPct": 50,
+        "lastPlayedAt": "2026-01-05T12:00:00.000Z",
+        "firstStreak": 1,
+        "titles": 0
+      },
+      "p2": {
+        "played": 2,
+        "firsts": 1,
+        "seconds": 0,
+        "thirds": 0,
+        "podiumPct": 50,
+        "avgPlace": 1,
+        "firstPct": 50,
+        "lastPlayedAt": "2026-01-05T12:00:00.000Z",
+        "firstStreak": 0,
+        "titles": 1
+      },
+      "p3": {
+        "played": 2,
+        "firsts": 1,
+        "seconds": 0,
+        "thirds": 0,
+        "podiumPct": 50,
+        "avgPlace": 1,
+        "firstPct": 50,
+        "lastPlayedAt": "2026-01-05T12:00:00.000Z",
+        "firstStreak": 1,
+        "titles": 0
+      },
+      "p4": {
+        "played": 1,
+        "firsts": 0,
+        "seconds": 0,
+        "thirds": 1,
+        "podiumPct": 100,
+        "avgPlace": 3,
+        "firstPct": 0,
+        "lastPlayedAt": "2026-01-02T12:00:00.000Z",
+        "firstStreak": 0,
+        "titles": 0
+      }
+    },
+    "ratings": {
+      "p1": {
+        "playerId": "p1",
+        "rating": 999,
+        "peak": 1019,
+        "games": 6,
+        "provisional": false,
+        "history": [
+          1016,
+          1019,
+          1003,
+          1010,
+          1015,
+          999
+        ],
+        "form": [
+          1,
+          0,
+          0,
+          1,
+          1,
+          0
+        ],
+        "currentStreak": 0,
+        "bestStreak": 1
+      },
+      "p2": {
+        "playerId": "p2",
+        "rating": 1000,
+        "peak": 1013,
+        "games": 4,
+        "provisional": true,
+        "history": [
+          984,
+          997,
+          1013,
+          1000
+        ],
+        "form": [
+          0,
+          1,
+          1,
+          0
+        ],
+        "currentStreak": 1,
+        "bestStreak": 1
+      },
+      "p3": {
+        "playerId": "p3",
+        "rating": 965,
+        "peak": 1000,
+        "games": 4,
+        "provisional": true,
+        "history": [
+          988,
+          972,
+          957,
+          965
+        ],
+        "form": [
+          0,
+          0,
+          -1,
+          1
+        ],
+        "currentStreak": 0,
+        "bestStreak": 0
+      },
+      "p4": {
+        "playerId": "p4",
+        "rating": 1028,
+        "peak": 1028,
+        "games": 3,
+        "provisional": true,
+        "history": [
+          996,
+          1012,
+          1028
+        ],
+        "form": [
+          0,
+          1,
+          1
+        ],
+        "currentStreak": 2,
+        "bestStreak": 2
+      }
+    }
+  }
+}

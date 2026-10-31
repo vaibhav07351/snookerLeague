@@ -2,14 +2,19 @@ import * as WebBrowser from 'expo-web-browser';
 
 import { signOutGoogleNative } from '@/features/auth/services/google-sign-in.service';
 import { apiErrorMeta } from '@/shared/api/client';
-import { signInWithGoogle, signOutOfApi, type ApiUser } from '@/shared/api/auth-api';
+import {
+  deleteAccountOnServer,
+  signInWithGoogle,
+  signOutOfApi,
+  type ApiUser,
+} from '@/shared/api/auth-api';
 import { isCloudEnabled } from '@/shared/config/env';
 import { AppError } from '@/shared/errors/app-error';
 import { logger } from '@/shared/logging/logger';
 import { clearSessionPreferences } from '@/shared/storage/preferences';
 import { createId, nowIso } from '@/shared/utils/id';
-import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
-import { syncAfterGoogleSignIn } from '@/shared/sync';
+import { emptyStore, getStore, loadStore, updateStore } from '@/shared/storage/local-store';
+import { scheduleUserProfileSync, syncAfterGoogleSignIn } from '@/shared/sync';
 import { stopWatchingActiveLeague } from '@/shared/sync/watch';
 import type { AppDataStore, SessionUser } from '@/shared/types/domain';
 
@@ -148,6 +153,7 @@ export async function linkDemoAccountWithGoogleIdToken(idToken: string): Promise
     cityId: current.cityId,
     cityName: current.cityName,
     citySkipped: current.citySkipped,
+    termsAcceptedAt: current.termsAcceptedAt ?? null,
     dateOfBirth: current.dateOfBirth ?? null,
   };
 
@@ -189,6 +195,51 @@ export async function signOut(): Promise<void> {
   }));
   await clearSessionPreferences();
   logger.info('auth.service', 'Signed out');
+}
+
+/**
+ * Delete the account (Google Play requirement). Online accounts are erased on the server
+ * first: leagues you own and everything you posted are deleted, and your cards in other
+ * leagues become "Deleted player". Then this phone's data is cleared. A local profile only
+ * has this phone's data to clear.
+ */
+export async function deleteAccount(): Promise<void> {
+  await loadStore();
+  const user = getStore().user;
+  if (!user) {
+    return;
+  }
+  stopWatchingActiveLeague();
+  if (!user.isDemo && isCloudEnabled()) {
+    try {
+      await deleteAccountOnServer();
+    } catch (error) {
+      logger.error('auth.service', 'Account deletion failed', apiErrorMeta(error));
+      throw new AppError(
+        'DELETE_FAILED',
+        'Could not delete your account right now. Check your connection and try again.',
+      );
+    }
+  }
+  await signOutGoogleNative();
+  await updateStore(() => emptyStore());
+  await clearSessionPreferences();
+  logger.info('auth.service', 'Account deleted', { uid: user.uid });
+}
+
+/**
+ * Record that the user confirmed they are 13 or older and accepted the community rules
+ * (decision D5). Saved with their settings, so the server lets them post.
+ */
+export async function acceptTerms(): Promise<void> {
+  await loadStore();
+  const user = getStore().user;
+  if (!user || user.termsAcceptedAt) {
+    return;
+  }
+  const termsAcceptedAt = nowIso();
+  await updateStore((s) => (s.user ? { ...s, user: { ...s.user, termsAcceptedAt } } : s));
+  await scheduleUserProfileSync();
 }
 
 export function extractGoogleIdToken(

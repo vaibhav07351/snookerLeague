@@ -14,6 +14,7 @@ import (
 	"github.com/vaibhav/snookit-server/internal/app"
 	"github.com/vaibhav/snookit-server/internal/platform/config"
 	"github.com/vaibhav/snookit-server/internal/platform/db"
+	"github.com/vaibhav/snookit-server/internal/platform/monitoring"
 )
 
 const shutdownTimeout = 15 * time.Second
@@ -31,6 +32,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	flush, err := monitoring.Init(cfg.SentryDSN, "snookit-api")
+	if err != nil {
+		return err
+	}
+	defer flush()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -51,6 +57,11 @@ func run() error {
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
+	workersDone := make(chan struct{})
+	go func() {
+		app.RunWorkers(ctx, pool)
+		close(workersDone)
+	}()
 	errCh := make(chan error, 1)
 	go func() {
 		slog.Info("listening", "addr", srv.Addr)
@@ -67,5 +78,8 @@ func run() error {
 	}
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
-	return srv.Shutdown(shutdownCtx)
+	err = srv.Shutdown(shutdownCtx)
+	stop() // also ends the workers when the server stopped on its own
+	<-workersDone
+	return err
 }

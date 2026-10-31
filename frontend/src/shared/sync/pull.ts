@@ -98,6 +98,7 @@ export async function restoreCloudUser(uid: string): Promise<void> {
         photoUrl: profile?.photoUrl ?? s.user.photoUrl,
         cityId: profile?.cityId ?? s.user.cityId,
         cityName: profile?.cityName ?? s.user.cityName,
+        termsAcceptedAt: s.user.termsAcceptedAt ?? profile?.termsAcceptedAt ?? null,
       },
     };
   });

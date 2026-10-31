@@ -181,3 +181,31 @@ func TestJoiningAgainChangesNothing(t *testing.T) {
 		t.Fatalf("a repeat join rewrote the hub: version %d -> %d", first.Version, again.Version)
 	}
 }
+
+func TestMatchWritesQueueTheLeagueForStats(t *testing.T) {
+	svc, store := setup(t)
+	push1(t, svc, "member", op(EntityMatch, "m1", "lg1", 0, `{"id":"m1","leagueId":"lg1","createdByUid":"member"}`))
+	if !store.dirty["lg1"] {
+		t.Fatal("a match write must queue its league for the stats worker")
+	}
+}
+
+type recorder []Doc
+
+func (r *recorder) Publish(d Doc) { *r = append(*r, d) }
+
+func TestSavedMatchesArePublishedForLiveWatchers(t *testing.T) {
+	svc, _ := setup(t)
+	var got recorder
+	svc.SetPublisher(&got)
+	push1(t, svc, "member", op(EntityMatch, "m1", "lg1", 0, `{"id":"m1","leagueId":"lg1","createdByUid":"member"}`))
+	push1(t, svc, "member", op(EntityPlayer, "p9", "lg1", 0, `{"id":"p9","leagueId":"lg1"}`))
+	push1(t, svc, "stranger", op(EntityMatch, "m2", "lg1", 0, `{"id":"m2","leagueId":"lg1","createdByUid":"stranger"}`))
+	if len(got) != 1 || got[0].ID != "m1" || got[0].Version == 0 {
+		t.Fatalf("published = %+v, want only the applied match m1", got)
+	}
+	cur, err := svc.CurrentMatch(context.Background(), "m1")
+	if err != nil || cur.ID != "m1" {
+		t.Fatalf("current match: %v %+v", err, cur)
+	}
+}

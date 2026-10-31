@@ -222,7 +222,7 @@ func newCityHub(hubID, cityID, cityName string) (Doc, error) {
 	}
 	data, err := json.Marshal(map[string]any{
 		"id":                hubID,
-		"name":              cityName + " · Snookit",
+		"name":              cityName + " \u00b7 Snookit",
 		"inviteCode":        "C" + code,
 		"createdAt":         now,
 		"updatedAt":         now,
@@ -291,4 +291,120 @@ func pageOf(docs []Doc, since int64, limit int) PullPage {
 		cursor = docs[len(docs)-1].Version
 	}
 	return PullPage{Docs: docs, Cursor: cursor, HasMore: hasMore}
+}
+
+// IsMember reports whether the user belongs to the league (any role).
+func (s *Service) IsMember(ctx context.Context, leagueID, userID string) (bool, error) {
+	var role Role
+	if err := s.store.InTx(ctx, func(tx Tx) error {
+		var err error
+		role, err = tx.Role(ctx, leagueID, userID)
+		return err
+	}); err != nil {
+		return false, fmt.Errorf("load role: %w", err)
+	}
+	return role != RoleNone, nil
+}
+
+// CurrentMatch returns the stored match (for live watchers), or ErrNotFound.
+func (s *Service) CurrentMatch(ctx context.Context, matchID string) (Doc, error) {
+	var d Doc
+	err := s.store.InTx(ctx, func(tx Tx) error {
+		var err error
+		d, err = tx.Get(ctx, EntityMatch, matchID)
+		return err
+	})
+	if err != nil {
+		return Doc{}, fmt.Errorf("load match: %w", err)
+	}
+	if d.Deleted {
+		return Doc{}, ErrNotFound
+	}
+	return d, nil
+}
+
+// PublicMatch returns a match with its league and the player cards it names, for the public
+// match page. Only the cards in the match are loaded (at most four).
+func (s *Service) PublicMatch(ctx context.Context, matchID string) (match, league Doc, players []Doc, err error) {
+	err = s.store.InTx(ctx, func(tx Tx) error {
+		m, err := tx.Get(ctx, EntityMatch, matchID)
+		if err != nil {
+			return err
+		}
+		if m.Deleted {
+			return ErrNotFound
+		}
+		match = m
+		if league, err = tx.Get(ctx, EntityLeague, m.LeagueID); err != nil {
+			return err
+		}
+		var body struct {
+			TeamA []string `json:"teamA"`
+			TeamB []string `json:"teamB"`
+		}
+		if err := json.Unmarshal(m.Data, &body); err != nil {
+			return fmt.Errorf("decode match: %w", err)
+		}
+		for _, id := range append(body.TeamA, body.TeamB...) {
+			p, err := tx.Get(ctx, EntityPlayer, id)
+			if errors.Is(err, ErrNotFound) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			if p.LeagueID == m.LeagueID && !p.Deleted {
+				players = append(players, p)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return Doc{}, Doc{}, nil, fmt.Errorf("load public match: %w", err)
+	}
+	return match, league, players, nil
+}
+
+// PublicTournament returns a tournament with its league, fixtures and entrant cards, for the
+// public bracket page.
+func (s *Service) PublicTournament(ctx context.Context, id string) (tournament, league Doc, fixtures, players []Doc, err error) {
+	err = s.store.InTx(ctx, func(tx Tx) error {
+		t, err := tx.Get(ctx, EntityTournament, id)
+		if err != nil {
+			return err
+		}
+		if t.Deleted {
+			return ErrNotFound
+		}
+		tournament = t
+		if league, err = tx.Get(ctx, EntityLeague, t.LeagueID); err != nil {
+			return err
+		}
+		if fixtures, err = tx.TournamentMatches(ctx, t.LeagueID, id); err != nil {
+			return err
+		}
+		var body struct {
+			Entrants []string `json:"entrants"`
+		}
+		if err := json.Unmarshal(t.Data, &body); err != nil {
+			return fmt.Errorf("decode tournament: %w", err)
+		}
+		for _, pid := range body.Entrants {
+			p, err := tx.Get(ctx, EntityPlayer, pid)
+			if errors.Is(err, ErrNotFound) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			if p.LeagueID == t.LeagueID && !p.Deleted {
+				players = append(players, p)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return Doc{}, Doc{}, nil, nil, fmt.Errorf("load public tournament: %w", err)
+	}
+	return tournament, league, fixtures, players, nil
 }

@@ -19,6 +19,7 @@ type memStore struct {
 	docs    map[string]Doc
 	members map[string]Role // key: leagueID + "|" + userID
 	joined  []string        // member keys in join order, for Members
+	dirty   map[string]bool // leagues queued for the stats worker
 	applied map[string]OpResult
 }
 
@@ -116,6 +117,61 @@ func (m *memStore) Pull(_ context.Context, user string, since int64, limit int) 
 			if d.Version == v && m.members[d.LeagueID+"|"+user] != RoleNone {
 				out = append(out, d)
 			}
+		}
+	}
+	return out, nil
+}
+
+func (m *memStore) TournamentMatches(_ context.Context, league, tournament string) ([]Doc, error) {
+	out := []Doc{}
+	for _, d := range m.docs {
+		var body struct {
+			TournamentID string `json:"tournamentId"`
+		}
+		if d.Entity == EntityMatch && !d.Deleted && d.LeagueID == league &&
+			json.Unmarshal(d.Data, &body) == nil && body.TournamentID == tournament {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
+
+func (m *memStore) MarkDirty(_ context.Context, league string) error {
+	if m.dirty == nil {
+		m.dirty = map[string]bool{}
+	}
+	m.dirty[league] = true
+	return nil
+}
+
+func (m *memStore) OwnedLeagues(_ context.Context, user string) ([]string, error) {
+	out := []string{}
+	for key, role := range m.members {
+		if l, u, _ := strings.Cut(key, "|"); u == user && role == RoleOwner {
+			out = append(out, l)
+		}
+	}
+	return out, nil
+}
+
+func (m *memStore) LiveLeagueDocs(_ context.Context, league string) ([]Doc, error) {
+	out := []Doc{}
+	for _, d := range m.docs {
+		if d.LeagueID == league && !d.Deleted {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
+
+func (m *memStore) PlayerCardsOf(_ context.Context, user string) ([]Doc, error) {
+	out := []Doc{}
+	for _, d := range m.docs {
+		var body struct {
+			AuthUID string `json:"authUid"`
+		}
+		if d.Entity == EntityPlayer && !d.Deleted && json.Unmarshal(d.Data, &body) == nil && body.AuthUID == user {
+			out = append(out, d)
 		}
 	}
 	return out, nil

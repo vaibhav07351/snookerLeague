@@ -181,3 +181,15 @@ func (s *Service) Me(ctx context.Context, userID string) (User, error) {
 	}
 	return user, nil
 }
+
+// DeleteAccount signs the user out everywhere and removes their user row. Callers erase the
+// user's data in other modules first (see the account module).
+func (s *Service) DeleteAccount(ctx context.Context, userID string) error {
+	if err := s.sessions.RevokeAllForUser(ctx, userID); err != nil {
+		return fmt.Errorf("revoke sessions: %w", err)
+	}
+	if err := s.users.Delete(ctx, userID); err != nil {
+		return fmt.Errorf("delete user: %w", err)
+	}
+	return nil
+}

@@ -18,7 +18,8 @@
       },
       "env": {
         "EXPO_PUBLIC_USE_LOCAL_DATA": "false",
-        "EXPO_PUBLIC_API_URL": "https://snookit.duckdns.org"
+        "EXPO_PUBLIC_API_URL": "https://snookit.duckdns.org",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     },
     "production": {
@@ -28,7 +29,8 @@
       },
       "env": {
         "EXPO_PUBLIC_USE_LOCAL_DATA": "false",
-        "EXPO_PUBLIC_API_URL": "https://snookit.duckdns.org"
+        "EXPO_PUBLIC_API_URL": "https://snookit.duckdns.org",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     }
   },

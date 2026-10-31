@@ -14,6 +14,7 @@ import { logger } from '@/shared/logging/logger';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { scheduleSync, scheduleUserProfileSync } from '@/shared/sync';
 import { isOnline } from '@/shared/sync/connectivity';
+import { isBlocked } from '@/features/community/services/safety.service';
 import { shouldCloudSync } from '@/shared/sync/cloud-session';
 import {
   emptyPlayerProfile,
@@ -154,7 +155,7 @@ function hubCardsByUid(cityLeagueId: string): Map<string, Player> {
   return best;
 }
 
-/** Copy the signed-in person's city-hub stats into their public profile (own profile only). */
+/** Show the signed-in person's city-hub numbers on their own profile (this phone only). */
 export async function syncCityRankFromHub(uid: string, cityLeagueId: string): Promise<void> {
   await loadStore();
   if (getStore().user?.uid !== uid) {
@@ -179,20 +180,12 @@ export async function syncCityRankFromHub(uid: string, cityLeagueId: string): Pr
     rankScore: rankScore(std.played, std.winPct),
     updatedAt: nowIso(),
   };
+  // Shown on this phone right away; the server sets the trusted rank on the public profile
+  // itself (backend/internal/stats), so nothing is uploaded here.
   await updateStore((s) => ({
     ...s,
     playerProfiles: s.playerProfiles.map((p) => (p.uid === uid ? next : p)),
   }));
-  await scheduleSync([
-    {
-      entity: 'profile',
-      docId: next.uid,
-      leagueId: null,
-      action: 'upsert',
-      payload: next,
-      updatedAt: next.updatedAt,
-    },
-  ]);
 }
 
 function asProfile(data: Record<string, unknown>, uid: string): PlayerProfile {
@@ -236,7 +229,7 @@ export async function listCityProfiles(input: {
             : undefined,
       });
       const items = page.items
-        .filter((d) => typeof d.uid === 'string' && d.uid.length > 0)
+        .filter((d) => typeof d.uid === 'string' && d.uid.length > 0 && !isBlocked(d.uid))
         .map((d) => asProfile(d, d.uid as string));
       const last = items[items.length - 1];
       await updateStore((s) => {
@@ -260,7 +253,7 @@ export async function listCityProfiles(input: {
   }
 
   const local = getStore()
-    .playerProfiles.filter((p) => p.cityId === input.cityId)
+    .playerProfiles.filter((p) => p.cityId === input.cityId && !isBlocked(p.uid))
     .sort((a, b) => {
       if (b.rankScore !== a.rankScore) {
         return b.rankScore - a.rankScore;

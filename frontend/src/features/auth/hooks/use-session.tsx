@@ -9,7 +9,9 @@ import {
 } from 'react';
 
 import * as authService from '@/features/auth/services/auth.service';
+import * as safetyService from '@/features/community/services/safety.service';
 import * as leagueService from '@/features/league/services/league.service';
+import { registerForPush } from '@/features/notifications/services/push.service';
 import { refreshLeaguePlayerStats } from '@/features/stats/services/stats.service';
 import { loadStore, subscribeStore, getStore } from '@/shared/storage/local-store';
 import { loadTokens } from '@/shared/api/tokens';
@@ -56,6 +58,10 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactNod
         // Load the saved API session first, so cloud reads made right after start-up
         // (an invite link, the first pull) are signed in.
         await loadTokens();
+        // Blocked people are hidden from lists; load the list, then refresh it in the background.
+        await safetyService.blockedUids();
+        void safetyService.refreshBlocks();
+        void registerForPush();
       }
       setUser(current);
       const active = await leagueService.getActiveLeague();

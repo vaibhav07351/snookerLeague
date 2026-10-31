@@ -59,6 +59,14 @@ func (r *PGUsers) UpdateProfile(ctx context.Context, id, displayName, photoURL s
 	return nil
 }
 
+// Delete removes the user row; foreign keys cascade to sessions, memberships and community rows.
+func (r *PGUsers) Delete(ctx context.Context, id string) error {
+	if _, err := r.pool.Exec(ctx, "DELETE FROM users WHERE id = $1", id); err != nil {
+		return fmt.Errorf("delete user: %w", err)
+	}
+	return nil
+}
+
 // PGSessions stores sessions in PostgreSQL.
 type PGSessions struct{ pool *pgxpool.Pool }
 

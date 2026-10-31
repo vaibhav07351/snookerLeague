@@ -3,6 +3,7 @@ import { useCallback, useState, type ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
+import { SafetyActions } from '@/features/community/components/SafetyActions';
 import {
   DIRECTORY_KIND_LABEL,
   createDirectoryListing,
@@ -160,7 +161,13 @@ export default function DirectoryScreen(): ReactNode {
                     });
                   }}
                 />
-              ) : null}
+              ) : (
+                <SafetyActions
+                  targetKind="directory"
+                  targetId={row.id}
+                  targetUid={row.createdByUid}
+                />
+              )}
             </Card>
           ))
         )}

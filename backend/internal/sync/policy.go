@@ -105,11 +105,20 @@ func authorize(ctx context.Context, tx Tx, userID string, op Op, current *Doc) (
 	case EntityPlayer:
 		return authorizePlayer(userID, role, op, cur, next), nil
 	case EntityMatch:
+		ok, err := confirmingOwnResult(ctx, tx, userID, op, cur, next)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			return nil, nil
+		}
 		return authorizeMatch(userID, role, op, cur, next), nil
 	case EntityRace:
 		return authorizeRace(userID, role, op, cur, next), nil
 	case EntityEvent:
 		return authorizeEvent(role, op), nil
+	case EntityTournament:
+		return authorizeTournament(userID, role, op, cur, next), nil
 	}
 	return reject("bad_entity", "Unknown entity."), nil
 }
@@ -274,4 +283,25 @@ func onlyChanged(changed, allowed []string) bool {
 		}
 	}
 	return true
+}
+
+// authorizeTournament: any member may organise a tournament (as themselves); only the
+// organiser or the league owner may change or delete it afterwards.
+func authorizeTournament(userID string, role Role, op Op, cur, next fields) *rejection {
+	if cur == nil {
+		if op.Action == ActionDelete {
+			return reject("not_found", "Nothing to delete.")
+		}
+		if next.str("createdByUid") != userID {
+			return reject("forbidden", "You can only create tournaments as yourself.")
+		}
+		return nil
+	}
+	if cur.str("createdByUid") != userID && role != RoleOwner {
+		return reject("forbidden", "Only the organiser or league owner can change this tournament.")
+	}
+	if op.Action == ActionUpsert && cur.str("createdByUid") != next.str("createdByUid") {
+		return reject("forbidden", "The organiser can't be changed.")
+	}
+	return nil
 }

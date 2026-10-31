@@ -23,6 +23,7 @@ import (
 	"github.com/vaibhav/snookit-server/internal/community"
 	"github.com/vaibhav/snookit-server/internal/platform/db"
 	"github.com/vaibhav/snookit-server/internal/platform/httpx"
+	"github.com/vaibhav/snookit-server/internal/stats"
 	syncmod "github.com/vaibhav/snookit-server/internal/sync"
 )
 
@@ -348,13 +349,18 @@ func TestCommunityAgainstPostgres(t *testing.T) {
 	ctx := context.Background()
 	users := auth.NewPGUsers(pool)
 	a, b := newUser(t, users), newUser(t, users)
-	svc := community.NewService(community.NewPGRepository(pool))
+	repo := community.NewPGRepository(pool)
+	svc := community.NewService(repo, nil)
 	city := randID("city")
 
 	for i, u := range []auth.User{a, b} {
-		doc := fmt.Sprintf(`{"uid":%q,"cityId":%q,"rankScore":%d}`, u.ID, city, 10*(i+1))
+		doc := fmt.Sprintf(`{"uid":%q,"cityId":%q}`, u.ID, city)
 		if err := svc.Put(ctx, u.ID, community.KindProfile, u.ID, []byte(doc)); err != nil {
 			t.Fatalf("profile: %v", err)
+		}
+		// Ranks are set by the stats worker, never by the phone.
+		if err := repo.SetCityRank(ctx, u.ID, city, stats.CityRank{RankScore: float64(10 * (i + 1))}); err != nil {
+			t.Fatalf("rank: %v", err)
 		}
 	}
 	first, err := svc.List(ctx, a.ID, community.KindProfile, community.ListParams{City: city, Limit: 1})

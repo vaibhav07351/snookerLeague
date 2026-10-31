@@ -34,3 +34,9 @@ export async function signOutOfApi(): Promise<void> {
     await clearTokens();
   }
 }
+
+/** Delete the account and its data on the server, then forget the session on this phone. */
+export async function deleteAccountOnServer(): Promise<void> {
+  await apiRequest<void>('/v1/me', { method: 'DELETE', timeoutMs: 60_000 });
+  await clearTokens();
+}

@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/vaibhav/snookit-server/internal/stats"
 )
 
 const (
@@ -27,15 +29,31 @@ var (
 	lookingStates  = []string{"open", "closed"}
 )
 
-// Service holds the community permission rules.
-type Service struct {
-	repo Repository
-	now  func() time.Time
+// HubRefresher asks the stats worker to recompute a city hub (so a new or moved profile gets
+// its server-computed rank).
+type HubRefresher interface {
+	MarkDirty(ctx context.Context, leagueID string) error
 }
 
-// NewService builds the community service.
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo, now: func() time.Time { return time.Now().UTC() }}
+// Notifier sends a phone notification in the background (see the push module).
+type Notifier interface {
+	Notify(userID, title, body, url string)
+}
+
+// Service holds the community permission rules.
+type Service struct {
+	repo     Repository
+	hubs     HubRefresher
+	notifier Notifier
+	now      func() time.Time
+}
+
+// SetNotifier turns on notifications for challenges and follows (nil turns them off).
+func (s *Service) SetNotifier(n Notifier) { s.notifier = n }
+
+// NewService builds the community service. hubs may be nil (tests).
+func NewService(repo Repository, hubs HubRefresher) *Service {
+	return &Service{repo: repo, hubs: hubs, now: func() time.Time { return time.Now().UTC() }}
 }
 
 // ParseKind validates a kind taken from the URL.
@@ -69,7 +87,7 @@ func (s *Service) Put(ctx context.Context, userID string, kind Kind, id string, 
 	case !errors.Is(err, ErrNotFound):
 		return fmt.Errorf("load %s: %w", kind, err)
 	}
-	doc, err := s.index(userID, kind, id, body, current)
+	doc, err := s.index(ctx, userID, kind, id, body, current)
 	if err != nil {
 		return err
 	}
@@ -79,6 +97,12 @@ func (s *Service) Put(ctx context.Context, userID string, kind Kind, id string, 
 	doc.Kind, doc.ID = kind, id
 	if err := s.repo.Put(ctx, doc); err != nil {
 		return fmt.Errorf("save %s: %w", kind, err)
+	}
+	s.announce(userID, kind, body, current)
+	if kind == KindProfile && doc.CityID != "" && s.hubs != nil && (current == nil || current.CityID != doc.CityID) {
+		if err := s.hubs.MarkDirty(ctx, "city_"+doc.CityID); err != nil {
+			return fmt.Errorf("refresh city rank: %w", err)
+		}
 	}
 	return nil
 }
@@ -145,6 +169,8 @@ func (s *Service) List(ctx context.Context, userID string, kind Kind, p ListPara
 			return Page{}, fmt.Errorf("%w: give exactly one of owner or subject", ErrBadRequest)
 		}
 		q.OwnerID, q.SubjectID = p.Owner, p.Subject
+	case KindBlock:
+		q.OwnerID = userID // only your own block list
 	case KindChallenge:
 		switch p.Box {
 		case "sent":
@@ -190,7 +216,7 @@ func (s *Service) List(ctx context.Context, userID string, kind Kind, p ListPara
 
 func canRead(userID string, d Doc) bool {
 	switch d.Kind {
-	case KindUser:
+	case KindUser, KindBlock, KindReport, KindDevice:
 		return d.OwnerID == userID
 	case KindChallenge:
 		return d.OwnerID == userID || d.SubjectID == userID
@@ -199,7 +225,7 @@ func canRead(userID string, d Doc) bool {
 }
 
 // index checks the write and fills the permission and query columns.
-func (s *Service) index(userID string, kind Kind, id string, body fields, current *Doc) (Doc, error) {
+func (s *Service) index(ctx context.Context, userID string, kind Kind, id string, body fields, current *Doc) (Doc, error) {
 	switch kind {
 	case KindUser:
 		if id != userID {
@@ -213,9 +239,36 @@ func (s *Service) index(userID string, kind Kind, id string, body fields, curren
 			return Doc{}, ErrForbidden
 		}
 		delete(body, "dateOfBirth")
-		return Doc{OwnerID: userID, CityID: body.str("cityId"), SortValue: body.num("rankScore")}, nil
+		sortValue, err := keepServerRank(body, current)
+		if err != nil {
+			return Doc{}, err
+		}
+		city := body.str("cityId")
+		if slices.Contains(minorDivisions, body.str("division")) {
+			// D5: under-18 players keep their profile but are left off public city boards.
+			city = ""
+		}
+		return Doc{OwnerID: userID, CityID: city, SortValue: sortValue}, nil
 	case KindDirectory, KindLooking:
+		if current == nil {
+			if err := s.checkCanPost(ctx, userID, kind); err != nil {
+				return Doc{}, err
+			}
+		}
 		return s.indexPost(userID, kind, body, current)
+	case KindBlock:
+		blocker, blocked := body.str("blockerUid"), body.str("blockedUid")
+		if blocker != userID {
+			return Doc{}, ErrForbidden
+		}
+		if blocked == "" || blocked == blocker || id != "bl_"+blocker+"_"+blocked {
+			return Doc{}, fmt.Errorf("%w: invalid block", ErrBadRequest)
+		}
+		return Doc{OwnerID: userID, SubjectID: blocked, SortValue: s.createdMillis(body, current)}, nil
+	case KindReport:
+		return s.indexReport(ctx, userID, body, current)
+	case KindDevice:
+		return s.indexDevice(userID, body)
 	case KindFollow:
 		follower, following := body.str("followerUid"), body.str("followingUid")
 		if follower != userID {
@@ -224,8 +277,18 @@ func (s *Service) index(userID string, kind Kind, id string, body fields, curren
 		if following == "" || following == follower || id != "fl_"+follower+"_"+following {
 			return Doc{}, fmt.Errorf("%w: invalid follow", ErrBadRequest)
 		}
+		if current == nil {
+			if err := s.checkNotBlocked(ctx, following, userID); err != nil {
+				return Doc{}, err
+			}
+		}
 		return Doc{OwnerID: userID, SubjectID: following, SortValue: s.createdMillis(body, current)}, nil
 	case KindChallenge:
+		if current == nil {
+			if err := s.checkNotBlocked(ctx, body.str("toUid"), userID); err != nil {
+				return Doc{}, err
+			}
+		}
 		return s.indexChallenge(userID, body, current)
 	}
 	return Doc{}, fmt.Errorf("%w: unknown kind", ErrBadRequest)
@@ -345,4 +408,171 @@ func jsonEqual(a, b any) bool {
 	left, errA := json.Marshal(a)
 	right, errB := json.Marshal(b)
 	return errA == nil && errB == nil && string(left) == string(right)
+}
+
+// ForgetUser removes the user's settings, profile, posts, listings, follows and challenges,
+// including rows other people made about them. Safe to repeat.
+func (s *Service) ForgetUser(ctx context.Context, userID string) error {
+	if err := s.repo.DeleteForUser(ctx, userID); err != nil {
+		return fmt.Errorf("forget user: %w", err)
+	}
+	return nil
+}
+
+// serverRankFields are the profile numbers the stats worker owns. A phone's copy of them is
+// never trusted: an edit keeps the server's values, and a new profile starts from zero
+// until the worker fills them in.
+var serverRankFields = []string{"rankScore", "played", "winPct", "titles", "highestBreak",
+	"centuries", "breaks50", "maximums", "publicRating", "publicGames"}
+
+func keepServerRank(body fields, current *Doc) (float64, error) {
+	var cur fields
+	if current != nil {
+		if err := json.Unmarshal(current.Data, &cur); err != nil {
+			return 0, fmt.Errorf("decode profile: %w", err)
+		}
+	}
+	for _, k := range serverRankFields {
+		if v, ok := cur[k]; ok {
+			body[k] = v
+		} else {
+			body[k] = 0
+		}
+	}
+	if current != nil && current.CityID == body.str("cityId") {
+		return current.SortValue, nil
+	}
+	return 0, nil // a new city starts unranked until its hub is recomputed
+}
+
+func rankFields(r stats.CityRank) map[string]any {
+	return map[string]any{
+		"rankScore": r.RankScore, "played": r.Played, "winPct": r.WinPct, "titles": r.Titles,
+		"highestBreak": r.HighestBreak, "centuries": r.Centuries, "breaks50": r.Breaks50,
+		"maximums": r.Maximums,
+	}
+}
+
+// minorDivisions are the age bands kept off public boards (decision D5).
+var minorDivisions = []string{"u16", "u18"}
+
+const (
+	postsPerDay   = 5
+	reportsPerDay = 20
+	maxReasonLen  = 500
+)
+
+var reportTargets = []string{"profile", "looking", "directory", "player", "match", "user"}
+
+// checkCanPost enforces the posting rules: community rules accepted (termsAcceptedAt on the
+// user's settings) and at most postsPerDay new posts of a kind per day.
+func (s *Service) checkCanPost(ctx context.Context, userID string, kind Kind) error {
+	settings, err := s.repo.Get(ctx, KindUser, userID)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("load settings: %w", err)
+	}
+	var f fields
+	if err == nil {
+		if err := json.Unmarshal(settings.Data, &f); err != nil {
+			return fmt.Errorf("decode settings: %w", err)
+		}
+	}
+	if f.str("termsAcceptedAt") == "" {
+		return ErrTermsRequired
+	}
+	n, err := s.countSince(ctx, kind, userID, 24*time.Hour)
+	if err != nil {
+		return err
+	}
+	if n >= postsPerDay {
+		return ErrTooManyPosts
+	}
+	return nil
+}
+
+// countSince counts the user's rows of a kind created within the window (enough to apply
+// the daily limits; rows come newest first).
+func (s *Service) countSince(ctx context.Context, kind Kind, userID string, window time.Duration) (int, error) {
+	docs, err := s.repo.List(ctx, ListQuery{Kind: kind, OwnerID: userID, Limit: reportsPerDay + 1})
+	if err != nil {
+		return 0, fmt.Errorf("count recent %s: %w", kind, err)
+	}
+	since := float64(s.now().Add(-window).UnixMilli())
+	n := 0
+	for _, d := range docs {
+		if d.SortValue >= since {
+			n++
+		}
+	}
+	return n, nil
+}
+
+// checkNotBlocked refuses a follow or challenge when target has blocked actor.
+func (s *Service) checkNotBlocked(ctx context.Context, target, actor string) error {
+	if target == "" {
+		return nil
+	}
+	_, err := s.repo.Get(ctx, KindBlock, "bl_"+target+"_"+actor)
+	switch {
+	case err == nil:
+		return ErrForbidden
+	case errors.Is(err, ErrNotFound):
+		return nil
+	default:
+		return fmt.Errorf("check block: %w", err)
+	}
+}
+
+// indexReport: anyone signed in may report content, a limited number a day. Reports are
+// read by the team only (see docs/RUNBOOK.md), never listed in the app.
+func (s *Service) indexReport(ctx context.Context, userID string, body fields, current *Doc) (Doc, error) {
+	if current != nil || body.str("reporterUid") != userID {
+		return Doc{}, ErrForbidden
+	}
+	if !slices.Contains(reportTargets, body.str("targetKind")) || body.str("targetId") == "" ||
+		len(body.str("reason")) > maxReasonLen {
+		return Doc{}, fmt.Errorf("%w: invalid report", ErrBadRequest)
+	}
+	n, err := s.countSince(ctx, KindReport, userID, 24*time.Hour)
+	if err != nil {
+		return Doc{}, err
+	}
+	if n >= reportsPerDay {
+		return Doc{}, ErrTooManyPosts
+	}
+	return Doc{OwnerID: userID, SubjectID: body.str("targetUid"), SortValue: s.createdMillis(body, nil)}, nil
+}
+
+// indexDevice stores one phone's push token for its owner (see the push module).
+func (s *Service) indexDevice(userID string, body fields) (Doc, error) {
+	if body.str("uid") != userID {
+		return Doc{}, ErrForbidden
+	}
+	token := body.str("pushToken")
+	if !strings.HasPrefix(token, "ExponentPushToken[") && !strings.HasPrefix(token, "ExpoPushToken[") {
+		return Doc{}, fmt.Errorf("%w: invalid push token", ErrBadRequest)
+	}
+	return Doc{OwnerID: userID, SortValue: float64(s.now().UnixMilli())}, nil
+}
+
+// announce tells the other person about a new challenge, an accepted challenge or a new
+// follower. It never fails the write: notices are best effort.
+func (s *Service) announce(userID string, kind Kind, body fields, current *Doc) {
+	if s.notifier == nil {
+		return
+	}
+	switch {
+	case kind == KindChallenge && current == nil:
+		s.notifier.Notify(body.str("toUid"), "New challenge",
+			"Someone challenged you to a match. Open Snookit to accept or decline.", "/(main)/(tabs)/community")
+	case kind == KindChallenge && current != nil && body.str("status") == "accepted" && userID == current.SubjectID:
+		url := "/(main)/(tabs)/community"
+		if m := body.str("matchId"); m != "" {
+			url = "/match/" + m
+		}
+		s.notifier.Notify(current.OwnerID, "Challenge accepted", "Your challenge was accepted. Time to play!", url)
+	case kind == KindFollow && current == nil:
+		s.notifier.Notify(body.str("followingUid"), "New follower",
+			"Someone started following you on Snookit.", "/(main)/city-player?uid="+userID)
+	}
 }

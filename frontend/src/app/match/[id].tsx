@@ -1,8 +1,16 @@
 import { useLocalSearchParams, useNavigation } from 'expo-router';
-import { useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Screen } from '@/features/home/components/Screen';
+import {
+  canConfirm,
+  confirmResult,
+  isConfirmedBy,
+} from '@/features/match/services/match-confirm.service';
+import { useSession } from '@/features/auth/hooks/use-session';
+import { ShareMatchCard } from '@/features/match/components/ShareMatchCard';
+import { maybeAskForRating } from '@/features/home/services/rating-prompt.service';
 import { FrameLiveRanks, type FrameRankView } from '@/features/match/components/FrameLiveRanks';
 import { LiveScoreboard } from '@/features/match/components/LiveScoreboard';
 import { ManualFrameForm } from '@/features/match/components/ManualFrameForm';
@@ -25,6 +33,8 @@ import { TourTarget } from '@/features/tour/components/TourTarget';
 import { useAutoTour } from '@/features/tour/hooks/use-tour';
 import { notify } from '@/shared/ui/notify';
 import { Card } from '@/shared/ui/Card';
+import { Button } from '@/features/home/components/Button';
+import { toUserMessage } from '@/shared/errors/app-error';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { HeaderBack, useSafeBack } from '@/shared/ui/HeaderBack';
 import { SectionTitle } from '@/shared/ui/SectionTitle';
@@ -75,6 +85,19 @@ export default function MatchDetailScreen(): ReactNode {
   const timingOn = match?.timingEnabled === true;
   const elapsed = useLiveElapsed(match?.frameStartedAt, timingOn && inProgress);
   const matchId = match?.id;
+  const { user } = useSession();
+
+  // After a win or a century, maybe ask for a store rating (once per finished match here;
+  // the service limits it to once every 90 days).
+  const askedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!match || match.outcome.status === 'in_progress' || askedFor.current === match.id) {
+      return;
+    }
+    askedFor.current = match.id;
+    const mine = s.players.find((p) => p.authUid != null && p.authUid === user?.uid)?.id ?? null;
+    void maybeAskForRating(match, mine);
+  }, [match, s.players, user?.uid]);
   const { run, canScore, busy } = s;
 
   useLayoutEffect(() => {
@@ -370,6 +393,26 @@ export default function MatchDetailScreen(): ReactNode {
           scoreLockedLine={null}
         />
       ) : null}
+      {finished && winnerLabel ? <ShareMatchCard match={m} sideA={fullA} sideB={fullB} /> : null}
+      {canConfirm(m, user?.uid, s.players) ? (
+        <Card style={styles.confirmCard}>
+          <Text style={styles.confirmText}>
+            Did this result happen? Confirming it counts the match for the public rating.
+          </Text>
+          <Button
+            label="Confirm this result"
+            icon="checkmark-done-outline"
+            size="sm"
+            onPress={() => {
+              confirmResult(m.id).catch((error: unknown) => {
+                notify.error('Could not confirm', toUserMessage(error));
+              });
+            }}
+          />
+        </Card>
+      ) : isConfirmedBy(m, user?.uid) ? (
+        <Text style={styles.confirmText}>You confirmed this result.</Text>
+      ) : null}
 
       {inProgress && !scoring ? scoringStatus : null}
 
@@ -576,5 +619,16 @@ const makeStyles = (c: Palette) =>
     },
     options: {
       marginTop: spacing.sm,
+    },
+    confirmCard: {
+      gap: spacing.sm,
+      marginBottom: spacing.lg,
+    },
+    confirmText: {
+      fontFamily: fonts.body,
+      fontSize: 13,
+      lineHeight: 18,
+      color: c.textMuted,
+      marginBottom: spacing.sm,
     },
   });

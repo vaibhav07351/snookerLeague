@@ -56,6 +56,36 @@ export function SettingsScreen(): ReactNode {
     }
   }
 
+  async function onDeleteAccount(): Promise<void> {
+    const what = user?.isDemo
+      ? 'Everything on this phone (leagues, matches, players) is deleted.'
+      : 'Your account, profile, posts and the leagues you own are deleted for everyone. In other leagues your player card becomes "Deleted player" so their scores stay correct.';
+    const ok = await confirmAction(
+      'Delete your account?',
+      `${what} This can't be undone.`,
+      'Continue',
+    );
+    if (!ok) {
+      return;
+    }
+    const sure = await confirmAction(
+      'Are you sure?',
+      'Last check: delete everything now?',
+      'Delete',
+    );
+    if (!sure) {
+      return;
+    }
+    try {
+      await authService.deleteAccount();
+      await refresh();
+      router.replace('/login');
+      notify.success('Account deleted', 'Your data has been removed.');
+    } catch (error) {
+      notify.error('Could not delete your account', toUserMessage(error));
+    }
+  }
+
   if (!user) {
     return null;
   }
@@ -129,6 +159,13 @@ export function SettingsScreen(): ReactNode {
       </View>
 
       <Button label="Log out" variant="danger" onPress={() => void onSignOut()} />
+      <Button
+        label="Delete account"
+        variant="ghost"
+        icon="trash-outline"
+        style={styles.delete}
+        onPress={() => void onDeleteAccount()}
+      />
     </Screen>
   );
 }
@@ -164,5 +201,8 @@ const makeStyles = (c: Palette) =>
     },
     group: {
       marginBottom: spacing.lg,
+    },
+    delete: {
+      marginTop: spacing.md,
     },
   });

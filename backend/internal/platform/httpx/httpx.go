@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -51,6 +52,9 @@ func WriteJSON(w http.ResponseWriter, status int, body any) {
 	}
 }
 
+// ReportError, when set (see platform/monitoring), receives every unexpected server error.
+var ReportError func(ctx context.Context, err error)
+
 // WriteError maps any error to a response. Unknown errors become a generic 500 and are logged.
 func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	var apiErr *APIError
@@ -59,6 +63,9 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 	slog.Error("unhandled error", "error", err, "request_id", RequestID(r.Context()))
+	if ReportError != nil {
+		ReportError(r.Context(), err)
+	}
 	WriteJSON(w, http.StatusInternalServerError, &APIError{Code: "internal", Message: "Something went wrong."})
 }
 
@@ -100,7 +107,7 @@ func Recoverer(next http.Handler) http.Handler {
 		defer func() {
 			if rec := recover(); rec != nil {
 				slog.Error("panic", "value", rec, "request_id", RequestID(r.Context()))
-				WriteError(w, r, errors.New("panic"))
+				WriteError(w, r, fmt.Errorf("panic: %v", rec))
 			}
 		}()
 		next.ServeHTTP(w, r)
@@ -150,15 +157,27 @@ func (l *RateLimiter) Allow(key string) bool {
 	return true
 }
 
-// Middleware rejects requests over the limit with 429.
+// Middleware rejects requests over the limit with 429, counting per client IP.
 func (l *RateLimiter) Middleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !l.Allow(ClientIP(r)) {
-			WriteError(w, r, ErrRateLimited)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+	return l.MiddlewareBy(ClientIP)(next)
+}
+
+// MiddlewareBy rejects requests over the limit with 429, counting per key(r) (for example
+// the signed-in user). An empty key falls back to the client IP.
+func (l *RateLimiter) MiddlewareBy(key func(*http.Request) string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			k := key(r)
+			if k == "" {
+				k = ClientIP(r)
+			}
+			if !l.Allow(k) {
+				WriteError(w, r, ErrRateLimited)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // ClientIP is the caller's address. The API is only reachable through Caddy (no published

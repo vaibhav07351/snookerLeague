@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import * as leagueService from '@/features/league/services/league.service';
@@ -16,6 +16,7 @@ import { tableStateOf, type TableState } from '@/features/match/services/table-s
 import * as playersService from '@/features/players/services/players.service';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { useStoreReload } from '@/shared/hooks/use-store-reload';
+import { watchMatchLive } from '@/shared/sync/live';
 import { notify } from '@/shared/ui/notify';
 import { shortNames } from '@/shared/utils/names';
 import type { League, Match, Player } from '@/shared/types/domain';
@@ -75,6 +76,16 @@ export function useMatchScreen(matchId: string | undefined): MatchScreenState {
   }, [matchId]);
 
   useStoreReload(reload, matchId ?? null);
+
+  // While a match is being played, watch it live (the scorer's own taps are local already).
+  const inProgress = match?.outcome.status === 'in_progress';
+  const scoring = match ? isMatchScorer(match, user?.uid) : false;
+  useEffect(() => {
+    if (!matchId || !inProgress || scoring) {
+      return undefined;
+    }
+    return watchMatchLive(matchId);
+  }, [matchId, inProgress, scoring]);
 
   const derived = useMemo(() => {
     const byId = new Map(players.map((p) => [p.id, p]));

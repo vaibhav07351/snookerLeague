@@ -4,7 +4,7 @@ import {
 } from '@expo-google-fonts/libre-baskerville';
 import { DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, type ReactNode } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
@@ -13,13 +13,22 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { SessionProvider } from '@/features/auth/hooks/use-session';
 import { TourProvider } from '@/features/tour/components/TourProvider';
+import { UpdateRequiredGate } from '@/features/update/components/UpdateRequiredGate';
 import { WEB_SHELL_MAX_WIDTH } from '@/shared/hooks/use-layout';
+import { initMonitoring } from '@/shared/monitoring/sentry';
+import {
+  configureNotifications,
+  notificationUrl,
+} from '@/features/notifications/services/push.service';
+import * as Notifications from 'expo-notifications';
 import { HeaderBack } from '@/shared/ui/HeaderBack';
 import { SyncBanner } from '@/shared/ui/SyncBanner';
 import { ToastHost } from '@/shared/ui/ToastHost';
 import { ThemeProvider, usePalette } from '@/theme/ThemeProvider';
 import { fonts } from '@/theme/tokens';
 
+initMonitoring();
+configureNotifications();
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 export default function RootLayout(): ReactNode {
@@ -65,6 +74,21 @@ export default function RootLayout(): ReactNode {
 
 function AppShell({ fontsLoaded }: { fontsLoaded: boolean }): ReactNode {
   const palette = usePalette();
+  const router = useRouter();
+
+  // Tapping a notification opens the screen it is about (e.g. a challenge or a profile).
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      return undefined;
+    }
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const url = notificationUrl(response);
+      if (url) {
+        router.push(url as never);
+      }
+    });
+    return () => sub.remove();
+  }, [router]);
 
   if (!fontsLoaded) {
     return (
@@ -78,38 +102,43 @@ function AppShell({ fontsLoaded }: { fontsLoaded: boolean }): ReactNode {
     <GestureHandlerRootView style={[styles.root, { backgroundColor: palette.bg }]}>
       <SessionProvider>
         <StatusBar style={palette.isDark ? 'light' : 'dark'} />
-        <TourProvider>
-          <SyncBanner />
-          <Stack
-            screenOptions={{
-              headerStyle: { backgroundColor: palette.bgElevated },
-              headerTintColor: palette.text,
-              headerTitleStyle: {
-                fontFamily: fonts.bodyBold,
-                fontSize: 17,
-              },
-              headerBackTitleStyle: { fontFamily: fonts.body },
-              contentStyle: { backgroundColor: palette.bg },
-              headerShadowVisible: false,
-              headerBackVisible: false,
-              headerLeft: () => <HeaderBack />,
-            }}
-          >
-            <Stack.Screen name="index" options={{ headerShown: false }} />
-            <Stack.Screen name="login" options={{ headerShown: false }} />
-            <Stack.Screen name="birthday" options={{ headerShown: false }} />
-            <Stack.Screen name="location" options={{ headerShown: false }} />
-            <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-            <Stack.Screen name="(main)" options={{ headerShown: false }} />
-            <Stack.Screen name="match/new" options={{ title: 'New match' }} />
-            <Stack.Screen name="match/[id]" options={{ title: 'Match' }} />
-            <Stack.Screen name="race/new" options={{ title: 'New race' }} />
-            <Stack.Screen name="race/[id]" options={{ title: 'Race' }} />
-            <Stack.Screen name="join/[code]" options={{ title: 'Join league' }} />
-            <Stack.Screen name="settings/theme" options={{ title: 'Appearance' }} />
-            <Stack.Screen name="settings/index" options={{ title: 'Settings' }} />
-          </Stack>
-        </TourProvider>
+        <UpdateRequiredGate>
+          <TourProvider>
+            <SyncBanner />
+            <Stack
+              screenOptions={{
+                headerStyle: { backgroundColor: palette.bgElevated },
+                headerTintColor: palette.text,
+                headerTitleStyle: {
+                  fontFamily: fonts.bodyBold,
+                  fontSize: 17,
+                },
+                headerBackTitleStyle: { fontFamily: fonts.body },
+                contentStyle: { backgroundColor: palette.bg },
+                headerShadowVisible: false,
+                headerBackVisible: false,
+                headerLeft: () => <HeaderBack />,
+              }}
+            >
+              <Stack.Screen name="index" options={{ headerShown: false }} />
+              <Stack.Screen name="login" options={{ headerShown: false }} />
+              <Stack.Screen name="birthday" options={{ headerShown: false }} />
+              <Stack.Screen name="location" options={{ headerShown: false }} />
+              <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+              <Stack.Screen name="(main)" options={{ headerShown: false }} />
+              <Stack.Screen name="match/new" options={{ title: 'New match' }} />
+              <Stack.Screen name="match/[id]" options={{ title: 'Match' }} />
+              <Stack.Screen name="race/new" options={{ title: 'New race' }} />
+              <Stack.Screen name="race/[id]" options={{ title: 'Race' }} />
+              <Stack.Screen name="join/[code]" options={{ title: 'Join league' }} />
+              <Stack.Screen name="tournament/new" options={{ title: 'New tournament' }} />
+              <Stack.Screen name="tournament/[id]" options={{ title: 'Tournament' }} />
+              <Stack.Screen name="claim/[token]" options={{ title: 'Claim your player' }} />
+              <Stack.Screen name="settings/theme" options={{ title: 'Appearance' }} />
+              <Stack.Screen name="settings/index" options={{ title: 'Settings' }} />
+            </Stack>
+          </TourProvider>
+        </UpdateRequiredGate>
         <ToastHost />
       </SessionProvider>
     </GestureHandlerRootView>

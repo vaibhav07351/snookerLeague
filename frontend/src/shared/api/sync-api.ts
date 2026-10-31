@@ -1,7 +1,7 @@
 import { apiRequest } from '@/shared/api/client';
 
 /** League-scoped document kinds the server versions and syncs. */
-export type DocEntity = 'league' | 'player' | 'match' | 'race' | 'event';
+export type DocEntity = 'league' | 'player' | 'match' | 'race' | 'event' | 'tournament';
 
 /** One stored document. Deleted documents are tombstones with no data. */
 export interface ServerDoc {

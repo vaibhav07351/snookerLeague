@@ -47,6 +47,9 @@ type UserRepository interface {
 	FindByID(ctx context.Context, id string) (User, error)
 	Create(ctx context.Context, u User) error
 	UpdateProfile(ctx context.Context, id, displayName, photoURL string) error
+	// Delete removes the user; sessions, memberships and community rows go with it (FK
+	// cascades). Deleting a missing user is not an error.
+	Delete(ctx context.Context, id string) error
 }
 
 // SessionRepository stores sessions.

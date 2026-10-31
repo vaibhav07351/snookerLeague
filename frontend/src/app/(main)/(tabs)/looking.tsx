@@ -1,3 +1,4 @@
+import { SafetyActions } from '@/features/community/components/SafetyActions';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useState, type ReactNode } from 'react';
@@ -196,6 +197,14 @@ export default function LookingScreen(): ReactNode {
                     {p.authorName}
                   </Text>
                 </Pressable>
+                {!mine ? (
+                  <SafetyActions
+                    targetKind="looking"
+                    targetId={p.id}
+                    targetUid={p.createdByUid}
+                    name={p.authorName}
+                  />
+                ) : null}
                 {mine && p.status === 'open' ? (
                   <Button
                     label="Mark closed"

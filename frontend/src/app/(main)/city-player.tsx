@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { divisionLabel } from '@/features/auth/services/division.service';
+import { SafetyActions } from '@/features/community/components/SafetyActions';
 import { useFollowGraph } from '@/features/community/hooks/use-follow-graph';
 import * as challengeService from '@/features/community/services/challenge.service';
 import * as followService from '@/features/community/services/follow.service';
@@ -208,6 +209,14 @@ export default function CityPlayerScreen(): ReactNode {
             </>
           ) : null}
         </View>
+      ) : null}
+      {!mine && user && !user.isDemo ? (
+        <SafetyActions
+          targetKind="profile"
+          targetId={profile.uid}
+          targetUid={profile.uid}
+          name={profile.displayName}
+        />
       ) : null}
     </Screen>
   );

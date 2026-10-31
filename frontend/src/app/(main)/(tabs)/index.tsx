@@ -196,6 +196,14 @@ export default function HomeScreen(): ReactNode {
             disabled={!hasRoster}
           />
         </TourTarget>
+        {hasRoster && players.length >= 2 ? (
+          <Button
+            label="Head to head"
+            icon="git-compare-outline"
+            variant="ghost"
+            onPress={() => router.push('/(main)/compare')}
+          />
+        ) : null}
         {hasRoster && players.length < 2 ? (
           <Text style={styles.ctaHint}>Add at least one more player to log a match.</Text>
         ) : hasRoster && players.length < 4 ? (
@@ -247,18 +255,21 @@ export default function HomeScreen(): ReactNode {
         </View>
       ) : null}
 
-      <Card tone="highlight" style={styles.champCard}>
-        <View style={styles.champHead}>
-          <Ionicons name="trophy" size={16} color={palette.primary} />
-          <Text style={typography.label}>Reigning champions</Text>
-        </View>
-        <Text style={styles.champNames}>{teamTitle ?? 'Waiting for a crowning match'}</Text>
-        {league.reigningTeam?.namedLabel ? (
-          <Text style={styles.meta}>{league.reigningTeam.namedLabel}</Text>
-        ) : (
-          <Text style={styles.meta}>Tip: turn on "Crowns champions" when you log a final</Text>
-        )}
-      </Card>
+      {/* Cold start: no champions card until there is something to show. */}
+      {hasHistory ? (
+        <Card tone="highlight" style={styles.champCard}>
+          <View style={styles.champHead}>
+            <Ionicons name="trophy" size={16} color={palette.primary} />
+            <Text style={typography.label}>Reigning champions</Text>
+          </View>
+          <Text style={styles.champNames}>{teamTitle ?? 'Waiting for a crowning match'}</Text>
+          {league.reigningTeam?.namedLabel ? (
+            <Text style={styles.meta}>{league.reigningTeam.namedLabel}</Text>
+          ) : (
+            <Text style={styles.meta}>Tip: turn on "Crowns champions" when you log a final</Text>
+          )}
+        </Card>
+      ) : null}
 
       <View style={styles.statStrip}>
         <StatCell label="Race king" value={raceKing ?? '-'} />

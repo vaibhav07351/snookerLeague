@@ -27,6 +27,46 @@ func (h *Handler) ProtectedRoutes(r chi.Router) {
 	r.Post("/leagues/join", h.joinByCode)
 	r.Post("/leagues/{leagueID}/leave", h.leave)
 	r.Post("/cities/{cityID}/join", h.joinCityHub)
+	r.Post("/claims", h.createClaim)
+	r.Post("/claims/redeem", h.redeemClaim)
+}
+
+type createClaimRequest struct {
+	PlayerID string `json:"playerId"`
+}
+
+type redeemClaimRequest struct {
+	Token string `json:"token"`
+}
+
+func (h *Handler) createClaim(w http.ResponseWriter, r *http.Request) {
+	claims, _ := auth.ClaimsFrom(r.Context())
+	var req createClaimRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	token, err := h.svc.CreateClaimLink(r.Context(), claims.Subject, req.PlayerID)
+	if err != nil {
+		httpx.WriteError(w, r, asAPIError(err))
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"token": token})
+}
+
+func (h *Handler) redeemClaim(w http.ResponseWriter, r *http.Request) {
+	claims, _ := auth.ClaimsFrom(r.Context())
+	var req redeemClaimRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	league, card, err := h.svc.RedeemClaimLink(r.Context(), claims.Subject, req.Token)
+	if err != nil {
+		httpx.WriteError(w, r, asAPIError(err))
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]Doc{"league": league, "player": card})
 }
 
 type pushRequest struct {
@@ -161,6 +201,14 @@ func asAPIError(err error) error {
 	case errors.Is(err, ErrNotMember):
 		return &httpx.APIError{Status: http.StatusForbidden, Code: "not_member",
 			Message: "You are not in this league."}
+	case errors.Is(err, ErrClaimInvalid):
+		return &httpx.APIError{Status: http.StatusGone, Code: "claim_invalid",
+			Message: "This claim link was already used or has expired. Ask for a new one."}
+	case errors.Is(err, ErrCardTaken):
+		return &httpx.APIError{Status: http.StatusConflict, Code: "card_taken",
+			Message: "Someone has already claimed this player."}
+	case errors.Is(err, ErrNotFound):
+		return httpx.ErrNotFound
 	case errors.Is(err, ErrOwnerCantLeave):
 		return &httpx.APIError{Status: http.StatusConflict, Code: "owner_cant_leave",
 			Message: "The owner can't leave their own league. Delete it instead."}

@@ -305,6 +305,17 @@ export interface Match {
    */
   scoringPolicy?: ScoringPolicy;
   allowedScorerUids?: string[];
+  /** Set when this match is a tournament fixture (see features/tournament). */
+  tournamentId?: string | null;
+  /** Knockout round (0 = first) or 0 for round robin. */
+  round?: number | null;
+  /** Position within the round; for round robin, the pairing index. */
+  slot?: number | null;
+  /**
+   * Accounts that confirmed this result (the opposing side's players). Only matches confirmed
+   * by the other side count for the public rating; any change to the result clears this.
+   */
+  confirmedByUids?: string[];
   /**
    * When the settings above (scorer, policy, title match) last changed. Settings are written
    * on their own and merged by this stamp, so a scorer's shot never undoes a settings change.
@@ -377,6 +388,22 @@ export interface FeedEvent {
   relatedIds: string[];
 }
 
+export type TournamentFormat = 'knockout' | 'round_robin';
+
+/** A tournament in a league. Fixtures are matches with tournamentId, round and slot. */
+export interface Tournament {
+  id: string;
+  leagueId: string;
+  name: string;
+  format: TournamentFormat;
+  /** Player ids in seed order (best first). */
+  entrants: string[];
+  bestOf: number;
+  createdByUid: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type SyncEntity =
   | 'user'
   | 'league'
@@ -389,7 +416,11 @@ export type SyncEntity =
   | 'looking'
   | 'directory'
   | 'follow'
-  | 'invite';
+  | 'invite'
+  | 'block'
+  | 'report'
+  | 'device'
+  | 'tournament';
 
 export type SyncAction = 'upsert' | 'delete';
 
@@ -427,6 +458,8 @@ export interface CloudUserProfile {
   cityName: string | null;
   /** ISO date YYYY-MM-DD. Kept on this phone only: the server drops it (decision D5). */
   dateOfBirth: string | null;
+  /** 13+ and community rules accepted (ISO); the server requires it before posting. */
+  termsAcceptedAt?: string | null;
 }
 
 export interface SessionUser {
@@ -441,6 +474,8 @@ export interface SessionUser {
   citySkipped?: boolean;
   /** ISO date YYYY-MM-DD. */
   dateOfBirth?: string | null;
+  /** When the user confirmed they are 13+ and accepted the community rules (ISO). */
+  termsAcceptedAt?: string | null;
 }
 
 export type ChallengeStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
@@ -558,6 +593,7 @@ export interface AppDataStore {
   lookingPosts: LookingPost[];
   directoryListings: DirectoryListing[];
   follows: FollowEdge[];
+  tournaments: Tournament[];
   /**
    * Server version of every league document this phone has seen, keyed "entity:id". Sent
    * as baseVersion with each change so the server can spot edits made from a stale copy;

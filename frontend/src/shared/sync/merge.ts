@@ -121,6 +121,14 @@ export function mergeEvents(
   return mergeById(local, remote, pendingDocIds);
 }
 
+export function mergeTournaments<T extends Row>(
+  local: T[],
+  remote: T[],
+  pendingDocIds: Set<string>,
+): T[] {
+  return mergeById(local, remote, pendingDocIds);
+}
+
 /** Replace league-scoped rows for one league, then merge remote with `resolve`. */
 export function mergeLeagueScoped<T extends Row & { leagueId: string }>(
   local: T[],

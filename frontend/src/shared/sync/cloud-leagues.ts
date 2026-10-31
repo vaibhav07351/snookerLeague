@@ -24,6 +24,7 @@ export function withoutLeague(s: AppDataStore, leagueId: string): AppDataStore {
     matches: s.matches.filter((m) => m.leagueId !== leagueId),
     races: s.races.filter((r) => r.leagueId !== leagueId),
     events: s.events.filter((e) => e.leagueId !== leagueId),
+    tournaments: s.tournaments.filter((t) => t.leagueId !== leagueId),
     pendingOps: s.pendingOps.filter((op) => op.leagueId !== leagueId && op.docId !== leagueId),
   };
 }

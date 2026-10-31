@@ -35,6 +35,15 @@ func (m *memRepo) Delete(_ context.Context, k Kind, id string) error {
 	return nil
 }
 
+func (m *memRepo) DeleteForUser(_ context.Context, user string) error {
+	for k, d := range m.rows {
+		if d.OwnerID == user || d.SubjectID == user {
+			delete(m.rows, k)
+		}
+	}
+	return nil
+}
+
 func (m *memRepo) List(_ context.Context, q ListQuery) ([]Doc, error) {
 	out := []Doc{}
 	for _, d := range m.rows {
@@ -65,7 +74,7 @@ func (m *memRepo) List(_ context.Context, q ListQuery) ([]Doc, error) {
 
 func newSvc() (*Service, *memRepo) {
 	repo := newMemRepo()
-	svc := NewService(repo)
+	svc := NewService(repo, nil)
 	svc.now = func() time.Time { return time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC) }
 	return svc, repo
 }
@@ -73,6 +82,11 @@ func newSvc() (*Service, *memRepo) {
 func put(t *testing.T, s *Service, user string, k Kind, id, data string) error {
 	t.Helper()
 	return s.Put(context.Background(), user, k, id, json.RawMessage(data))
+}
+
+func acceptTerms(t *testing.T, s *Service, user string) {
+	t.Helper()
+	mustPut(t, s, user, KindUser, user, fmt.Sprintf(`{"uid":%q,"termsAcceptedAt":"2026-10-31T00:00:00Z"}`, user))
 }
 
 func mustPut(t *testing.T, s *Service, user string, k Kind, id, data string) {
@@ -104,11 +118,15 @@ func TestUserDocIsPrivateAndNeverStoresDateOfBirth(t *testing.T) {
 }
 
 func TestCityBoardListsProfilesByRankWithPaging(t *testing.T) {
-	svc, _ := newSvc()
+	svc, repo := newSvc()
 	ctx := context.Background()
 	for i, rank := range []int{30, 10, 50, 20, 40} {
 		id := fmt.Sprintf("u%d", i)
-		mustPut(t, svc, id, KindProfile, id, fmt.Sprintf(`{"uid":%q,"cityId":"pune","rankScore":%d}`, id, rank))
+		// The phone's own rankScore is ignored; the stats worker sets the real one.
+		mustPut(t, svc, id, KindProfile, id, fmt.Sprintf(`{"uid":%q,"cityId":"pune","rankScore":999}`, id))
+		row := repo.rows[key(KindProfile, id)]
+		row.SortValue = float64(rank)
+		repo.rows[key(KindProfile, id)] = row
 	}
 	mustPut(t, svc, "x", KindProfile, "x", `{"uid":"x","cityId":"delhi","rankScore":99}`)
 
@@ -145,6 +163,7 @@ func TestCityBoardListsProfilesByRankWithPaging(t *testing.T) {
 func TestPostsBelongToTheirAuthor(t *testing.T) {
 	svc, _ := newSvc()
 	ctx := context.Background()
+	acceptTerms(t, svc, "a")
 	post := `{"id":"lp1","cityId":"pune","createdByUid":"a","kind":"opponent","status":"open","createdAt":"2026-10-30T10:00:00Z"}`
 	mustPut(t, svc, "a", KindLooking, "lp1", post)
 	closed := strings.Replace(post, `"open"`, `"closed"`, 1)
@@ -255,9 +274,117 @@ func TestBadInputIsRejected(t *testing.T) {
 
 func TestFutureCreatedAtIsClampedToNow(t *testing.T) {
 	svc, repo := newSvc()
+	acceptTerms(t, svc, "a")
 	mustPut(t, svc, "a", KindLooking, "lp1",
 		`{"id":"lp1","cityId":"pune","createdByUid":"a","kind":"opponent","status":"open","createdAt":"2099-01-01T00:00:00Z"}`)
 	if got, want := repo.rows[key(KindLooking, "lp1")].SortValue, float64(svc.now().UnixMilli()); got != want {
 		t.Fatalf("sort value = %v, want now (%v)", got, want)
+	}
+}
+
+func TestForgetUserRemovesTheirRowsAndRowsAboutThem(t *testing.T) {
+	svc, repo := newSvc()
+	mustPut(t, svc, "a", KindProfile, "a", `{"uid":"a","cityId":"pune"}`)
+	mustPut(t, svc, "b", KindFollow, "fl_b_a", `{"id":"fl_b_a","followerUid":"b","followingUid":"a"}`)
+	mustPut(t, svc, "b", KindProfile, "b", `{"uid":"b","cityId":"pune"}`)
+	if err := svc.ForgetUser(context.Background(), "a"); err != nil {
+		t.Fatalf("forget: %v", err)
+	}
+	if _, ok := repo.rows[key(KindProfile, "a")]; ok {
+		t.Fatal("profile kept")
+	}
+	if _, ok := repo.rows[key(KindFollow, "fl_b_a")]; ok {
+		t.Fatal("follow of the deleted user kept")
+	}
+	if _, ok := repo.rows[key(KindProfile, "b")]; !ok {
+		t.Fatal("someone else's profile was removed")
+	}
+}
+
+func TestPhonesCannotSetTheirOwnRank(t *testing.T) {
+	svc, repo := newSvc()
+	mustPut(t, svc, "u1", KindProfile, "u1", `{"uid":"u1","cityId":"pune","rankScore":500,"played":99}`)
+	row := repo.rows[key(KindProfile, "u1")]
+	if row.SortValue != 0 || strings.Contains(string(row.Data), `"played":99`) {
+		t.Fatalf("a new profile must start unranked, got sort=%v data=%s", row.SortValue, row.Data)
+	}
+	// The worker ranks it; a later edit from the phone keeps the server's numbers.
+	row.SortValue = 12.5
+	row.Data = json.RawMessage(`{"uid":"u1","cityId":"pune","rankScore":12.5,"played":7}`)
+	repo.rows[key(KindProfile, "u1")] = row
+	mustPut(t, svc, "u1", KindProfile, "u1", `{"uid":"u1","cityId":"pune","displayName":"New","rankScore":900,"played":1}`)
+	after := repo.rows[key(KindProfile, "u1")]
+	if after.SortValue != 12.5 || !strings.Contains(string(after.Data), `"played":7`) || !strings.Contains(string(after.Data), `"displayName":"New"`) {
+		t.Fatalf("edit must keep server rank and apply the name: sort=%v data=%s", after.SortValue, after.Data)
+	}
+}
+
+func TestPostingNeedsTermsAndHasADailyLimit(t *testing.T) {
+	svc, _ := newSvc()
+	post := func(id string) error {
+		return put(t, svc, "a", KindLooking, id, fmt.Sprintf(
+			`{"id":%q,"cityId":"pune","createdByUid":"a","kind":"opponent","status":"open","createdAt":"2026-10-31T11:00:00Z"}`, id))
+	}
+	if err := post("lp0"); !errors.Is(err, ErrTermsRequired) {
+		t.Fatalf("posting before accepting the rules must fail, got %v", err)
+	}
+	acceptTerms(t, svc, "a")
+	for i := 1; i <= postsPerDay; i++ {
+		if err := post(fmt.Sprintf("lp%d", i)); err != nil {
+			t.Fatalf("post %d: %v", i, err)
+		}
+	}
+	if err := post("lp99"); !errors.Is(err, ErrTooManyPosts) {
+		t.Fatalf("post over the daily limit must fail, got %v", err)
+	}
+}
+
+func TestBlockingStopsFollowsAndChallenges(t *testing.T) {
+	svc, _ := newSvc()
+	ctx := context.Background()
+	mustPut(t, svc, "b", KindBlock, "bl_b_a", `{"id":"bl_b_a","blockerUid":"b","blockedUid":"a"}`)
+	if err := put(t, svc, "a", KindFollow, "fl_a_b", `{"id":"fl_a_b","followerUid":"a","followingUid":"b"}`); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("following someone who blocked you must fail, got %v", err)
+	}
+	ch := `{"id":"ch1","fromUid":"a","toUid":"b","cityId":"pune","status":"pending"}`
+	if err := put(t, svc, "a", KindChallenge, "ch1", ch); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("challenging someone who blocked you must fail, got %v", err)
+	}
+	if _, err := svc.Get(ctx, "a", KindBlock, "bl_b_a"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a block list is private, got %v", err)
+	}
+	mine, _ := svc.List(ctx, "b", KindBlock, ListParams{})
+	if len(mine.Items) != 1 {
+		t.Fatalf("own block list = %d items", len(mine.Items))
+	}
+	if err := svc.Delete(ctx, "b", KindBlock, "bl_b_a"); err != nil {
+		t.Fatalf("unblock: %v", err)
+	}
+	mustPut(t, svc, "a", KindFollow, "fl_a_b", `{"id":"fl_a_b","followerUid":"a","followingUid":"b"}`)
+}
+
+func TestReportsAreWriteOnceAndPrivate(t *testing.T) {
+	svc, _ := newSvc()
+	ctx := context.Background()
+	report := `{"id":"rp1","reporterUid":"a","targetKind":"looking","targetId":"lp1","targetUid":"b","reason":"spam"}`
+	mustPut(t, svc, "a", KindReport, "rp1", report)
+	if err := put(t, svc, "a", KindReport, "rp1", report); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("a report can't be edited, got %v", err)
+	}
+	if _, err := svc.Get(ctx, "b", KindReport, "rp1"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("the reported person must not see the report, got %v", err)
+	}
+	if err := put(t, svc, "a", KindReport, "rp2", `{"id":"rp2","reporterUid":"a","targetKind":"bank","targetId":"x"}`); !errors.Is(err, ErrBadRequest) {
+		t.Fatalf("unknown report target must fail, got %v", err)
+	}
+}
+
+func TestMinorsAreLeftOffTheCityBoard(t *testing.T) {
+	svc, _ := newSvc()
+	mustPut(t, svc, "kid", KindProfile, "kid", `{"uid":"kid","cityId":"pune","division":"u16"}`)
+	mustPut(t, svc, "adult", KindProfile, "adult", `{"uid":"adult","cityId":"pune","division":"open"}`)
+	page, err := svc.List(context.Background(), "x", KindProfile, ListParams{City: "pune"})
+	if err != nil || len(page.Items) != 1 || !strings.Contains(string(page.Items[0]), "adult") {
+		t.Fatalf("board = %v %s", err, page.Items)
 	}
 }

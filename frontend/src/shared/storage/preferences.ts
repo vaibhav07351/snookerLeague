@@ -11,8 +11,11 @@ const PREFIX = 'snookit.pref.';
 /** Invite opened before sign-in; belongs to whoever is signing in, so cleared on sign-out. */
 export const PENDING_INVITE_KEY = 'pendingInvite';
 
+/** People the signed-in person blocked (also on the server; cached here for list filters). */
+export const BLOCKED_KEY = 'blockedUids';
+
 /** Preferences tied to the signed-in person (theme and tips stay with the device). */
-const SESSION_KEYS = [PENDING_INVITE_KEY] as const;
+const SESSION_KEYS = [PENDING_INVITE_KEY, BLOCKED_KEY] as const;
 
 export async function clearSessionPreferences(): Promise<void> {
   await Promise.all(SESSION_KEYS.map((key) => writePreference(key, null)));

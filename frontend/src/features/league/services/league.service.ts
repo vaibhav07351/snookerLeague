@@ -387,6 +387,7 @@ export async function deleteLeague(input: {
   const matchIds = inLeague(store.matches);
   const raceIds = inLeague(store.races);
   const eventIds = inLeague(store.events);
+  const tournamentIds = inLeague(store.tournaments);
 
   await updateStore((s) => {
     const leagues = s.leagues.filter((l) => l.id !== input.leagueId);
@@ -401,12 +402,16 @@ export async function deleteLeague(input: {
       matches: s.matches.filter((m) => m.leagueId !== input.leagueId),
       races: s.races.filter((r) => r.leagueId !== input.leagueId),
       events: s.events.filter((e) => e.leagueId !== input.leagueId),
+      tournaments: s.tournaments.filter((t) => t.leagueId !== input.leagueId),
       activeLeagueId,
     };
   });
 
   const now = nowIso();
-  const deletes = (entity: 'player' | 'match' | 'race' | 'event', ids: string[]): ScheduleItem[] =>
+  const deletes = (
+    entity: 'player' | 'match' | 'race' | 'event' | 'tournament',
+    ids: string[],
+  ): ScheduleItem[] =>
     ids.map((docId) => ({
       entity,
       docId,
@@ -420,6 +425,7 @@ export async function deleteLeague(input: {
     ...deletes('match', matchIds),
     ...deletes('race', raceIds),
     ...deletes('event', eventIds),
+    ...deletes('tournament', tournamentIds),
     {
       entity: 'league',
       docId: input.leagueId,

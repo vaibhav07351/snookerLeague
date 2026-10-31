@@ -29,6 +29,7 @@ import {
   type PendingOp,
   type Player,
   type Race,
+  type Tournament,
 } from '@/shared/types/domain';
 
 /** What happened to one queued write. */
@@ -41,14 +42,21 @@ export type PushOutcome =
   | { status: 'rejected'; error: RejectedWriteError };
 
 /** Documents versioned by /v1/sync (everything else goes to its own endpoint). */
-const DOC_ENTITIES: readonly string[] = ['league', 'player', 'match', 'race', 'event'];
+const DOC_ENTITIES: readonly string[] = [
+  'league',
+  'player',
+  'match',
+  'race',
+  'event',
+  'tournament',
+];
 
 /** True for a plain write of a league document, which can travel in a batched push. */
 export function isBatchable(op: PendingOp): boolean {
   return DOC_ENTITIES.includes(op.entity) && !op.membership;
 }
 
-type Row = League | Player | Match | Race | FeedEvent;
+type Row = League | Player | Match | Race | FeedEvent | Tournament;
 
 function pick(data: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -73,6 +81,8 @@ function localRow(entity: DocEntity, id: string): Row | undefined {
       return s.races.find((r) => r.id === id);
     case 'event':
       return s.events.find((r) => r.id === id);
+    case 'tournament':
+      return s.tournaments.find((r) => r.id === id);
   }
 }
 
@@ -234,6 +244,9 @@ export async function pushSingle(op: PendingOp): Promise<PushOutcome> {
     case 'looking':
     case 'directory':
     case 'follow':
+    case 'block':
+    case 'report':
+    case 'device':
       break;
     default:
       throw new Error(`Unexpected queued write for ${op.entity}`);

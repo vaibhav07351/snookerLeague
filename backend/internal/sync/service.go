@@ -20,10 +20,20 @@ const (
 	conflictReason = "This item changed on the server."
 )
 
+// Publisher is told about every saved match (the live module pushes it to watchers).
+type Publisher interface {
+	Publish(d Doc)
+}
+
 // Service applies pushed operations and serves pulls.
 type Service struct {
-	store Store
+	store     Store
+	publisher Publisher
+	claims    ClaimStore
 }
+
+// SetPublisher connects live updates (optional; nil turns them off).
+func (s *Service) SetPublisher(p Publisher) { s.publisher = p }
 
 // NewService builds the sync service.
 func NewService(store Store) *Service { return &Service{store: store} }
@@ -71,6 +81,16 @@ func (s *Service) applyOne(ctx context.Context, userID string, op Op) (OpResult,
 	})
 	if err != nil {
 		return OpResult{}, fmt.Errorf("apply op %s: %w", op.OpID, err)
+	}
+	// Only after the commit, so watchers never see a change that was rolled back.
+	if s.publisher != nil && result.Status == StatusApplied && op.Entity == EntityMatch {
+		d := Doc{Entity: op.Entity, ID: op.ID, LeagueID: op.LeagueID, Version: result.Version}
+		if op.Action == ActionDelete {
+			d.Deleted = true
+		} else {
+			d.Data = op.Data
+		}
+		s.publisher.Publish(d)
 	}
 	return result, nil
 }
@@ -130,10 +150,28 @@ func (s *Service) apply(ctx context.Context, tx Tx, userID string, op Op) (OpRes
 				return OpResult{}, err
 			}
 		}
+		if op.Entity == EntityMatch && current != nil {
+			cur, err := decodeFields(current.Data)
+			if err != nil {
+				return OpResult{}, err
+			}
+			next, err := decodeFields(op.Data)
+			if err != nil {
+				return OpResult{}, err
+			}
+			if stored.Data, err = clearConfirmationsOnChange(cur, next, stored.Data); err != nil {
+				return OpResult{}, err
+			}
+		}
 	}
 	saved, err := tx.Put(ctx, stored)
 	if err != nil {
 		return OpResult{}, fmt.Errorf("save document: %w", err)
+	}
+	if affectsStats(op.Entity) {
+		if err := tx.MarkDirty(ctx, op.LeagueID); err != nil {
+			return OpResult{}, fmt.Errorf("mark league for stats: %w", err)
+		}
 	}
 	result := OpResult{OpID: op.OpID, Status: StatusApplied, Version: saved.Version}
 	if err := tx.SaveResult(ctx, op.OpID, userID, result); err != nil {
@@ -198,4 +236,9 @@ func (s *Service) Pull(ctx context.Context, userID string, since int64, limit in
 		return PullPage{}, fmt.Errorf("pull: %w", err)
 	}
 	return pageOf(docs, since, limit), nil
+}
+
+// affectsStats reports whether a write to this kind of document changes league numbers.
+func affectsStats(e Entity) bool {
+	return e == EntityMatch || e == EntityRace || e == EntityPlayer
 }

@@ -2,11 +2,14 @@ package community
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/vaibhav/snookit-server/internal/stats"
 )
 
 // PGRepository is the PostgreSQL implementation of Repository.
@@ -102,4 +105,76 @@ func (r *PGRepository) List(ctx context.Context, q ListQuery) ([]Doc, error) {
 		return nil, fmt.Errorf("read community docs: %w", err)
 	}
 	return docs, nil
+}
+
+// DeleteForUser removes every row the user owns or that is about them (follows of them,
+// challenges sent to them).
+func (r *PGRepository) DeleteForUser(ctx context.Context, userID string) error {
+	if _, err := r.pool.Exec(ctx,
+		`DELETE FROM community_docs WHERE owner_id = $1 OR subject_id = $1`, userID); err != nil {
+		return fmt.Errorf("delete community docs for user: %w", err)
+	}
+	return nil
+}
+
+// SetCityRank writes the server's ranking numbers onto a profile, only while the profile is
+// still in that city (stats.CityRankWriter).
+func (r *PGRepository) SetCityRank(ctx context.Context, uid, cityID string, rank stats.CityRank) error {
+	fields, err := json.Marshal(rankFields(rank))
+	if err != nil {
+		return fmt.Errorf("encode rank: %w", err)
+	}
+	if _, err := r.pool.Exec(ctx,
+		`UPDATE community_docs SET data = data || $3::jsonb, sort_value = $4, updated_at = now()
+		  WHERE kind = 'profile' AND id = $1 AND city_id = $2`,
+		uid, cityID, fields, rank.RankScore); err != nil {
+		return fmt.Errorf("set city rank: %w", err)
+	}
+	return nil
+}
+
+// SetPublicRating copies the public rating onto the person's profile (stats.PublicRatingWriter).
+func (r *PGRepository) SetPublicRating(ctx context.Context, uid string, rating stats.PublicRating) error {
+	fields, err := json.Marshal(map[string]any{"publicRating": rating.Rating, "publicGames": rating.Games})
+	if err != nil {
+		return fmt.Errorf("encode public rating: %w", err)
+	}
+	if _, err := r.pool.Exec(ctx,
+		`UPDATE community_docs SET data = data || $2::jsonb, updated_at = now()
+		  WHERE kind = 'profile' AND id = $1`, uid, fields); err != nil {
+		return fmt.Errorf("set public rating: %w", err)
+	}
+	return nil
+}
+
+// DeviceTokens returns a person's newest push tokens (push.Devices).
+func (r *PGRepository) DeviceTokens(ctx context.Context, userID string, limit int) ([]string, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT data ->> 'pushToken' FROM community_docs
+		  WHERE kind = 'device' AND owner_id = $1 ORDER BY sort_value DESC LIMIT $2`, userID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query push tokens: %w", err)
+	}
+	defer rows.Close()
+	var tokens []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, fmt.Errorf("scan push token: %w", err)
+		}
+		tokens = append(tokens, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read push tokens: %w", err)
+	}
+	return tokens, nil
+}
+
+// RemoveDeviceToken forgets a push token the push service no longer accepts.
+func (r *PGRepository) RemoveDeviceToken(ctx context.Context, token string) error {
+	if _, err := r.pool.Exec(ctx,
+		`DELETE FROM community_docs WHERE kind = 'device' AND data ->> 'pushToken' = $1`, token); err != nil {
+		return fmt.Errorf("remove push token: %w", err)
+	}
+	return nil
 }

@@ -18,24 +18,20 @@ npx eas init
 
 `eas init` writes an EAS `projectId` into `app.config.js` / Expo dashboard. Commit that when it appears.
 
-## 2. Put Firebase env on EAS (required — `.env` is not uploaded)
+## 2. Env for EAS builds (`.env` is not uploaded)
 
-From the repo root, set each value from your local `.env` (cloud sync **on**):
+The app no longer uses Firebase for data or login. `eas.json` already sets
+`EXPO_PUBLIC_API_URL` (the Snookit server) and `EXPO_PUBLIC_USE_LOCAL_DATA=false` for the
+preview and production profiles. Add the Google web client id, and the Sentry DSN if you use
+Sentry:
 
 ```bash
-npx eas env:create --name EXPO_PUBLIC_FIREBASE_API_KEY --value "YOUR_VALUE" --environment production --visibility plaintext
-npx eas env:create --name EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN --value "YOUR_VALUE" --environment production --visibility plaintext
-npx eas env:create --name EXPO_PUBLIC_FIREBASE_PROJECT_ID --value "YOUR_VALUE" --environment production --visibility plaintext
-npx eas env:create --name EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET --value "YOUR_VALUE" --environment production --visibility plaintext
-npx eas env:create --name EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID --value "YOUR_VALUE" --environment production --visibility plaintext
-npx eas env:create --name EXPO_PUBLIC_FIREBASE_APP_ID --value "YOUR_VALUE" --environment production --visibility plaintext
 npx eas env:create --name EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID --value "YOUR_VALUE" --environment production --visibility plaintext
-npx eas env:create --name EXPO_PUBLIC_USE_LOCAL_DATA --value "false" --environment production --visibility plaintext
+npx eas env:create --name EXPO_PUBLIC_SENTRY_DSN --value "YOUR_VALUE" --environment production --visibility plaintext
 ```
 
-Repeat the same for `--environment preview` if you use the preview APK profile.
-
-Or set them in [expo.dev](https://expo.dev) → project → **Environment variables**.
+Repeat for `--environment preview` if you use the preview APK profile. Store listing text and
+Data safety answers are in [PLAY_STORE_LISTING.md](PLAY_STORE_LISTING.md).
 
 ## 3. Build the Play Store file (AAB)
 
@@ -93,7 +89,7 @@ Install the APK for a quick device check before / beside internal testing.
 ## Checklist
 
 - [ ] `eas login` + `eas init`
-- [ ] Production env vars on EAS (`USE_LOCAL_DATA=false`)
+- [ ] Google web client id (and Sentry DSN) set on EAS
 - [ ] `npm run eas:build:android` succeeded
 - [ ] SHA-1 added to Firebase Android app
 - [ ] Play Console app + store listing + privacy policy

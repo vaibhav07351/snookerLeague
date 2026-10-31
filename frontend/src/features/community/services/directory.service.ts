@@ -7,6 +7,7 @@ import { mergeRemoteRows, pendingDocIdsOf } from '@/shared/sync/merge';
 import { logger } from '@/shared/logging/logger';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { isOnline } from '@/shared/sync/connectivity';
+import { isBlocked } from '@/features/community/services/safety.service';
 import { shouldCloudSync } from '@/shared/sync/cloud-session';
 import { scheduleSync } from '@/shared/sync';
 import { createId, nowIso } from '@/shared/utils/id';
@@ -162,7 +163,10 @@ export async function listDirectory(input: {
   }
 
   return getStore()
-    .directoryListings.filter((row) => row.cityId === input.cityId && row.kind === input.kind)
+    .directoryListings.filter(
+      (row) =>
+        row.cityId === input.cityId && row.kind === input.kind && !isBlocked(row.createdByUid),
+    )
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, PAGE);
 }

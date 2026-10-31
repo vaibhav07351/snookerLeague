@@ -17,6 +17,7 @@ import type {
   Player,
   PlayerProfile,
   Race,
+  Tournament,
 } from '@/shared/types/domain';
 
 export function emptyStore(): AppDataStore {
@@ -34,6 +35,7 @@ export function emptyStore(): AppDataStore {
     lookingPosts: [],
     directoryListings: [],
     follows: [],
+    tournaments: [],
     serverVersions: {},
     syncCursor: 0,
   };
@@ -110,6 +112,9 @@ export function normalizeStore(raw: Partial<AppDataStore>): AppDataStore {
       ? uniqueBy(raw.directoryListings as DirectoryListing[], byId)
       : [],
     follows: Array.isArray(raw.follows) ? uniqueBy(raw.follows as FollowEdge[], byId) : [],
+    tournaments: Array.isArray(raw.tournaments)
+      ? uniqueBy(raw.tournaments as Tournament[], byId)
+      : [],
     serverVersions:
       raw.serverVersions != null &&
       typeof raw.serverVersions === 'object' &&

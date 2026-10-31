@@ -12,6 +12,7 @@ import { createId, nowIso } from '@/shared/utils/id';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { scheduleSync } from '@/shared/sync';
 import { isOnline } from '@/shared/sync/connectivity';
+import { isBlocked } from '@/features/community/services/safety.service';
 import { shouldCloudSync } from '@/shared/sync/cloud-session';
 import type { Challenge, ChallengeStatus, Match } from '@/shared/types/domain';
 
@@ -228,7 +229,11 @@ export async function listMyChallenges(opts: { refresh?: boolean } = {}): Promis
     }
   }
   return getStore()
-    .challenges.filter((c) => c.fromUid === user.uid || c.toUid === user.uid)
+    .challenges.filter(
+      (c) =>
+        (c.fromUid === user.uid || c.toUid === user.uid) &&
+        !isBlocked(c.fromUid === user.uid ? c.toUid : c.fromUid),
+    )
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, 40);
 }

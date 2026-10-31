@@ -1,0 +1,77 @@
+# Deploys the Go server to the Oracle VM after CI passes on main (or by hand from the
+# Actions tab). It does what docs/RUNBOOK.md "Deploy a new version" does: copy the code,
+# keep the running image as snookit-api:previous for rollback, rebuild, and check health.
+#
+# Needs two repository secrets (Settings > Secrets and variables > Actions):
+#   VM_SSH_KEY  - the private key that can SSH to the VM as ubuntu
+#   VM_HOST     - the VM address, e.g. 140.245.8.153
+# Without them the job stops at the first step with a clear message.
+name: Deploy backend
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check secrets
+        env:
+          VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+          VM_HOST: ${{ secrets.VM_HOST }}
+        run: |
+          if [ -z "$VM_SSH_KEY" ] || [ -z "$VM_HOST" ]; then
+            echo "Add the VM_SSH_KEY and VM_HOST repository secrets to enable deploys."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Set up SSH
+        env:
+          VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+          VM_HOST: ${{ secrets.VM_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$VM_SSH_KEY" > ~/.ssh/id_vm
+          chmod 600 ~/.ssh/id_vm
+          ssh-keyscan -H "$VM_HOST" >> ~/.ssh/known_hosts
+      - name: Copy code
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+        run: |
+          scp -i ~/.ssh/id_vm -r backend/internal backend/cmd backend/go.mod backend/go.sum \
+            "ubuntu@$VM_HOST:~/snookit-backend/"
+      - name: Rebuild and restart
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+        run: |
+          ssh -i ~/.ssh/id_vm "ubuntu@$VM_HOST" '
+            set -e
+            cd ~/snookit-backend/deploy
+            docker tag snookit-api:local snookit-api:previous 2>/dev/null || true
+            docker compose up -d --build api
+            sleep 8
+            docker compose logs api --tail 5
+          '
+      - name: Health check
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS --max-time 10 https://snookit.duckdns.org/healthz; then exit 0; fi
+            sleep 10
+          done
+          echo "Health check failed: roll back with docs/RUNBOOK.md 'Roll back a deploy'."
+          exit 1

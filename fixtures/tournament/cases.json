@@ -1,0 +1,352 @@
+{
+  "about": "Shared tournament cases. Expected states are produced by the app (frontend/src/features/tournament/services/bracket.test.ts with WRITE_FIXTURES=1) and checked by go test (backend/internal/tournament).",
+  "cases": [
+    {
+      "tournament": {
+        "id": "t1",
+        "name": "Club Cup",
+        "format": "knockout",
+        "entrants": [
+          "p1",
+          "p2",
+          "p3",
+          "p4",
+          "p5"
+        ]
+      },
+      "matches": [
+        {
+          "id": "k1",
+          "tournamentId": "t1",
+          "round": 0,
+          "slot": 1,
+          "teamA": [
+            "p4"
+          ],
+          "teamB": [
+            "p5"
+          ],
+          "outcome": {
+            "status": "completed",
+            "winner": "b",
+            "framesA": 1,
+            "framesB": 2
+          }
+        },
+        {
+          "id": "k2",
+          "tournamentId": "t1",
+          "round": 1,
+          "slot": 0,
+          "teamA": [
+            "p1"
+          ],
+          "teamB": [
+            "p5"
+          ],
+          "outcome": {
+            "status": "completed",
+            "winner": "a",
+            "framesA": 2,
+            "framesB": 0
+          }
+        },
+        {
+          "id": "k3",
+          "tournamentId": "t1",
+          "round": 1,
+          "slot": 1,
+          "teamA": [
+            "p3"
+          ],
+          "teamB": [
+            "p2"
+          ],
+          "outcome": {
+            "status": "in_progress",
+            "framesA": 1,
+            "framesB": 1
+          }
+        },
+        {
+          "id": "other",
+          "tournamentId": "t9",
+          "round": 0,
+          "slot": 0,
+          "teamA": [
+            "p1"
+          ],
+          "teamB": [
+            "p2"
+          ],
+          "outcome": {
+            "status": "completed",
+            "winner": "b",
+            "framesA": 0,
+            "framesB": 2
+          }
+        }
+      ]
+    },
+    {
+      "tournament": {
+        "id": "t2",
+        "name": "Round robin",
+        "format": "round_robin",
+        "entrants": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ]
+      },
+      "matches": [
+        {
+          "id": "r0",
+          "tournamentId": "t2",
+          "round": 0,
+          "slot": 0,
+          "teamA": [
+            "a"
+          ],
+          "teamB": [
+            "b"
+          ],
+          "outcome": {
+            "status": "completed",
+            "winner": "a",
+            "framesA": 2,
+            "framesB": 1
+          }
+        },
+        {
+          "id": "r1",
+          "tournamentId": "t2",
+          "round": 0,
+          "slot": 1,
+          "teamA": [
+            "c"
+          ],
+          "teamB": [
+            "a"
+          ],
+          "outcome": {
+            "status": "completed",
+            "winner": "a",
+            "framesA": 0,
+            "framesB": 2
+          }
+        },
+        {
+          "id": "r3",
+          "tournamentId": "t2",
+          "round": 0,
+          "slot": 3,
+          "teamA": [
+            "b"
+          ],
+          "teamB": [
+            "c"
+          ],
+          "outcome": {
+            "status": "forfeited",
+            "winner": "b",
+            "forfeitedBy": "b",
+            "framesA": 1,
+            "framesB": 0
+          }
+        },
+        {
+          "id": "r5",
+          "tournamentId": "t2",
+          "round": 0,
+          "slot": 5,
+          "teamA": [
+            "c"
+          ],
+          "teamB": [
+            "d"
+          ],
+          "outcome": {
+            "status": "completed",
+            "winner": "a",
+            "framesA": 2,
+            "framesB": 0
+          }
+        }
+      ]
+    }
+  ],
+  "expected": [
+    {
+      "format": "knockout",
+      "rounds": [
+        [
+          {
+            "round": 0,
+            "slot": 0,
+            "a": "p1",
+            "b": "",
+            "winner": "p1",
+            "matchId": "",
+            "framesA": 0,
+            "framesB": 0
+          },
+          {
+            "round": 0,
+            "slot": 1,
+            "a": "p4",
+            "b": "p5",
+            "winner": "p5",
+            "matchId": "k1",
+            "framesA": 1,
+            "framesB": 2
+          },
+          {
+            "round": 0,
+            "slot": 2,
+            "a": "p2",
+            "b": "",
+            "winner": "p2",
+            "matchId": "",
+            "framesA": 0,
+            "framesB": 0
+          },
+          {
+            "round": 0,
+            "slot": 3,
+            "a": "p3",
+            "b": "",
+            "winner": "p3",
+            "matchId": "",
+            "framesA": 0,
+            "framesB": 0
+          }
+        ],
+        [
+          {
+            "round": 1,
+            "slot": 0,
+            "a": "p1",
+            "b": "p5",
+            "winner": "p1",
+            "matchId": "k2",
+            "framesA": 2,
+            "framesB": 0
+          },
+          {
+            "round": 1,
+            "slot": 1,
+            "a": "p2",
+            "b": "p3",
+            "winner": "",
+            "matchId": "k3",
+            "framesA": 1,
+            "framesB": 1
+          }
+        ],
+        [
+          {
+            "round": 2,
+            "slot": 0,
+            "a": "p1",
+            "b": "",
+            "winner": "",
+            "matchId": "",
+            "framesA": 0,
+            "framesB": 0
+          }
+        ]
+      ],
+      "champion": "",
+      "completed": false
+    },
+    {
+      "format": "round_robin",
+      "pairings": [
+        {
+          "slot": 0,
+          "a": "a",
+          "b": "b",
+          "winner": "a",
+          "matchId": "r0"
+        },
+        {
+          "slot": 1,
+          "a": "a",
+          "b": "c",
+          "winner": "c",
+          "matchId": "r1"
+        },
+        {
+          "slot": 2,
+          "a": "a",
+          "b": "d",
+          "winner": "",
+          "matchId": ""
+        },
+        {
+          "slot": 3,
+          "a": "b",
+          "b": "c",
+          "winner": "c",
+          "matchId": "r3"
+        },
+        {
+          "slot": 4,
+          "a": "b",
+          "b": "d",
+          "winner": "",
+          "matchId": ""
+        },
+        {
+          "slot": 5,
+          "a": "c",
+          "b": "d",
+          "winner": "c",
+          "matchId": "r5"
+        }
+      ],
+      "standings": [
+        {
+          "playerId": "c",
+          "played": 3,
+          "won": 3,
+          "lost": 0,
+          "framesFor": 2,
+          "framesAgainst": 3,
+          "points": 6
+        },
+        {
+          "playerId": "a",
+          "played": 2,
+          "won": 1,
+          "lost": 1,
+          "framesFor": 4,
+          "framesAgainst": 1,
+          "points": 2
+        },
+        {
+          "playerId": "b",
+          "played": 2,
+          "won": 0,
+          "lost": 2,
+          "framesFor": 2,
+          "framesAgainst": 2,
+          "points": 0
+        },
+        {
+          "playerId": "d",
+          "played": 1,
+          "won": 0,
+          "lost": 1,
+          "framesFor": 0,
+          "framesAgainst": 2,
+          "points": 0
+        }
+      ],
+      "champion": "",
+      "completed": false
+    }
+  ]
+}
