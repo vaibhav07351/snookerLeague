@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	gosync "sync"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vaibhav/snookit-server/internal/auth"
+	"github.com/vaibhav/snookit-server/internal/community"
 	"github.com/vaibhav/snookit-server/internal/platform/db"
 	"github.com/vaibhav/snookit-server/internal/platform/httpx"
 	syncmod "github.com/vaibhav/snookit-server/internal/sync"
@@ -288,5 +290,92 @@ func TestConcurrentWritersGetUniqueOrderedVersions(t *testing.T) {
 	}
 	if count != writers+1 {
 		t.Fatalf("want %d documents (players + league), got %d", writers+1, count)
+	}
+}
+
+func TestMembershipAgainstPostgres(t *testing.T) {
+	pool := openPool(t)
+	ctx := context.Background()
+	users := auth.NewPGUsers(pool)
+	owner, joiner := newUser(t, users), newUser(t, users)
+	svc := syncmod.NewService(syncmod.NewPGStore(pool))
+
+	league := randID("lg_")
+	code := "J" + strings.ToUpper(randID(""))[:7]
+	doc := fmt.Sprintf(`{"id":%q,"name":"Club","kind":"club","createdByUid":%q,"inviteCode":%q}`, league, owner.ID, code)
+	if r := put(t, svc, owner.ID, upsert(syncmod.EntityLeague, league, league, 0, doc)); r.Status != syncmod.StatusApplied {
+		t.Fatalf("league: %+v", r)
+	}
+	player := randID("p_")
+	put(t, svc, owner.ID, upsert(syncmod.EntityPlayer, player, league, 0, fmt.Sprintf(`{"id":%q,"leagueId":%q}`, player, league)))
+
+	preview, err := svc.PreviewInvite(ctx, strings.ToLower(code))
+	if err != nil || preview.LeagueID != league {
+		t.Fatalf("preview: %v %+v", err, preview)
+	}
+	joined, err := svc.JoinByCode(ctx, joiner.ID, code)
+	if err != nil || !strings.Contains(string(joined.Data), joiner.ID) {
+		t.Fatalf("join: %v %s", err, joined.Data)
+	}
+	page, err := svc.PullLeague(ctx, joiner.ID, league, 0, 500)
+	if err != nil {
+		t.Fatalf("pull league: %v", err)
+	}
+	found := false
+	for _, d := range page.Docs {
+		found = found || d.ID == player
+	}
+	if !found {
+		t.Fatal("joiner must receive the league's existing players")
+	}
+	if _, err := svc.Leave(ctx, joiner.ID, league); err != nil {
+		t.Fatalf("leave: %v", err)
+	}
+	if _, err := svc.PullLeague(ctx, joiner.ID, league, 0, 10); !errors.Is(err, syncmod.ErrNotMember) {
+		t.Fatalf("after leaving, pull must be refused, got %v", err)
+	}
+
+	city := strings.ToLower(randID("c"))
+	hub, err := svc.JoinCityHub(ctx, joiner.ID, city, "Testville")
+	// JSONB stores "key": "value" with a space, so compare without spaces.
+	if err != nil || !strings.Contains(strings.ReplaceAll(string(hub.Data), " ", ""), `"kind":"city"`) {
+		t.Fatalf("city hub: %v %s", err, hub.Data)
+	}
+}
+
+func TestCommunityAgainstPostgres(t *testing.T) {
+	pool := openPool(t)
+	ctx := context.Background()
+	users := auth.NewPGUsers(pool)
+	a, b := newUser(t, users), newUser(t, users)
+	svc := community.NewService(community.NewPGRepository(pool))
+	city := randID("city")
+
+	for i, u := range []auth.User{a, b} {
+		doc := fmt.Sprintf(`{"uid":%q,"cityId":%q,"rankScore":%d}`, u.ID, city, 10*(i+1))
+		if err := svc.Put(ctx, u.ID, community.KindProfile, u.ID, []byte(doc)); err != nil {
+			t.Fatalf("profile: %v", err)
+		}
+	}
+	first, err := svc.List(ctx, a.ID, community.KindProfile, community.ListParams{City: city, Limit: 1})
+	if err != nil || len(first.Items) != 1 || !first.HasMore || !strings.Contains(string(first.Items[0]), b.ID) {
+		t.Fatalf("first page: %v %+v", err, first)
+	}
+	second, err := svc.List(ctx, a.ID, community.KindProfile, community.ListParams{City: city, Limit: 1, Cursor: first.Cursor})
+	if err != nil || len(second.Items) != 1 || second.HasMore || !strings.Contains(string(second.Items[0]), a.ID) {
+		t.Fatalf("second page: %v %+v", err, second)
+	}
+
+	follow := "fl_" + a.ID + "_" + b.ID
+	if err := svc.Put(ctx, a.ID, community.KindFollow, follow,
+		[]byte(fmt.Sprintf(`{"id":%q,"followerUid":%q,"followingUid":%q}`, follow, a.ID, b.ID))); err != nil {
+		t.Fatalf("follow: %v", err)
+	}
+	followers, err := svc.List(ctx, b.ID, community.KindFollow, community.ListParams{Subject: b.ID})
+	if err != nil || len(followers.Items) != 1 {
+		t.Fatalf("followers: %v %+v", err, followers)
+	}
+	if err := svc.Delete(ctx, a.ID, community.KindFollow, follow); err != nil {
+		t.Fatalf("unfollow: %v", err)
 	}
 }

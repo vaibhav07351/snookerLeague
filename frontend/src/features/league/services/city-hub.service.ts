@@ -3,8 +3,11 @@ import { z } from 'zod';
 import { AppError } from '@/shared/errors/app-error';
 import { logger } from '@/shared/logging/logger';
 import { inviteCode, nowIso } from '@/shared/utils/id';
+import { apiErrorMeta } from '@/shared/api/client';
+import { joinCityHub } from '@/shared/api/sync-api';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
-import { applyLeagueBundleToLocal, fetchLeagueBundle } from '@/shared/sync/pull';
+import { replaceWithServerDoc } from '@/shared/sync/apply';
+import { pullLeague } from '@/shared/sync/pull';
 import { isOnline } from '@/shared/sync/connectivity';
 import { scheduleSync, shouldCloudSync } from '@/shared/sync';
 import { makeMemberPlayer, uniqueDisplayName } from '@/features/players/services/players.service';
@@ -75,17 +78,17 @@ export async function ensureCityHub(input: {
   await loadStore();
   let league = getStore().leagues.find((l) => l.id === hubId) ?? null;
 
-  if (!league && shouldCloudSync(getStore().user) && isOnline()) {
+  // Online: the server creates the hub on the first join and adds us; then load its history
+  // (it is older than this phone's sync cursor). Offline, the join is queued below instead.
+  let joinedOnline = false;
+  if (shouldCloudSync(getStore().user) && isOnline()) {
     try {
-      const bundle = await fetchLeagueBundle(hubId);
-      if (bundle.league) {
-        await applyLeagueBundleToLocal(bundle);
-        league = getStore().leagues.find((l) => l.id === hubId) ?? bundle.league;
-      }
+      await replaceWithServerDoc(await joinCityHub(parsed.data.cityId, parsed.data.cityName));
+      joinedOnline = true;
+      await pullLeague(hubId);
+      league = getStore().leagues.find((l) => l.id === hubId) ?? league;
     } catch (error) {
-      logger.error('city-hub.service', 'Remote city hub lookup failed', {
-        shape: error instanceof Error ? error.name : 'unknown',
-      });
+      logger.error('city-hub.service', 'Joining the city hub online failed', apiErrorMeta(error));
     }
   }
 
@@ -106,6 +109,8 @@ export async function ensureCityHub(input: {
       kind: 'city',
       cityId: parsed.data.cityId,
     };
+  } else if (joinedOnline) {
+    // The server's copy is already stored; keep it exactly as it is.
   } else if (!league.memberUids.includes(parsed.data.uid)) {
     league = {
       ...league,
@@ -144,16 +149,20 @@ export async function ensureCityHub(input: {
   });
 
   await scheduleSync([
-    {
-      entity: 'league',
-      docId: league.id,
-      leagueId: null,
-      action: 'upsert',
-      payload: league,
-      updatedAt: league.updatedAt,
-      // Join by adding only yourself (creates the hub if it does not exist yet).
-      membership: { add: parsed.data.uid },
-    },
+    ...(joinedOnline
+      ? []
+      : [
+          {
+            entity: 'league' as const,
+            docId: league.id,
+            leagueId: null,
+            action: 'upsert' as const,
+            payload: league,
+            updatedAt: league.updatedAt,
+            // Join by adding only yourself (the server creates the hub if it is new).
+            membership: { add: parsed.data.uid },
+          },
+        ]),
     ...(newPlayer
       ? [
           {

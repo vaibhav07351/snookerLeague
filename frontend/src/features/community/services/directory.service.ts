@@ -1,13 +1,13 @@
-import { getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import { z } from 'zod';
 
+import { apiErrorMeta } from '@/shared/api/client';
+import { listCommunityDocs } from '@/shared/api/community-api';
 import { AppError } from '@/shared/errors/app-error';
 import { mergeRemoteRows, pendingDocIdsOf } from '@/shared/sync/merge';
-import { withTimeout } from '@/shared/utils/timeout';
 import { logger } from '@/shared/logging/logger';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { isOnline } from '@/shared/sync/connectivity';
-import { directoryListingsCol, shouldCloudSync } from '@/shared/sync/firestore-paths';
+import { shouldCloudSync } from '@/shared/sync/cloud-session';
 import { scheduleSync } from '@/shared/sync';
 import { createId, nowIso } from '@/shared/utils/id';
 import type { DirectoryKind, DirectoryListing } from '@/shared/types/domain';
@@ -140,19 +140,12 @@ export async function listDirectory(input: {
   const user = getStore().user;
   if (shouldCloudSync(user) && isOnline()) {
     try {
-      const snap = await withTimeout(
-        getDocs(
-          query(
-            directoryListingsCol(),
-            where('cityId', '==', input.cityId),
-            where('kind', '==', input.kind),
-            orderBy('createdAt', 'desc'),
-            limit(PAGE),
-          ),
-        ),
-        'directory query',
-      );
-      const remote = snap.docs.map((d) => asListing(d.data(), d.id));
+      const page = await listCommunityDocs<Record<string, unknown>>('directory', {
+        city: input.cityId,
+        subKind: input.kind,
+        limit: PAGE,
+      });
+      const remote = page.items.map((d) => asListing(d, String(d.id ?? '')));
       await updateStore((s) => {
         return {
           ...s,
@@ -164,9 +157,7 @@ export async function listDirectory(input: {
         };
       });
     } catch (error) {
-      logger.error('directory.service', 'Directory query failed', {
-        shape: error instanceof Error ? error.name : 'unknown',
-      });
+      logger.error('directory.service', 'Directory query failed', apiErrorMeta(error));
     }
   }
 

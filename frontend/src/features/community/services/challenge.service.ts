@@ -1,18 +1,18 @@
 import { z } from 'zod';
-import { getDocs, query, where, collection, orderBy, limit } from 'firebase/firestore';
 
 import * as cityHubService from '@/features/league/services/city-hub.service';
 import * as matchService from '@/features/match/services/match.service';
 import * as playersService from '@/features/players/services/players.service';
+import { apiErrorMeta } from '@/shared/api/client';
+import { listCommunityDocs } from '@/shared/api/community-api';
 import { AppError } from '@/shared/errors/app-error';
 import { mergeRemoteRows, pendingDocIdsOf } from '@/shared/sync/merge';
-import { withTimeout } from '@/shared/utils/timeout';
 import { logger } from '@/shared/logging/logger';
 import { createId, nowIso } from '@/shared/utils/id';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { scheduleSync } from '@/shared/sync';
 import { isOnline } from '@/shared/sync/connectivity';
-import { requireFirestore, shouldCloudSync } from '@/shared/sync/firestore-paths';
+import { shouldCloudSync } from '@/shared/sync/cloud-session';
 import type { Challenge, ChallengeStatus, Match } from '@/shared/types/domain';
 
 const createSchema = z.object({
@@ -212,27 +212,19 @@ export async function listMyChallenges(opts: { refresh?: boolean } = {}): Promis
   // refresh: false reads only this phone's copy (for re-renders on local changes).
   if (opts.refresh !== false && shouldCloudSync(user) && isOnline()) {
     try {
-      const col = collection(requireFirestore(), 'challenges');
-      const [inbox, outbox] = await withTimeout(
-        Promise.all([
-          getDocs(
-            query(col, where('toUid', '==', user.uid), orderBy('createdAt', 'desc'), limit(20)),
-          ),
-          getDocs(
-            query(col, where('fromUid', '==', user.uid), orderBy('createdAt', 'desc'), limit(20)),
-          ),
-        ]),
-        'challenges',
+      const [inbox, outbox] = await Promise.all([
+        listCommunityDocs<Record<string, unknown>>('challenge', { box: 'received', limit: 20 }),
+        listCommunityDocs<Record<string, unknown>>('challenge', { box: 'sent', limit: 20 }),
+      ]);
+      const remote = [...inbox.items, ...outbox.items].map((d) =>
+        asChallenge(d, String(d.id ?? '')),
       );
-      const remote = [...inbox.docs, ...outbox.docs].map((d) => asChallenge(d.data(), d.id));
       await updateStore((s) => ({
         ...s,
         challenges: mergeRemoteRows(s.challenges, remote, pendingDocIdsOf(s.pendingOps)),
       }));
     } catch (error) {
-      logger.error('challenge.service', 'Challenge query failed', {
-        shape: error instanceof Error ? error.name : 'unknown',
-      });
+      logger.error('challenge.service', 'Challenge query failed', apiErrorMeta(error));
     }
   }
   return getStore()

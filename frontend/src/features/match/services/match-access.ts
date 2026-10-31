@@ -3,7 +3,7 @@ import type { League, Match } from '@/shared/types/domain';
 /**
  * Scoring is "one scorer at a time": only `scorerUid` records shots, so two phones can never
  * overwrite each other's shots. Others watch live and can take over when the policy allows.
- * Firestore rules enforce the same contract server-side (see firestore.rules, matches).
+ * The server enforces the same contract (backend/internal/sync/policy.go, authorizeMatch).
  */
 export function currentScorerUid(match: Match): string {
   return match.scorerUid ?? match.createdByUid;

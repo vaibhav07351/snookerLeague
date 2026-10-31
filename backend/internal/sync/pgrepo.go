@@ -47,6 +47,25 @@ func (s *PGStore) Pull(ctx context.Context, userID string, since int64, limit in
 	if err != nil {
 		return nil, fmt.Errorf("query docs: %w", err)
 	}
+	return scanDocs(rows)
+}
+
+// PullLeague returns one league's changed documents, oldest version first, for a member.
+func (s *PGStore) PullLeague(ctx context.Context, userID, leagueID string, since int64, limit int) ([]Doc, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT d.entity, d.id, d.league_id, d.version, d.deleted, d.data, d.updated_at
+		   FROM docs d
+		   JOIN league_members m ON m.league_id = d.league_id AND m.user_id = $1
+		  WHERE d.league_id = $2 AND d.version > $3
+		  ORDER BY d.version
+		  LIMIT $4`, userID, leagueID, since, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query league docs: %w", err)
+	}
+	return scanDocs(rows)
+}
+
+func scanDocs(rows pgx.Rows) ([]Doc, error) {
 	defer rows.Close()
 	docs := []Doc{}
 	for rows.Next() {
@@ -161,4 +180,52 @@ func (t *pgTx) SaveResult(ctx context.Context, opID, userID string, r OpResult) 
 		return fmt.Errorf("save applied op: %w", err)
 	}
 	return nil
+}
+
+func (t *pgTx) RemoveMember(ctx context.Context, leagueID, userID string) error {
+	if _, err := t.tx.Exec(ctx,
+		"DELETE FROM league_members WHERE league_id = $1 AND user_id = $2", leagueID, userID); err != nil {
+		return fmt.Errorf("remove member: %w", err)
+	}
+	return nil
+}
+
+func (t *pgTx) Members(ctx context.Context, leagueID string) ([]string, error) {
+	rows, err := t.tx.Query(ctx,
+		"SELECT user_id FROM league_members WHERE league_id = $1 ORDER BY joined_at, user_id", leagueID)
+	if err != nil {
+		return nil, fmt.Errorf("query members: %w", err)
+	}
+	defer rows.Close()
+	members := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan member: %w", err)
+		}
+		members = append(members, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read members: %w", err)
+	}
+	return members, nil
+}
+
+func (t *pgTx) FindLeagueByInviteCode(ctx context.Context, code string) (Doc, error) {
+	var d Doc
+	var data []byte
+	err := t.tx.QueryRow(ctx,
+		`SELECT entity, id, league_id, version, deleted, data, updated_at
+		   FROM docs
+		  WHERE entity = 'league' AND NOT deleted AND data ->> 'inviteCode' = $1
+		  LIMIT 1`, code).
+		Scan(&d.Entity, &d.ID, &d.LeagueID, &d.Version, &d.Deleted, &data, &d.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Doc{}, ErrNotFound
+	}
+	if err != nil {
+		return Doc{}, fmt.Errorf("find league by invite: %w", err)
+	}
+	d.Data = data
+	return d, nil
 }

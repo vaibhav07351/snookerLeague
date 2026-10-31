@@ -114,20 +114,26 @@ func (s *Service) apply(ctx context.Context, tx Tx, userID string, op Op) (OpRes
 			Message: conflictReason, Current: current}, nil
 	}
 
+	if current == nil && op.Entity == EntityLeague {
+		if err := tx.AddMember(ctx, op.ID, userID, RoleOwner); err != nil {
+			return OpResult{}, fmt.Errorf("add league owner: %w", err)
+		}
+	}
 	stored := Doc{Entity: op.Entity, ID: op.ID, LeagueID: op.LeagueID}
 	if op.Action == ActionDelete {
 		stored.Deleted = true
 	} else {
 		stored.Data = op.Data
+		if op.Entity == EntityLeague {
+			// The member list belongs to the server: whatever a phone sends is replaced.
+			if stored.Data, err = withMembers(ctx, tx, op.ID, op.Data); err != nil {
+				return OpResult{}, err
+			}
+		}
 	}
 	saved, err := tx.Put(ctx, stored)
 	if err != nil {
 		return OpResult{}, fmt.Errorf("save document: %w", err)
-	}
-	if current == nil && op.Entity == EntityLeague {
-		if err := tx.AddMember(ctx, op.ID, userID, RoleOwner); err != nil {
-			return OpResult{}, fmt.Errorf("add league owner: %w", err)
-		}
 	}
 	result := OpResult{OpID: op.OpID, Status: StatusApplied, Version: saved.Version}
 	if err := tx.SaveResult(ctx, op.OpID, userID, result); err != nil {
@@ -191,13 +197,5 @@ func (s *Service) Pull(ctx context.Context, userID string, since int64, limit in
 	if err != nil {
 		return PullPage{}, fmt.Errorf("pull: %w", err)
 	}
-	hasMore := len(docs) > limit
-	if hasMore {
-		docs = docs[:limit]
-	}
-	cursor := since
-	if len(docs) > 0 {
-		cursor = docs[len(docs)-1].Version
-	}
-	return PullPage{Docs: docs, Cursor: cursor, HasMore: hasMore}, nil
+	return pageOf(docs, since, limit), nil
 }

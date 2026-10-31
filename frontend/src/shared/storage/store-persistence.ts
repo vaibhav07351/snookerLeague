@@ -3,22 +3,25 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { AppDataStore, Match } from '@/shared/types/domain';
 
 /**
- * On-disk layout of the local store (v2).
+ * On-disk layout of the local store (v3).
  *
- * v1 kept the whole store under one key. On Android a single value much over ~2MB can't be
- * read back, and match shot logs grow without bound, so v2 splits the store:
+ * On Android a single value much over ~2MB can't be read back, and match shot logs grow
+ * without bound, so the store is split:
  * - one key for small session fields (`meta`),
  * - one key per collection (players, races, ...),
  * - one key per match, plus an index of match ids.
  * Only the parts that changed are serialized and written on each save.
+ *
+ * v3 started with the move from Firebase to the Snookit API, as a blank start (decision D8):
+ * data saved under the older `snooker.v1.` / `snooker.v2.` keys by the Firebase builds is
+ * ignored, not migrated, and left untouched on disk.
  */
 
-export const LEGACY_V1_KEY = 'snooker.v1.store';
-const PREFIX = 'snooker.v2.';
+const PREFIX = 'snooker.v3.';
 const META_KEY = `${PREFIX}meta`;
 const MATCH_INDEX_KEY = `${PREFIX}matchIndex`;
 const MATCH_KEY_PREFIX = `${PREFIX}match.`;
-export const STORE_VERSION = 2;
+export const STORE_VERSION = 3;
 
 /** Collections stored as one key each. Matches are stored per match instead. */
 const COLLECTIONS = [
@@ -32,6 +35,7 @@ const COLLECTIONS = [
   'lookingPosts',
   'directoryListings',
   'follows',
+  'serverVersions',
 ] as const satisfies readonly (keyof AppDataStore)[];
 
 type CollectionName = (typeof COLLECTIONS)[number];
@@ -40,7 +44,7 @@ interface StoreMeta {
   storeVersion: number;
   user: AppDataStore['user'];
   activeLeagueId: AppDataStore['activeLeagueId'];
-  cloudLeagueIds: AppDataStore['cloudLeagueIds'];
+  syncCursor: AppDataStore['syncCursor'];
 }
 
 function collectionKey(name: CollectionName): string {
@@ -56,14 +60,14 @@ function metaOf(store: AppDataStore): StoreMeta {
     storeVersion: STORE_VERSION,
     user: store.user,
     activeLeagueId: store.activeLeagueId,
-    cloudLeagueIds: store.cloudLeagueIds,
+    syncCursor: store.syncCursor,
   };
 }
 
 /** Result of reading the disk: either data (possibly none yet) or a failure to report. */
 export type DiskReadResult =
   | { kind: 'empty' }
-  | { kind: 'loaded'; raw: Partial<AppDataStore>; migratedFromV1: boolean }
+  | { kind: 'loaded'; raw: Partial<AppDataStore> }
   | { kind: 'failed'; reason: string };
 
 function parseJson(raw: string, label: string): unknown {
@@ -74,7 +78,7 @@ function parseJson(raw: string, label: string): unknown {
   }
 }
 
-async function readV2(): Promise<Partial<AppDataStore> | null> {
+async function readParts(): Promise<Partial<AppDataStore> | null> {
   const metaRaw = await AsyncStorage.getItem(META_KEY);
   if (metaRaw == null) {
     return null;
@@ -90,7 +94,7 @@ async function readV2(): Promise<Partial<AppDataStore> | null> {
   const raw: Partial<AppDataStore> = {
     user: meta.user ?? null,
     activeLeagueId: meta.activeLeagueId ?? null,
-    cloudLeagueIds: meta.cloudLeagueIds,
+    syncCursor: meta.syncCursor ?? 0,
   };
   for (const name of COLLECTIONS) {
     const value = values.get(collectionKey(name));
@@ -201,49 +205,13 @@ export async function writeParts(changes: {
 }
 
 /**
- * Copy a v1 single-key store into the v2 layout and verify it by reading it back.
- * The v1 key is left in place (read-only) for one release as a fallback.
- */
-async function migrateV1(store: AppDataStore): Promise<void> {
-  const snapshot = new PersistedSnapshot();
-  const all = snapshot.diff(store);
-  // Write everything except meta first: meta marks the migration complete.
-  const withoutMeta = all.writes.filter(([key]) => key !== META_KEY);
-  const meta = all.writes.find(([key]) => key === META_KEY);
-  await writeParts({ writes: withoutMeta, removes: [] });
-  const found = await countMatchesOnDisk(store.matches.map((m) => m.id));
-  if (found !== store.matches.length) {
-    throw new Error('Migration verify failed: match count differs');
-  }
-  if (meta) {
-    await AsyncStorage.setItem(meta[0], meta[1]);
-  }
-}
-
-async function countMatchesOnDisk(matchIds: string[]): Promise<number> {
-  const pairs = await AsyncStorage.multiGet(matchIds.map(matchKey));
-  return pairs.filter(([, value]) => value != null).length;
-}
-
-/**
  * Read the store from disk. Never throws: failures come back as `{ kind: 'failed' }` so the
  * caller can refuse to save over data it could not read.
  */
-export async function readStoreFromDisk(
-  normalize: (raw: Partial<AppDataStore>) => AppDataStore,
-): Promise<DiskReadResult> {
+export async function readStoreFromDisk(): Promise<DiskReadResult> {
   try {
-    const v2 = await readV2();
-    if (v2) {
-      return { kind: 'loaded', raw: v2, migratedFromV1: false };
-    }
-    const v1Raw = await AsyncStorage.getItem(LEGACY_V1_KEY);
-    if (v1Raw == null) {
-      return { kind: 'empty' };
-    }
-    const v1 = parseJson(v1Raw, 'v1 store') as Partial<AppDataStore>;
-    await migrateV1(normalize(v1));
-    return { kind: 'loaded', raw: v1, migratedFromV1: true };
+    const raw = await readParts();
+    return raw ? { kind: 'loaded', raw } : { kind: 'empty' };
   } catch (error) {
     return { kind: 'failed', reason: error instanceof Error ? error.message : 'unknown' };
   }

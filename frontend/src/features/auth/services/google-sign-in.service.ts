@@ -2,7 +2,7 @@ import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Platform } from 'react-native';
 
 import { AppError } from '@/shared/errors/app-error';
-import { getGoogleWebClientId } from '@/shared/firebase/config';
+import { getGoogleWebClientId } from '@/shared/config/env';
 import { logger } from '@/shared/logging/logger';
 
 /** Root google-services.json (client_type 3 = Web OAuth client). */
@@ -60,7 +60,7 @@ function ensureConfigured(
 ): void {
   const webClientId = resolveWebClientId();
   if (!webClientId) {
-    throw new AppError('AUTH_UNAVAILABLE', 'Firebase Google Sign-In is not configured');
+    throw new AppError('AUTH_UNAVAILABLE', 'Google Sign-In is not configured');
   }
   if (configuredWebClientId === webClientId) {
     return;
@@ -128,7 +128,7 @@ export async function promptNativeGoogleIdToken(): Promise<string | null> {
     if (!idToken) {
       throw new AppError(
         'AUTH_FAILED',
-        'Google did not return an ID token. Check that the Web client ID matches Firebase Authentication → Google.',
+        'Google did not return an ID token. Check that the Web client ID matches the one the Snookit server accepts.',
       );
     }
     return idToken;

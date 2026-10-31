@@ -1,13 +1,13 @@
-import { getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import { z } from 'zod';
 
+import { apiErrorMeta } from '@/shared/api/client';
+import { listCommunityDocs } from '@/shared/api/community-api';
 import { AppError } from '@/shared/errors/app-error';
 import { mergeRemoteRows, pendingDocIdsOf } from '@/shared/sync/merge';
-import { withTimeout } from '@/shared/utils/timeout';
 import { logger } from '@/shared/logging/logger';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { isOnline } from '@/shared/sync/connectivity';
-import { followsCol, shouldCloudSync } from '@/shared/sync/firestore-paths';
+import { shouldCloudSync } from '@/shared/sync/cloud-session';
 import { scheduleSync } from '@/shared/sync';
 import { nowIso } from '@/shared/utils/id';
 import type { FollowEdge } from '@/shared/types/domain';
@@ -131,35 +131,15 @@ export async function listFollowGraph(
   // refresh: false reads only this phone's copy (for re-renders on local changes).
   if (opts.refresh !== false && shouldCloudSync(user) && isOnline()) {
     try {
-      const [followersSnap, followingSnap] = await withTimeout(
-        Promise.all([
-          getDocs(
-            query(
-              followsCol(),
-              where('followingUid', '==', uid),
-              orderBy('createdAt', 'desc'),
-              limit(PAGE),
-            ),
-          ),
-          getDocs(
-            query(
-              followsCol(),
-              where('followerUid', '==', uid),
-              orderBy('createdAt', 'desc'),
-              limit(PAGE),
-            ),
-          ),
-        ]),
-        'follow graph',
-      );
-      await mergeRemote([
-        ...followersSnap.docs.map((d) => asFollow(d.data(), d.id)),
-        ...followingSnap.docs.map((d) => asFollow(d.data(), d.id)),
+      const [followers, following] = await Promise.all([
+        listCommunityDocs<Record<string, unknown>>('follow', { subject: uid, limit: PAGE }),
+        listCommunityDocs<Record<string, unknown>>('follow', { owner: uid, limit: PAGE }),
       ]);
+      await mergeRemote(
+        [...followers.items, ...following.items].map((d) => asFollow(d, String(d.id ?? ''))),
+      );
     } catch (error) {
-      logger.error('follow.service', 'Follow query failed', {
-        shape: error instanceof Error ? error.name : 'unknown',
-      });
+      logger.error('follow.service', 'Follow query failed', apiErrorMeta(error));
     }
   }
   const follows = getStore().follows;

@@ -57,7 +57,7 @@ async function saveSettings(match: Match, patch: SettingsPatch): Promise<Match> 
 }
 
 /**
- * Become the scorer. Only `scorerUid` changes, which is also the one change Firestore rules
+ * Become the scorer. Only `scorerUid` changes, which is also the one change the server's rules
  * let a non-scoring member make, so the hand-over works without the old scorer's phone.
  */
 export function takeOverScoring(matchId: string): Promise<Match> {

@@ -1,7 +1,7 @@
 /**
  * Persistence boundary for v1.
  * Local AsyncStorage is always the UI source of truth.
- * Google users sync to Firestore via `@/shared/sync` (online push + offline queue).
+ * Google users sync to the Snookit API via `@/shared/sync` (online push + offline queue).
  */
 export {
   loadStore,

@@ -1,15 +1,4 @@
 import { z } from 'zod';
-import {
-  collection,
-  documentId,
-  getDoc,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-  startAfter,
-  where,
-} from 'firebase/firestore';
 
 import {
   divisionFromDob,
@@ -17,18 +6,15 @@ import {
   parseAndValidateDob,
 } from '@/features/auth/services/division.service';
 import { memberPlayerId } from '@/features/players/services/players.service';
+import { apiErrorMeta } from '@/shared/api/client';
+import { getCommunityDoc, listCommunityDocs } from '@/shared/api/community-api';
 import { AppError } from '@/shared/errors/app-error';
 import { pendingDocIdsOf } from '@/shared/sync/merge';
-import { withTimeout } from '@/shared/utils/timeout';
 import { logger } from '@/shared/logging/logger';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { scheduleSync, scheduleUserProfileSync } from '@/shared/sync';
 import { isOnline } from '@/shared/sync/connectivity';
-import {
-  playerProfileDocRef,
-  requireFirestore,
-  shouldCloudSync,
-} from '@/shared/sync/firestore-paths';
+import { shouldCloudSync } from '@/shared/sync/cloud-session';
 import {
   emptyPlayerProfile,
   leagueKindOf,
@@ -240,27 +226,18 @@ export async function listCityProfiles(input: {
 
   if (shouldCloudSync(user) && isOnline()) {
     try {
-      const col = collection(requireFirestore(), 'playerProfiles');
-      const q =
-        input.cursorRank != null && input.cursorUid
-          ? query(
-              col,
-              where('cityId', '==', input.cityId),
-              orderBy('rankScore', 'desc'),
-              // Tie-break on the doc id so equal scores page without repeats or gaps.
-              orderBy(documentId(), 'desc'),
-              startAfter(input.cursorRank, input.cursorUid),
-              limit(CITY_PAGE),
-            )
-          : query(
-              col,
-              where('cityId', '==', input.cityId),
-              orderBy('rankScore', 'desc'),
-              orderBy(documentId(), 'desc'),
-              limit(CITY_PAGE),
-            );
-      const snap = await withTimeout(getDocs(q), 'city profiles');
-      const items = snap.docs.map((d) => asProfile(d.data(), d.id));
+      // Same order as the board: rank score, then id, both descending.
+      const page = await listCommunityDocs<Record<string, unknown>>('profile', {
+        city: input.cityId,
+        limit: CITY_PAGE,
+        cursor:
+          input.cursorRank != null && input.cursorUid
+            ? `${input.cursorRank}|${input.cursorUid}`
+            : undefined,
+      });
+      const items = page.items
+        .filter((d) => typeof d.uid === 'string' && d.uid.length > 0)
+        .map((d) => asProfile(d, d.uid as string));
       const last = items[items.length - 1];
       await updateStore((s) => {
         // Never replace a profile (our own) while an edit of it is still uploading.
@@ -275,13 +252,10 @@ export async function listCityProfiles(input: {
       });
       return {
         items,
-        nextCursor:
-          items.length === CITY_PAGE && last ? { rankScore: last.rankScore, uid: last.uid } : null,
+        nextCursor: page.hasMore && last ? { rankScore: last.rankScore, uid: last.uid } : null,
       };
     } catch (error) {
-      logger.error('profile.service', 'City profile query failed', {
-        shape: error instanceof Error ? error.name : 'unknown',
-      });
+      logger.error('profile.service', 'City profile query failed', apiErrorMeta(error));
     }
   }
 
@@ -324,11 +298,11 @@ export async function getPublicProfile(uid: string): Promise<PlayerProfile | nul
     return null;
   }
   try {
-    const snap = await withTimeout(getDoc(playerProfileDocRef(uid)), 'profile');
-    if (!snap.exists()) {
+    const data = await getCommunityDoc<Record<string, unknown>>('profile', uid);
+    if (!data) {
       return null;
     }
-    const profile = asProfile(snap.data(), snap.id);
+    const profile = asProfile(data, uid);
     await updateStore((s) => {
       const has = s.playerProfiles.some((p) => p.uid === profile.uid);
       return {
@@ -340,9 +314,7 @@ export async function getPublicProfile(uid: string): Promise<PlayerProfile | nul
     });
     return profile;
   } catch (error) {
-    logger.error('profile.service', 'Point-read profile failed', {
-      shape: error instanceof Error ? error.name : 'unknown',
-    });
+    logger.error('profile.service', 'Point-read profile failed', apiErrorMeta(error));
     return null;
   }
 }

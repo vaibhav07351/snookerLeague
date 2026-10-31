@@ -1,6 +1,6 @@
 /**
  * Whether the cloud answered recently. Set false when writes or reads fail with a network
- * error (offline, timeout, or a browser extension blocking Firestore); true on success.
+ * error (offline, timeout, or a browser extension blocking the request); true on success.
  */
 type Listener = (reachable: boolean) => void;
 

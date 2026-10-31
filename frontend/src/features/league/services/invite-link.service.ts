@@ -1,7 +1,7 @@
 import { Platform, Share } from 'react-native';
 
 import { AppError } from '@/shared/errors/app-error';
-import { getPublicWebOrigin } from '@/shared/firebase/config';
+import { getPublicWebOrigin } from '@/shared/config/env';
 import { logger } from '@/shared/logging/logger';
 import { PENDING_INVITE_KEY, readPreference, writePreference } from '@/shared/storage/preferences';
 import type { League } from '@/shared/types/domain';

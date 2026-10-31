@@ -12,7 +12,7 @@ import (
 // Entity names a kind of synced document.
 type Entity string
 
-// The synced document kinds. Events are written by the server only.
+// The synced document kinds.
 const (
 	EntityLeague Entity = "league"
 	EntityPlayer Entity = "player"
@@ -108,6 +108,11 @@ type Tx interface {
 	Put(ctx context.Context, d Doc) (Doc, error)
 	Role(ctx context.Context, leagueID, userID string) (Role, error)
 	AddMember(ctx context.Context, leagueID, userID string, role Role) error
+	RemoveMember(ctx context.Context, leagueID, userID string) error
+	// Members lists the league's member ids, oldest member first.
+	Members(ctx context.Context, leagueID string) ([]string, error)
+	// FindLeagueByInviteCode returns the live league whose inviteCode is code.
+	FindLeagueByInviteCode(ctx context.Context, code string) (Doc, error)
 	AppliedResult(ctx context.Context, userID, opID string) (OpResult, error)
 	SaveResult(ctx context.Context, opID, userID string, r OpResult) error
 }
@@ -117,4 +122,7 @@ type Store interface {
 	InTx(ctx context.Context, fn func(Tx) error) error
 	// Pull returns documents in leagues the user belongs to with version > since.
 	Pull(ctx context.Context, userID string, since int64, limit int) ([]Doc, error)
+	// PullLeague returns one league's documents with version > since, if the user is a
+	// member (used right after joining, when the league's history is older than the cursor).
+	PullLeague(ctx context.Context, userID, leagueID string, since int64, limit int) ([]Doc, error)
 }

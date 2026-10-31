@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/features/home/components/Button';
@@ -25,11 +25,6 @@ export function InviteCard({ league, uid, compact = false }: InviteCardProps): R
   const typography = useStyles(makeTypography);
   const [busy, setBusy] = useState(false);
   const isOwner = league.createdByUid === uid;
-
-  // Older leagues have no online invite record yet; make sure the code works for friends.
-  useEffect(() => {
-    void leagueService.ensureInviteDoc(league.id);
-  }, [league.id, league.inviteCode]);
 
   async function share(): Promise<void> {
     setBusy(true);

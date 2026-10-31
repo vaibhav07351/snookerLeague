@@ -12,7 +12,7 @@ import * as authService from '@/features/auth/services/auth.service';
 import * as leagueService from '@/features/league/services/league.service';
 import { refreshLeaguePlayerStats } from '@/features/stats/services/stats.service';
 import { loadStore, subscribeStore, getStore } from '@/shared/storage/local-store';
-import { waitForFirebaseAuth } from '@/shared/firebase/app';
+import { loadTokens } from '@/shared/api/tokens';
 import { logger } from '@/shared/logging/logger';
 import { startSyncRuntime } from '@/shared/sync';
 import type { League, SessionUser } from '@/shared/types/domain';
@@ -53,9 +53,9 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactNod
       await loadStore();
       const current = await authService.getCurrentUser();
       if (current && !current.isDemo) {
-        // Let Firebase Auth restore its session first, so cloud reads made right after
-        // start-up (an invite link, the first pull) are signed in.
-        await waitForFirebaseAuth();
+        // Load the saved API session first, so cloud reads made right after start-up
+        // (an invite link, the first pull) are signed in.
+        await loadTokens();
       }
       setUser(current);
       const active = await leagueService.getActiveLeague();

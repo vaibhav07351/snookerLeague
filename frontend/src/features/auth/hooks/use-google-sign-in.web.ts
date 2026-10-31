@@ -5,7 +5,7 @@ import { useCallback } from 'react';
 
 import { extractGoogleIdToken } from '@/features/auth/services/auth.service';
 import { AppError } from '@/shared/errors/app-error';
-import { getGoogleWebClientId } from '@/shared/firebase/config';
+import { getGoogleWebClientId } from '@/shared/config/env';
 
 interface GoogleSignInApi {
   ready: boolean;
@@ -71,7 +71,7 @@ export function useGoogleSignIn(): GoogleSignInApi {
     if (!idToken) {
       throw new AppError(
         'AUTH_FAILED',
-        'Google did not return an ID token. Check that the Web client ID matches Firebase Authentication → Google.',
+        'Google did not return an ID token. Check that the Web client ID matches the one the Snookit server accepts.',
       );
     }
     return idToken;

@@ -17,7 +17,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_USE_LOCAL_DATA": "false"
+        "EXPO_PUBLIC_USE_LOCAL_DATA": "false",
+        "EXPO_PUBLIC_API_URL": "https://snookit.duckdns.org"
       }
     },
     "production": {
@@ -26,7 +27,8 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_USE_LOCAL_DATA": "false"
+        "EXPO_PUBLIC_USE_LOCAL_DATA": "false",
+        "EXPO_PUBLIC_API_URL": "https://snookit.duckdns.org"
       }
     }
   },

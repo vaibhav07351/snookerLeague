@@ -136,7 +136,7 @@ async function savePlayer(player: Player): Promise<void> {
 
 /**
  * "That's me": link an existing guest card (and its match history) to this account.
- * Firestore rules allow this only while the card has no owner.
+ * The server allows this only while the card has no owner, and only for yourself.
  */
 export async function claimPlayer(input: {
   playerId: string;

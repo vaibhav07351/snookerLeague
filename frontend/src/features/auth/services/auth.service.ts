@@ -1,12 +1,9 @@
 import * as WebBrowser from 'expo-web-browser';
-import {
-  GoogleAuthProvider,
-  signInWithCredential,
-  signOut as firebaseSignOut,
-} from 'firebase/auth';
 
 import { signOutGoogleNative } from '@/features/auth/services/google-sign-in.service';
-import { getFirebaseAuth, isFirebaseEnabled } from '@/shared/firebase/app';
+import { apiErrorMeta } from '@/shared/api/client';
+import { signInWithGoogle, signOutOfApi, type ApiUser } from '@/shared/api/auth-api';
+import { isCloudEnabled } from '@/shared/config/env';
 import { AppError } from '@/shared/errors/app-error';
 import { logger } from '@/shared/logging/logger';
 import { clearSessionPreferences } from '@/shared/storage/preferences';
@@ -87,18 +84,26 @@ export async function signInDemo(
   return user;
 }
 
-export async function signInWithGoogleIdToken(idToken: string): Promise<SessionUser> {
-  const auth = getFirebaseAuth();
-  if (!auth || !isFirebaseEnabled()) {
-    throw new AppError('AUTH_UNAVAILABLE', 'Firebase Google Sign-In is not configured');
+/** Exchange the Google id token for a Snookit session (the API must be configured). */
+async function signInToApi(idToken: string): Promise<ApiUser> {
+  if (!isCloudEnabled()) {
+    throw new AppError('AUTH_UNAVAILABLE', 'Online sign-in is not configured');
   }
-  const credential = GoogleAuthProvider.credential(idToken);
-  const result = await signInWithCredential(auth, credential);
+  try {
+    return await signInWithGoogle(idToken);
+  } catch (error) {
+    logger.error('auth.service', 'API sign-in failed', apiErrorMeta(error));
+    throw new AppError('AUTH_FAILED', 'Could not sign in. Check your connection and try again.');
+  }
+}
+
+export async function signInWithGoogleIdToken(idToken: string): Promise<SessionUser> {
+  const account = await signInToApi(idToken);
   const user: SessionUser = {
-    uid: result.user.uid,
-    displayName: result.user.displayName ?? 'Player',
-    email: result.user.email,
-    photoUrl: result.user.photoURL,
+    uid: account.id,
+    displayName: account.displayName || 'Player',
+    email: account.email || null,
+    photoUrl: account.photoUrl || null,
     isDemo: false,
     cityId: null,
     cityName: null,
@@ -112,7 +117,7 @@ export async function signInWithGoogleIdToken(idToken: string): Promise<SessionU
       shape: error instanceof Error ? error.name : 'unknown',
     });
   }
-  // Sync pull restores DOB / city / leagues from Firestore for returning users.
+  // The first pull restores city, active league and leagues for returning users.
   const restored = getStore().user;
   logger.info('auth.service', 'Google sign-in', { uid: user.uid });
   return restored?.uid === user.uid ? restored : user;
@@ -131,19 +136,14 @@ export async function linkDemoAccountWithGoogleIdToken(idToken: string): Promise
   const demoUid = current.uid;
   const demoName = current.displayName;
 
-  const auth = getFirebaseAuth();
-  if (!auth || !isFirebaseEnabled()) {
-    throw new AppError('AUTH_UNAVAILABLE', 'Firebase Google Sign-In is not configured');
-  }
-  const credential = GoogleAuthProvider.credential(idToken);
-  const result = await signInWithCredential(auth, credential);
-  const googleUid = result.user.uid;
+  const account = await signInToApi(idToken);
+  const googleUid = account.id;
 
   const user: SessionUser = {
     uid: googleUid,
-    displayName: result.user.displayName?.trim() || demoName,
-    email: result.user.email,
-    photoUrl: result.user.photoURL,
+    displayName: account.displayName.trim() || demoName,
+    email: account.email || null,
+    photoUrl: account.photoUrl || null,
     isDemo: false,
     cityId: current.cityId,
     cityName: current.cityName,
@@ -171,17 +171,22 @@ export async function linkDemoAccountWithGoogleIdToken(idToken: string): Promise
 export async function signOut(): Promise<void> {
   stopWatchingActiveLeague();
   await signOutGoogleNative();
-  const auth = getFirebaseAuth();
-  try {
-    if (auth && isFirebaseEnabled() && auth.currentUser) {
-      await firebaseSignOut(auth);
+  if (isCloudEnabled()) {
+    try {
+      await signOutOfApi();
+    } catch (error) {
+      // The session is forgotten on this phone either way; the server's copy expires.
+      logger.warn('auth.service', 'Server sign-out failed', apiErrorMeta(error));
     }
-  } catch (error) {
-    logger.error('auth.service', 'Firebase sign-out failed', {
-      shape: error instanceof Error ? error.name : 'unknown',
-    });
   }
-  await updateStore((s) => ({ ...s, user: null, activeLeagueId: null }));
+  // Sync bookkeeping belongs to the account: the next sign-in pulls from the start.
+  await updateStore((s) => ({
+    ...s,
+    user: null,
+    activeLeagueId: null,
+    serverVersions: {},
+    syncCursor: 0,
+  }));
   await clearSessionPreferences();
   logger.info('auth.service', 'Signed out');
 }
@@ -207,4 +212,4 @@ export function extractGoogleIdToken(
   return null;
 }
 
-export { isFirebaseEnabled };
+export { isCloudEnabled };

@@ -22,7 +22,7 @@ type Row = { id: string; updatedAt?: string; createdAt?: string };
 export type Resolver<T> = (local: T, remote: T, remotePending: boolean) => T;
 
 /** Default: keep a pending local copy, otherwise last write wins on updatedAt. */
-function lastWriteWins<T extends Row>(local: T, remote: T, remotePending: boolean): T {
+export function lastWriteWins<T extends Row>(local: T, remote: T, remotePending: boolean): T {
   if (remotePending) {
     return local;
   }

@@ -2,17 +2,11 @@ import { createId, nowIso } from '@/shared/utils/id';
 import { logger } from '@/shared/logging/logger';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { isOnline } from '@/shared/sync/connectivity';
-import {
-  firebaseErrorMeta,
-  isNetworkError,
-  isPermanentWriteError,
-} from '@/shared/sync/firebase-error';
+import { isNetworkError, isPermanentWriteError, syncErrorMeta } from '@/shared/sync/sync-errors';
 import { setCloudReachable } from '@/shared/sync/sync-status';
 import { notify } from '@/shared/ui/notify';
-import { shouldCloudSync } from '@/shared/sync/firestore-paths';
-import { markLeaguesInCloud } from '@/shared/sync/cloud-leagues';
-import { refetchAfterRejection } from '@/shared/sync/pull';
-import { pushPendingOp } from '@/shared/sync/push';
+import { shouldCloudSync } from '@/shared/sync/cloud-session';
+import { isBatchable, pushDocBatch, pushSingle, type PushOutcome } from '@/shared/sync/push';
 import type {
   CloudUserProfile,
   PendingOp,
@@ -92,7 +86,8 @@ function buildCloudUserPayload(user: SessionUser, store = getStore()): CloudUser
     updatedAt: nowIso(),
     cityId: user.cityId,
     cityName: user.cityName,
-    dateOfBirth: user.dateOfBirth ?? null,
+    // D5: the date of birth never leaves the phone.
+    dateOfBirth: null,
   };
 }
 
@@ -170,13 +165,6 @@ function toOp(item: ScheduleItem): PendingOp {
   };
 }
 
-/** After a successful push: remember leagues that now exist in the cloud. */
-async function afterPush(op: PendingOp): Promise<void> {
-  if (op.entity === 'league' && op.action === 'upsert') {
-    await markLeaguesInCloud([op.docId]);
-  }
-}
-
 /**
  * After a local write: push immediately if online, else queue.
  * A document that still has queued writes goes through the queue too, so writes for one
@@ -202,26 +190,6 @@ export async function scheduleSync(items: ScheduleItem[]): Promise<void> {
   }
 }
 
-/** Remove a league from the cloud profile's league list (left, deleted or unreachable). */
-export async function scheduleProfileLeagueRemoval(leagueId: string): Promise<void> {
-  await loadStore();
-  const user = getStore().user;
-  if (!user || user.isDemo) {
-    return;
-  }
-  await scheduleSync([
-    {
-      entity: 'user',
-      docId: user.uid,
-      leagueId: null,
-      action: 'upsert',
-      payload: { uid: user.uid },
-      updatedAt: nowIso(),
-      membership: { remove: leagueId },
-    },
-  ]);
-}
-
 /** Convenience: sync current cloud user profile from local membership. */
 export async function scheduleUserProfileSync(): Promise<void> {
   await loadStore();
@@ -244,6 +212,77 @@ export async function scheduleUserProfileSync(): Promise<void> {
 
 let flushAgain = false;
 
+/** Writes per batched push (the server accepts up to 100). */
+const MAX_BATCH = 50;
+/** A write that keeps meeting newer server copies is given up after this many tries. */
+const MAX_ATTEMPTS = 5;
+
+/**
+ * The next writes to send together: consecutive plain league-document writes, each for a
+ * different document (a second write for the same document must wait for the first's
+ * new version).
+ */
+function takeBatch(queue: PendingOp[]): PendingOp[] {
+  const first = queue[0];
+  if (!first || !isBatchable(first)) {
+    return first ? [first] : [];
+  }
+  const batch: PendingOp[] = [];
+  const docs = new Set<string>();
+  for (const op of queue) {
+    const key = `${op.entity}:${op.docId}`;
+    if (!isBatchable(op) || docs.has(key) || batch.length >= MAX_BATCH) {
+      break;
+    }
+    docs.add(key);
+    batch.push(op);
+  }
+  return batch;
+}
+
+async function settle(batch: PendingOp[], outcomes: PushOutcome[]): Promise<void> {
+  const done: string[] = [];
+  for (const [i, op] of batch.entries()) {
+    const outcome = outcomes[i];
+    if (!outcome) {
+      continue;
+    }
+    switch (outcome.status) {
+      case 'applied':
+      case 'resolved':
+        done.push(op.opId);
+        break;
+      case 'rejected':
+        reportRejectedWrite(op, syncErrorMeta(outcome.error));
+        done.push(op.opId);
+        break;
+      case 'retry':
+        if (op.attempts + 1 >= MAX_ATTEMPTS) {
+          logger.error('sync.flush', 'Write kept conflicting; dropped', {
+            entity: op.entity,
+            docId: op.docId,
+          });
+          done.push(op.opId);
+          break;
+        }
+        await updateStore((s) => ({
+          ...s,
+          pendingOps: s.pendingOps.map((p) =>
+            p.opId === op.opId
+              ? {
+                  ...p,
+                  attempts: p.attempts + 1,
+                  ...(outcome.payload !== undefined ? { payload: outcome.payload } : {}),
+                }
+              : p,
+          ),
+        }));
+        break;
+    }
+  }
+  await removePending(done);
+}
+
 export async function flushPending(): Promise<void> {
   if (flushing) {
     // A pass is running; make sure it looks at the queue once more before it stops.
@@ -260,19 +299,19 @@ export async function flushPending(): Promise<void> {
   try {
     for (;;) {
       await updateStore((s) => ({ ...s, pendingOps: sortPendingOps(s.pendingOps) }));
-      const next = getStore().pendingOps[0];
+      const batch = takeBatch(getStore().pendingOps);
+      const next = batch[0];
       if (!next) {
         break;
       }
       try {
-        await pushPendingOp(next);
-        await removePending([next.opId]);
-        await afterPush(next);
+        const outcomes = isBatchable(next) ? await pushDocBatch(batch) : [await pushSingle(next)];
+        await settle(batch, outcomes);
         setCloudReachable(true);
       } catch (error) {
         if (isPermanentWriteError(error)) {
           // The server will never accept this write: drop it so it cannot block the queue.
-          reportRejectedWrite(next, firebaseErrorMeta(error));
+          reportRejectedWrite(next, syncErrorMeta(error));
           await removePending([next.opId]);
           continue;
         }
@@ -282,9 +321,8 @@ export async function flushPending(): Promise<void> {
         }
         // Retried on the next write, reconnect or app start, not in a tight loop.
         flushAgain = false;
-        const meta = firebaseErrorMeta(error);
         logger.error('sync.flush', 'Pending op failed', {
-          ...meta,
+          ...syncErrorMeta(error),
           entity: next.entity,
           docId: next.docId,
           attempts: next.attempts + 1,
@@ -304,15 +342,13 @@ export async function flushPending(): Promise<void> {
 let lastRejectNoticeAt = 0;
 
 /** Log a write the server refused, and tell the user once in a while (not per document). */
-function reportRejectedWrite(op: PendingOp, meta: ReturnType<typeof firebaseErrorMeta>): void {
+function reportRejectedWrite(op: PendingOp, meta: ReturnType<typeof syncErrorMeta>): void {
   logger.error('sync.schedule', 'Write rejected by server; dropped', {
     ...meta,
     entity: op.entity,
     docId: op.docId,
     action: op.action,
   });
-  // Put this phone back in step with what the server actually holds.
-  void refetchAfterRejection(op);
   const now = Date.now();
   if (now - lastRejectNoticeAt > 60_000) {
     lastRejectNoticeAt = now;

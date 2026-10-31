@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	gosync "sync"
 	"testing"
@@ -17,6 +18,7 @@ type memStore struct {
 	version int64
 	docs    map[string]Doc
 	members map[string]Role // key: leagueID + "|" + userID
+	joined  []string        // member keys in join order, for Members
 	applied map[string]OpResult
 }
 
@@ -54,8 +56,45 @@ func (m *memStore) Role(_ context.Context, league, user string) (Role, error) {
 }
 
 func (m *memStore) AddMember(_ context.Context, league, user string, r Role) error {
-	m.members[league+"|"+user] = r
+	key := league + "|" + user
+	if _, ok := m.members[key]; ok {
+		return nil // like ON CONFLICT DO NOTHING: an owner stays owner
+	}
+	m.members[key] = r
+	m.joined = append(m.joined, key)
 	return nil
+}
+
+func (m *memStore) RemoveMember(_ context.Context, league, user string) error {
+	key := league + "|" + user
+	delete(m.members, key)
+	m.joined = slices.DeleteFunc(m.joined, func(k string) bool { return k == key })
+	return nil
+}
+
+func (m *memStore) Members(_ context.Context, league string) ([]string, error) {
+	out := []string{}
+	for _, key := range m.joined {
+		if l, user, _ := strings.Cut(key, "|"); l == league {
+			out = append(out, user)
+		}
+	}
+	return out, nil
+}
+
+func (m *memStore) FindLeagueByInviteCode(_ context.Context, code string) (Doc, error) {
+	for _, d := range m.docs {
+		if d.Entity != EntityLeague || d.Deleted {
+			continue
+		}
+		var body struct {
+			InviteCode string `json:"inviteCode"`
+		}
+		if json.Unmarshal(d.Data, &body) == nil && body.InviteCode == code {
+			return d, nil
+		}
+	}
+	return Doc{}, ErrNotFound
 }
 
 func (m *memStore) AppliedResult(_ context.Context, user, op string) (OpResult, error) {
@@ -77,6 +116,20 @@ func (m *memStore) Pull(_ context.Context, user string, since int64, limit int) 
 			if d.Version == v && m.members[d.LeagueID+"|"+user] != RoleNone {
 				out = append(out, d)
 			}
+		}
+	}
+	return out, nil
+}
+
+func (m *memStore) PullLeague(ctx context.Context, user, league string, since int64, limit int) ([]Doc, error) {
+	all, err := m.Pull(ctx, user, since, 1<<30)
+	if err != nil {
+		return nil, err
+	}
+	out := []Doc{}
+	for _, d := range all {
+		if d.LeagueID == league && len(out) < limit {
+			out = append(out, d)
 		}
 	}
 	return out, nil
@@ -118,7 +171,7 @@ func wantStatus(t *testing.T, r OpResult, status, code string) {
 	}
 }
 
-const leagueJSON = `{"id":"lg1","name":"Club","kind":"club","createdByUid":"owner","inviteCode":"ABC"}`
+const leagueJSON = `{"id":"lg1","name":"Club","kind":"club","createdByUid":"owner","inviteCode":"ABC234"}`
 
 // league with one owner and one extra member.
 func setup(t *testing.T) (*Service, *memStore) {
@@ -126,8 +179,8 @@ func setup(t *testing.T) (*Service, *memStore) {
 	store := newMemStore()
 	svc := NewService(store)
 	wantStatus(t, push1(t, svc, "owner", op(EntityLeague, "lg1", "lg1", 0, leagueJSON)), StatusApplied, "")
-	store.members["lg1|member"] = RoleMember
-	store.members["lg1|other"] = RoleMember
+	_ = store.AddMember(context.Background(), "lg1", "member", RoleMember)
+	_ = store.AddMember(context.Background(), "lg1", "other", RoleMember)
 	return svc, store
 }
 
@@ -193,11 +246,19 @@ func TestNonMembersCannotWrite(t *testing.T) {
 	wantStatus(t, res, StatusRejected, "forbidden")
 }
 
-func TestClientsCannotCreateCityHubsOrEvents(t *testing.T) {
+func TestClientsCannotCreateCityHubs(t *testing.T) {
 	svc, _ := setup(t)
 	hub := `{"id":"city_pune","name":"Pune","kind":"city","cityId":"pune","createdByUid":"owner"}`
 	wantStatus(t, push1(t, svc, "owner", op(EntityLeague, "city_pune", "city_pune", 0, hub)), StatusRejected, "forbidden")
-	wantStatus(t, push1(t, svc, "owner", op(EntityEvent, "e1", "lg1", 0, `{"id":"e1","leagueId":"lg1"}`)), StatusRejected, "server_only")
+}
+
+func TestMembersPostEventsButOnlyTheOwnerDeletesThem(t *testing.T) {
+	svc, _ := setup(t)
+	posted := push1(t, svc, "member", op(EntityEvent, "e1", "lg1", 0, `{"id":"e1","leagueId":"lg1"}`))
+	wantStatus(t, posted, StatusApplied, "")
+	wantStatus(t, push1(t, svc, "stranger", op(EntityEvent, "e2", "lg1", 0, `{"id":"e2","leagueId":"lg1"}`)), StatusRejected, "forbidden")
+	wantStatus(t, push1(t, svc, "member", del(EntityEvent, "e1", "lg1", posted.Version)), StatusRejected, "forbidden")
+	wantStatus(t, push1(t, svc, "owner", del(EntityEvent, "e1", "lg1", posted.Version)), StatusApplied, "")
 }
 
 func TestLeagueImmutableFieldsAndInviteCode(t *testing.T) {
@@ -232,11 +293,15 @@ func TestDeleteLeavesTombstoneInPull(t *testing.T) {
 	wantStatus(t, push1(t, svc, "owner", op(EntityPlayer, "p1", "lg1", page.Docs[0].Version, `{"id":"p1","leagueId":"lg1"}`)), StatusRejected, "deleted")
 }
 
-func TestPlayerCardOwnerCannotChange(t *testing.T) {
+func TestGuestCardsCanBeClaimedOnlyByYourselfAndOnlyOnce(t *testing.T) {
 	svc, _ := setup(t)
 	p := push1(t, svc, "member", op(EntityPlayer, "p1", "lg1", 0, `{"id":"p1","leagueId":"lg1","authUid":null}`))
-	claim := `{"id":"p1","leagueId":"lg1","authUid":"member"}`
-	wantStatus(t, push1(t, svc, "member", op(EntityPlayer, "p1", "lg1", p.Version, claim)), StatusRejected, "forbidden")
+	forOther := `{"id":"p1","leagueId":"lg1","authUid":"other"}`
+	wantStatus(t, push1(t, svc, "member", op(EntityPlayer, "p1", "lg1", p.Version, forOther)), StatusRejected, "forbidden")
+	claimed := push1(t, svc, "member", op(EntityPlayer, "p1", "lg1", p.Version, `{"id":"p1","leagueId":"lg1","authUid":"member"}`))
+	wantStatus(t, claimed, StatusApplied, "")
+	takeOver := `{"id":"p1","leagueId":"lg1","authUid":"other"}`
+	wantStatus(t, push1(t, svc, "other", op(EntityPlayer, "p1", "lg1", claimed.Version, takeOver)), StatusRejected, "forbidden")
 	wantStatus(t, push1(t, svc, "member", op(EntityPlayer, "p2", "lg1", 0, `{"id":"p2","leagueId":"lg1","authUid":"other"}`)), StatusRejected, "forbidden")
 }
 

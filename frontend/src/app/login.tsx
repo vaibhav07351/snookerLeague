@@ -14,7 +14,7 @@ import { DateOfBirthField } from '@/features/home/components/DateOfBirthField';
 import { Screen } from '@/features/home/components/Screen';
 import { TextField } from '@/features/home/components/TextField';
 import { toUserMessage } from '@/shared/errors/app-error';
-import { isFirebaseEnabled } from '@/shared/firebase/app';
+import { isCloudEnabled } from '@/shared/config/env';
 import { useLayout } from '@/shared/hooks/use-layout';
 import { Card } from '@/shared/ui/Card';
 import { notify } from '@/shared/ui/notify';
@@ -62,10 +62,10 @@ export default function LoginScreen(): ReactNode {
   }
 
   async function onGoogle(): Promise<void> {
-    if (!isFirebaseEnabled()) {
+    if (!isCloudEnabled()) {
       notify.info(
         'Almost there',
-        'Cloud sign-in needs a one-time Firebase setup. For now, enter your name below and tap Try without an account: everything works on this phone.',
+        'Online sign-in is not set up in this build. For now, enter your name below and tap Try without an account: everything works on this phone.',
       );
       return;
     }

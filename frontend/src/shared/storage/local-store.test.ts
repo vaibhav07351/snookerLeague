@@ -48,29 +48,37 @@ beforeEach(async () => {
 });
 
 describe('local store persistence', () => {
-  it('migrates a v1 single-key store and keeps the v1 key', async () => {
-    const v1: Partial<AppDataStore> = {
-      matches: [match('m1'), match('m2')],
-      activeLeagueId: 'lg_1',
-    };
-    await AsyncStorage.setItem('snooker.v1.store', JSON.stringify(v1));
+  it('starts blank and leaves data from the Firebase builds untouched', async () => {
+    const old: Partial<AppDataStore> = { matches: [match('m1')], activeLeagueId: 'lg_1' };
+    await AsyncStorage.setItem('snooker.v1.store', JSON.stringify(old));
+    await AsyncStorage.setItem('snooker.v2.meta', JSON.stringify({ storeVersion: 2 }));
 
     const store = freshStore();
     const loaded = await store.loadStore();
 
-    expect(loaded.matches.map((m) => m.id)).toEqual(['m1', 'm2']);
-    expect(loaded.activeLeagueId).toBe('lg_1');
-    expect(await AsyncStorage.getItem('snooker.v2.match.m1')).not.toBeNull();
-    expect(await AsyncStorage.getItem('snooker.v2.meta')).not.toBeNull();
+    expect(loaded.matches).toHaveLength(0);
+    expect(loaded.activeLeagueId).toBeNull();
+    expect(store.isStoreReadOnly()).toBe(false);
     expect(await AsyncStorage.getItem('snooker.v1.store')).not.toBeNull();
+    expect(await AsyncStorage.getItem('snooker.v2.meta')).not.toBeNull();
+  });
 
-    // A second launch reads v2 directly.
-    const again = await freshStore().loadStore();
-    expect(again.matches).toHaveLength(2);
+  it('keeps sync bookkeeping across launches', async () => {
+    const store = freshStore();
+    await store.loadStore();
+    await store.updateStore((s) => ({
+      ...s,
+      serverVersions: { 'match:m1': 7 },
+      syncCursor: 7,
+    }));
+
+    const reloaded = await freshStore().loadStore();
+    expect(reloaded.serverVersions).toEqual({ 'match:m1': 7 });
+    expect(reloaded.syncCursor).toBe(7);
   });
 
   it('never saves over data it could not read', async () => {
-    await AsyncStorage.setItem('snooker.v1.store', '{not json');
+    await AsyncStorage.setItem('snooker.v3.meta', '{not json');
     const store = freshStore();
     await store.loadStore();
     expect(store.isStoreReadOnly()).toBe(true);
@@ -78,8 +86,7 @@ describe('local store persistence', () => {
     await store.updateStore((s) => ({ ...s, matches: [match('new')] }));
 
     expect(store.getStore().matches).toHaveLength(1); // still usable in memory
-    expect(await AsyncStorage.getItem('snooker.v1.store')).toBe('{not json');
-    expect(await AsyncStorage.getItem('snooker.v2.meta')).toBeNull();
+    expect(await AsyncStorage.getItem('snooker.v3.meta')).toBe('{not json');
   });
 
   it('writes only the match that changed', async () => {
@@ -96,8 +103,8 @@ describe('local store persistence', () => {
     const written = jest
       .mocked(AsyncStorage.multiSet)
       .mock.calls.flatMap(([pairs]) => pairs.map(([key]) => key));
-    expect(written).toContain('snooker.v2.match.m2');
-    expect(written).not.toContain('snooker.v2.match.m1');
+    expect(written).toContain('snooker.v3.match.m2');
+    expect(written).not.toContain('snooker.v3.match.m1');
   });
 
   it('removes the key of a deleted match', async () => {
@@ -106,7 +113,7 @@ describe('local store persistence', () => {
     await store.updateStore((s) => ({ ...s, matches: [match('m1'), match('m2')] }));
     await store.updateStore((s) => ({ ...s, matches: s.matches.filter((m) => m.id !== 'm1') }));
 
-    expect(await AsyncStorage.getItem('snooker.v2.match.m1')).toBeNull();
+    expect(await AsyncStorage.getItem('snooker.v3.match.m1')).toBeNull();
     const reloaded = await freshStore().loadStore();
     expect(reloaded.matches.map((m) => m.id)).toEqual(['m2']);
   });

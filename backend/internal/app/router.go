@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vaibhav/snookit-server/internal/auth"
+	"github.com/vaibhav/snookit-server/internal/community"
 	"github.com/vaibhav/snookit-server/internal/platform/config"
 	"github.com/vaibhav/snookit-server/internal/platform/httpx"
 	"github.com/vaibhav/snookit-server/internal/sync"
@@ -31,6 +32,7 @@ func NewRouter(cfg config.Config, pool *pgxpool.Pool) http.Handler {
 	)
 	authHandler := auth.NewHandler(authSvc)
 	syncHandler := sync.NewHandler(sync.NewService(sync.NewPGStore(pool)))
+	communityHandler := community.NewHandler(community.NewService(community.NewPGRepository(pool)))
 	authLimiter := httpx.NewRateLimiter(authRateLimit, authRateWindow)
 
 	r := chi.NewRouter()
@@ -46,6 +48,7 @@ func NewRouter(cfg config.Config, pool *pgxpool.Pool) http.Handler {
 			protected.Use(authHandler.Middleware)
 			authHandler.ProtectedRoutes(protected)
 			syncHandler.ProtectedRoutes(protected)
+			communityHandler.ProtectedRoutes(protected)
 		})
 	})
 	return r

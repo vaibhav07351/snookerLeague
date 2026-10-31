@@ -1,215 +1,122 @@
+import { loadTokens } from '@/shared/api/tokens';
 import { logger } from '@/shared/logging/logger';
-import { getFirebaseAuth, waitForFirebaseAuth } from '@/shared/firebase/app';
 import { getStore, loadStore } from '@/shared/storage/local-store';
+import { shouldCloudSync } from '@/shared/sync/cloud-session';
 import {
   isOnline,
   startConnectivity,
   stopConnectivity,
   subscribeConnectivity,
 } from '@/shared/sync/connectivity';
-import { firebaseErrorMeta, isNetworkError } from '@/shared/sync/firebase-error';
+import { versionKey } from '@/shared/sync/mappers';
+import { pullChanges, restoreCloudUser } from '@/shared/sync/pull';
+import { flushPending, scheduleSync, scheduleUserProfileSync } from '@/shared/sync/schedule';
+import { isNetworkError, syncErrorMeta } from '@/shared/sync/sync-errors';
 import { setCloudReachable } from '@/shared/sync/sync-status';
-import { shouldCloudSync } from '@/shared/sync/firestore-paths';
-import { removeLeagueLocally } from '@/shared/sync/cloud-leagues';
-import { leagueExistsRemote, pullUserAndLeagues } from '@/shared/sync/pull';
-import { upsertCloudUser } from '@/shared/sync/push';
-import {
-  buildCloudUserPayload,
-  flushPending,
-  scheduleSync,
-  scheduleUserProfileSync,
-} from '@/shared/sync/schedule';
 import { stopWatchingActiveLeague, watchActiveLeague } from '@/shared/sync/watch';
-import type { SessionUser } from '@/shared/types/domain';
+import { leagueKindOf, type SessionUser } from '@/shared/types/domain';
 
 let runtimeStarted = false;
 let removeConnectivity: (() => void) | null = null;
-let removeAuth: (() => void) | null = null;
 let wasOnline = true;
 
 /**
- * Restore cloud profile first, then upsert. A blank fresh-session user must never
- * be written before pull - merge:true would wipe DOB / city / leagueIds.
+ * Right after a Google sign-in: pull everything this account already has, restore its
+ * settings, then upload whatever exists only on this phone (for example a demo session's
+ * leagues). Pull comes first, so a fresh sign-in never overwrites newer server data.
  */
 export async function syncAfterGoogleSignIn(user: SessionUser): Promise<void> {
-  await waitForFirebaseAuth();
+  await loadStore();
   if (!shouldCloudSync(user)) {
-    logger.error('sync.runtime', 'Skipping cloud sync - Firebase Auth not ready for user', {
+    logger.error('sync.runtime', 'Skipping cloud sync - no API session for this user', {
       uid: user.uid,
-      authUid: getFirebaseAuth()?.currentUser?.uid ?? null,
     });
     return;
   }
-  await loadStore();
-
   if (isOnline()) {
     try {
-      await pullUserAndLeagues(user.uid);
+      await pullChanges();
+      await restoreCloudUser(user.uid);
     } catch (error) {
-      logger.error('sync.runtime', 'Initial pull failed', firebaseErrorMeta(error));
+      logger.error('sync.runtime', 'Initial pull failed', syncErrorMeta(error));
     }
   }
-
-  // Prefer the store user after pull (restored DOB/city/leagues); fall back to sign-in shell.
-  const sessionUser = getStore().user?.uid === user.uid ? (getStore().user as SessionUser) : user;
-  const profile = buildCloudUserPayload(sessionUser);
-  try {
-    if (isOnline()) {
-      await upsertCloudUser(profile);
-    } else {
-      await scheduleSync([
-        {
-          entity: 'user',
-          docId: sessionUser.uid,
-          leagueId: null,
-          action: 'upsert',
-          payload: profile,
-          updatedAt: profile.updatedAt,
-        },
-      ]);
-    }
-  } catch (error) {
-    logger.error('sync.runtime', 'User upsert failed; queued', firebaseErrorMeta(error));
-    await scheduleSync([
-      {
-        entity: 'user',
-        docId: sessionUser.uid,
-        leagueId: null,
-        action: 'upsert',
-        payload: profile,
-        updatedAt: profile.updatedAt,
-      },
-    ]);
-  }
-
-  // Seed cloud with any local leagues this user already owns (first sync).
-  await seedLocalLeaguesToCloud(sessionUser);
-
+  await scheduleUserProfileSync();
+  await uploadLocalOnlyLeagues(user);
   if (isOnline()) {
     await flushPending();
-    try {
-      await pullUserAndLeagues(sessionUser.uid);
-    } catch (error) {
-      logger.error('sync.runtime', 'Post-seed pull failed', firebaseErrorMeta(error));
-    }
   }
-
   watchActiveLeague(getStore().activeLeagueId);
 }
 
 /**
- * First upload of leagues that only exist on this phone (e.g. created in demo mode, or
- * offline). Leagues already in the cloud are skipped: the pull merges them instead, so a
- * reconnect can never overwrite newer cloud data with an old local copy.
+ * The "upload everything" path: leagues this user owns that the server has never seen
+ * (created in demo mode, or offline before the first sync) are queued with all their
+ * players, matches, races and events. Documents with a server version, or with a write
+ * already queued, are skipped, so this is safe to run on every reconnect.
  */
-async function seedLocalLeaguesToCloud(user: SessionUser): Promise<void> {
+async function uploadLocalOnlyLeagues(user: SessionUser): Promise<void> {
   const store = getStore();
-  const items: Parameters<typeof scheduleSync>[0] = [];
+  const known = store.serverVersions;
+  const queued = new Set(store.pendingOps.map((op) => `${op.entity}:${op.docId}`));
+  const unsent = (entity: 'league' | 'player' | 'match' | 'race' | 'event', id: string) =>
+    known[versionKey(entity, id)] === undefined && !queued.has(`${entity}:${id}`);
 
+  const items: Parameters<typeof scheduleSync>[0] = [];
   const owned = store.leagues.filter(
-    (l) => l.memberUids.includes(user.uid) && l.createdByUid === user.uid,
+    (l) => l.createdByUid === user.uid && leagueKindOf(l) !== 'city',
   );
-  const localOnly: typeof owned = [];
-  if (isOnline()) {
-    for (const league of owned) {
-      try {
-        if (await leagueExistsRemote(league.id)) {
-          continue;
+  for (const league of owned) {
+    const children = {
+      player: store.players.filter((p) => p.leagueId === league.id),
+      match: store.matches.filter((m) => m.leagueId === league.id),
+      race: store.races.filter((r) => r.leagueId === league.id),
+      event: store.events.filter((e) => e.leagueId === league.id),
+    };
+    if (unsent('league', league.id)) {
+      items.push({
+        entity: 'league',
+        docId: league.id,
+        leagueId: null,
+        action: 'upsert',
+        payload: league,
+        updatedAt: league.updatedAt,
+      });
+    }
+    for (const [entity, rows] of Object.entries(children) as [
+      'player' | 'match' | 'race' | 'event',
+      { id: string; updatedAt: string }[],
+    ][]) {
+      for (const row of rows) {
+        if (unsent(entity, row.id)) {
+          items.push({
+            entity,
+            docId: row.id,
+            leagueId: league.id,
+            action: 'upsert',
+            payload: row,
+            updatedAt: row.updatedAt,
+          });
         }
-        if ((store.cloudLeagueIds ?? []).includes(league.id)) {
-          // It was in the cloud before and is gone now: deleted on another phone.
-          await removeLeagueLocally(league.id);
-        } else {
-          localOnly.push(league);
-        }
-      } catch (error) {
-        logger.warn('sync.runtime', 'Could not check league in cloud; skipping seed', {
-          ...firebaseErrorMeta(error),
-          leagueId: league.id,
-        });
       }
     }
   }
-
-  for (const league of localOnly) {
-    items.push({
-      entity: 'invite',
-      docId: league.inviteCode,
-      leagueId: null,
-      action: 'upsert',
-      payload: {
-        code: league.inviteCode,
-        leagueId: league.id,
-        leagueName: league.name,
-        createdByUid: league.createdByUid,
-        updatedAt: league.updatedAt,
-      },
-      updatedAt: league.updatedAt,
-    });
-    items.push({
-      entity: 'league',
-      docId: league.id,
-      leagueId: null,
-      action: 'upsert',
-      payload: league,
-      updatedAt: league.updatedAt,
-    });
-    for (const player of store.players.filter((p) => p.leagueId === league.id)) {
-      items.push({
-        entity: 'player',
-        docId: player.id,
-        leagueId: league.id,
-        action: 'upsert',
-        payload: player,
-        updatedAt: player.updatedAt,
-      });
-    }
-    for (const match of store.matches.filter((m) => m.leagueId === league.id)) {
-      items.push({
-        entity: 'match',
-        docId: match.id,
-        leagueId: league.id,
-        action: 'upsert',
-        payload: match,
-        updatedAt: match.updatedAt,
-      });
-    }
-    for (const race of store.races.filter((r) => r.leagueId === league.id)) {
-      items.push({
-        entity: 'race',
-        docId: race.id,
-        leagueId: league.id,
-        action: 'upsert',
-        payload: race,
-        updatedAt: race.updatedAt,
-      });
-    }
-    for (const event of store.events.filter((e) => e.leagueId === league.id)) {
-      items.push({
-        entity: 'event',
-        docId: event.id,
-        leagueId: league.id,
-        action: 'upsert',
-        payload: event,
-        updatedAt: event.updatedAt,
-      });
-    }
-  }
-
   if (items.length > 0) {
+    logger.info('sync.runtime', 'Uploading data that exists only on this phone', {
+      count: items.length,
+    });
     await scheduleSync(items);
   }
 }
 
 export async function onActiveLeagueChanged(leagueId: string | null): Promise<void> {
-  await waitForFirebaseAuth();
   await scheduleUserProfileSync();
   watchActiveLeague(leagueId);
 }
 
 let reconnecting: Promise<void> | null = null;
 
-/** Single-flight: start-up and auth callbacks can both ask for a reconnect at once. */
+/** Single-flight: start-up and connectivity callbacks can both ask for a reconnect at once. */
 export function onReconnect(): Promise<void> {
   reconnecting ??= reconnect().finally(() => {
     reconnecting = null;
@@ -218,29 +125,25 @@ export function onReconnect(): Promise<void> {
 }
 
 async function reconnect(): Promise<void> {
-  await waitForFirebaseAuth();
+  await loadTokens();
   await loadStore();
   const user = getStore().user;
   if (!shouldCloudSync(user) || !user) {
     stopWatchingActiveLeague();
     if (user && !user.isDemo) {
-      logger.error('sync.runtime', 'Cloud sync paused - sign in with Google again to sync', {
+      logger.warn('sync.runtime', 'Cloud sync paused - sign in with Google again to sync', {
         uid: user.uid,
-        authUid: getFirebaseAuth()?.currentUser?.uid ?? null,
       });
     }
     return;
   }
-  await seedLocalLeaguesToCloud(user);
+  await uploadLocalOnlyLeagues(user);
   await flushPending();
   try {
-    await pullUserAndLeagues(user.uid);
+    await pullChanges();
     setCloudReachable(true);
-    // Keep the cloud profile's league list in step (e.g. after dropping a league we are
-    // not a member of), so the next pull does not try it again.
-    await scheduleUserProfileSync();
   } catch (error) {
-    logger.error('sync.runtime', 'Reconnect pull failed', firebaseErrorMeta(error));
+    logger.error('sync.runtime', 'Reconnect pull failed', syncErrorMeta(error));
     if (isNetworkError(error)) {
       setCloudReachable(false);
     }
@@ -263,56 +166,24 @@ export function startSyncRuntime(): () => void {
     }
     if (!online) {
       stopWatchingActiveLeague();
-    } else {
-      void waitForFirebaseAuth().then(() => {
-        if (shouldCloudSync(getStore().user)) {
-          watchActiveLeague(getStore().activeLeagueId);
-        }
-      });
     }
     wasOnline = online;
   });
 
-  const firebaseAuth = getFirebaseAuth();
-  if (firebaseAuth) {
-    removeAuth = firebaseAuth.onAuthStateChanged((fbUser) => {
-      void loadStore().then(() => {
-        const local = getStore().user;
-        if (fbUser && local && !local.isDemo && local.uid === fbUser.uid && isOnline()) {
-          void onReconnect();
-        } else if (!fbUser) {
-          stopWatchingActiveLeague();
-        }
-      });
-    });
-  }
-
   void (async () => {
-    await waitForFirebaseAuth();
+    await loadTokens();
     await loadStore();
     if (shouldCloudSync(getStore().user) && isOnline()) {
       await onReconnect();
-    } else {
-      stopWatchingActiveLeague();
     }
   })();
 
-  return () => {
-    removeConnectivity?.();
-    removeConnectivity = null;
-    removeAuth?.();
-    removeAuth = null;
-    stopWatchingActiveLeague();
-    stopConnectivity();
-    runtimeStarted = false;
-  };
+  return stopSyncRuntime;
 }
 
 export function stopSyncRuntime(): void {
   removeConnectivity?.();
   removeConnectivity = null;
-  removeAuth?.();
-  removeAuth = null;
   stopWatchingActiveLeague();
   stopConnectivity();
   runtimeStarted = false;

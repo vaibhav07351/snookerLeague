@@ -76,9 +76,6 @@ func changedKeys(a, b fields) []string {
 // known holes closed: league fields are immutable where they must be, and city hubs have no
 // owner, cannot be created by clients and cannot be deleted.
 func authorize(ctx context.Context, tx Tx, userID string, op Op, current *Doc) (*rejection, error) {
-	if op.Entity == EntityEvent {
-		return reject("server_only", "Feed events are created by the server."), nil
-	}
 	if current != nil && current.Deleted {
 		return reject("deleted", "This item was deleted."), nil
 	}
@@ -111,6 +108,8 @@ func authorize(ctx context.Context, tx Tx, userID string, op Op, current *Doc) (
 		return authorizeMatch(userID, role, op, cur, next), nil
 	case EntityRace:
 		return authorizeRace(userID, role, op, cur, next), nil
+	case EntityEvent:
+		return authorizeEvent(role, op), nil
 	}
 	return reject("bad_entity", "Unknown entity."), nil
 }
@@ -148,7 +147,12 @@ func authorizeLeague(ctx context.Context, tx Tx, userID string, op Op, current *
 		return nil, err
 	}
 	if cur.str("kind") == "city" {
-		return reject("forbidden", "City hubs can't be changed by members."), nil
+		// Nobody renames or deletes a hub. Phones still post the derived titles (champions,
+		// race king) until the server computes them, so only those fields may change.
+		if op.Action == ActionDelete || !onlyChanged(changedKeys(cur, next), cityHubWritable) {
+			return reject("forbidden", "City hubs can't be changed by members."), nil
+		}
+		return nil, nil
 	}
 	if op.Action == ActionDelete {
 		if role != RoleOwner {
@@ -181,9 +185,13 @@ func authorizePlayer(userID string, role Role, op Op, cur, next fields) *rejecti
 		}
 		return nil
 	}
-	// A card's owner never changes through sync. Claiming a guest card is a separate,
-	// approved action (not part of this module yet).
+	// "That's me": a member may claim a guest card that has no owner yet, for themselves only
+	// (the same rule Firestore had; owner-approved claims come later). Once a card has an
+	// owner, it never changes through sync.
 	if cur.str("authUid") != next.str("authUid") {
+		if cur.str("authUid") == "" && next.str("authUid") == userID {
+			return nil
+		}
 		return reject("forbidden", "A player card's owner can't be changed.")
 	}
 	return nil
@@ -243,4 +251,27 @@ func authorizeRace(userID string, role Role, op Op, cur, next fields) *rejection
 	}
 	// Races have no scorer lock yet (planned for phase 6): any member may score.
 	return nil
+}
+
+// authorizeEvent: feed events are still written by the phone that finished the match or race
+// (the server takes this over with the stats worker). Any member may post one; only the
+// league owner may remove one.
+func authorizeEvent(role Role, op Op) *rejection {
+	if op.Action == ActionDelete && role != RoleOwner {
+		return reject("forbidden", "Only the league owner can delete feed events.")
+	}
+	return nil
+}
+
+// cityHubWritable are the hub fields a member may change (memberUids is replaced by the
+// server's own list on every write anyway).
+var cityHubWritable = []string{"reigningTeam", "raceKing", "updatedAt", "memberUids"}
+
+func onlyChanged(changed, allowed []string) bool {
+	for _, k := range changed {
+		if !slices.Contains(allowed, k) {
+			return false
+		}
+	}
+	return true
 }

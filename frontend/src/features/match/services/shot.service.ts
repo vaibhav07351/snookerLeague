@@ -70,8 +70,8 @@ async function writeMatch(updated: Match): Promise<Match> {
     ...s,
     matches: s.matches.map((m) => (m.id === updated.id ? updated : m)),
   }));
-  // Not awaited: the next tap must not wait for the server. Firestore keeps one client's
-  // writes in order, and failures are queued and retried by the sync layer.
+  // Not awaited: the next tap must not wait for the server. The sync queue sends one
+  // phone's writes in order, and failures are kept and retried.
   void scheduleSync([
     {
       entity: 'match',

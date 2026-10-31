@@ -1,6 +1,6 @@
 import { AppError } from '@/shared/errors/app-error';
 
-/** Default for app-owned network reads (Firestore queries outside the sync runtime). */
+/** Default for app-owned network reads outside the sync runtime. */
 export const NETWORK_TIMEOUT_MS = 15_000;
 
 /** Reject if `promise` has not settled after `ms`, so a flaky network never hangs a screen. */

@@ -145,8 +145,8 @@ export interface League {
 }
 
 /**
- * Public pointer from an invite code to its league (Firestore `leagueInvites/{code}`).
- * Readable by anyone who knows the code; the league itself is members-only.
+ * What an invite code resolves to before joining (GET /v1/invites/{code}). The league itself
+ * is members-only.
  */
 export interface LeagueInvite {
   code: string;
@@ -414,7 +414,7 @@ export interface PendingOp {
 /** Amateur snooker age band, derived from date of birth. */
 export type SnookerDivision = 'u16' | 'u18' | 'u21' | 'open' | 'masters' | 'seniors';
 
-/** Cloud user profile (Firestore users/{uid}). */
+/** The user's private settings on the server (community kind "user"). */
 export interface CloudUserProfile {
   uid: string;
   displayName: string;
@@ -425,7 +425,7 @@ export interface CloudUserProfile {
   updatedAt: string;
   cityId: string | null;
   cityName: string | null;
-  /** ISO date YYYY-MM-DD. Private - not copied to public playerProfiles. */
+  /** ISO date YYYY-MM-DD. Kept on this phone only: the server drops it (decision D5). */
   dateOfBirth: string | null;
 }
 
@@ -558,6 +558,12 @@ export interface AppDataStore {
   lookingPosts: LookingPost[];
   directoryListings: DirectoryListing[];
   follows: FollowEdge[];
-  /** Leagues known to exist in the cloud (so a missing one means deleted, not "never uploaded"). */
-  cloudLeagueIds?: string[];
+  /**
+   * Server version of every league document this phone has seen, keyed "entity:id". Sent
+   * as baseVersion with each change so the server can spot edits made from a stale copy;
+   * a document with no entry has never reached the server.
+   */
+  serverVersions: Record<string, number>;
+  /** Highest server version pulled so far (the next pull asks for changes after it). */
+  syncCursor: number;
 }

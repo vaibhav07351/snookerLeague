@@ -6,7 +6,7 @@ import { useGoogleSignIn } from '@/features/auth/hooks/use-google-sign-in';
 import { useSession } from '@/features/auth/hooks/use-session';
 import * as authService from '@/features/auth/services/auth.service';
 import { toUserMessage } from '@/shared/errors/app-error';
-import { isFirebaseEnabled } from '@/shared/firebase/app';
+import { isCloudEnabled } from '@/shared/config/env';
 import { notify } from '@/shared/ui/notify';
 import { confirmAction } from '@/shared/utils/confirm';
 
@@ -22,13 +22,13 @@ export function useLinkGoogle(): LinkGoogleApi {
   const { user, refresh } = useSession();
   const { ready, promptIdToken } = useGoogleSignIn();
   const [linking, setLinking] = useState(false);
-  const available = user?.isDemo === true && isFirebaseEnabled();
+  const available = user?.isDemo === true && isCloudEnabled();
 
   const link = useCallback(async () => {
     if (!user?.isDemo) {
       return;
     }
-    if (!isFirebaseEnabled()) {
+    if (!isCloudEnabled()) {
       notify.error('Cloud not set up', 'Google sign-in is not configured for this build.');
       return;
     }

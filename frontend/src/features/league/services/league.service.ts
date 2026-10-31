@@ -1,22 +1,23 @@
-import { FirebaseError } from 'firebase/app';
 import { z } from 'zod';
 
 import { makeMemberPlayer } from '@/features/players/services/players.service';
+import { ApiError, apiErrorMeta } from '@/shared/api/client';
+import { loadTokens } from '@/shared/api/tokens';
+import { joinLeagueByCode } from '@/shared/api/sync-api';
 import { AppError } from '@/shared/errors/app-error';
-import { waitForFirebaseAuth } from '@/shared/firebase/app';
 import { logger } from '@/shared/logging/logger';
 import { createId, inviteCode, nowIso } from '@/shared/utils/id';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
-import { applyLeagueBundleToLocal, fetchLeagueBundle, fetchLeagueInvite } from '@/shared/sync/pull';
-import { joinLeagueRemote } from '@/shared/sync/push';
+import { replaceWithServerDoc } from '@/shared/sync/apply';
+import { fetchLeagueInvite, pullLeague } from '@/shared/sync/pull';
 import { isOnline } from '@/shared/sync/connectivity';
 import {
   onActiveLeagueChanged,
   scheduleSync,
   scheduleUserProfileSync,
   shouldCloudSync,
+  type ScheduleItem,
 } from '@/shared/sync';
-import { scheduleProfileLeagueRemoval, type ScheduleItem } from '@/shared/sync/schedule';
 import { leagueKindOf, type League, type LeagueInvite } from '@/shared/types/domain';
 
 const createLeagueSchema = z.object({
@@ -43,24 +44,6 @@ export function normalizeInviteCode(raw: string): string {
     );
   }
   return parsed.data;
-}
-
-function inviteSyncItem(league: League): ScheduleItem {
-  const invite: LeagueInvite = {
-    code: league.inviteCode,
-    leagueId: league.id,
-    leagueName: league.name,
-    createdByUid: league.createdByUid,
-    updatedAt: league.updatedAt,
-  };
-  return {
-    entity: 'invite',
-    docId: invite.code,
-    leagueId: null,
-    action: 'upsert',
-    payload: invite,
-    updatedAt: invite.updatedAt,
-  };
 }
 
 function leagueSyncItem(league: League, fieldsOnly?: string[]): ScheduleItem {
@@ -168,7 +151,6 @@ export async function createLeague(input: {
 
   await scheduleSync([
     leagueSyncItem(league),
-    inviteSyncItem(league),
     {
       entity: 'player',
       docId: player.id,
@@ -199,9 +181,9 @@ function hasOwnPlayer(leagueId: string, uid: string): boolean {
  */
 export async function previewInvite(rawCode: string, uid: string): Promise<InvitePreview> {
   const code = normalizeInviteCode(rawCode);
-  // On a cold start (every link open on web) Firebase Auth restores the session a moment
-  // after the app; without this a Google user would be told to sign in.
-  await waitForFirebaseAuth();
+  // On a cold start (every link open on web) the saved session loads a moment after the
+  // app; without this a Google user would be told to sign in.
+  await loadTokens();
   await loadStore();
   const store = getStore();
   const local = store.leagues.find((l) => l.inviteCode === code);
@@ -226,9 +208,7 @@ export async function previewInvite(rawCode: string, uid: string): Promise<Invit
   try {
     invite = await fetchLeagueInvite(code);
   } catch (error) {
-    logger.error('league.service', 'Invite lookup failed', {
-      firebaseCode: error instanceof FirebaseError ? error.code : 'unknown',
-    });
+    logger.error('league.service', 'Invite lookup failed', apiErrorMeta(error));
     throw new AppError('NETWORK', 'Could not check the invite. Try again in a moment.');
   }
   if (!invite) {
@@ -283,14 +263,13 @@ export async function joinLeague(input: { code: string; uid: string }): Promise<
   }
 
   try {
-    await joinLeagueRemote(preview.leagueId, code, input.uid, now);
+    await replaceWithServerDoc(await joinLeagueByCode(code));
   } catch (error) {
-    const firebaseCode = error instanceof FirebaseError ? error.code : 'unknown';
-    logger.error('league.service', 'Join write failed', {
+    logger.error('league.service', 'Join failed', {
       leagueId: preview.leagueId,
-      firebaseCode,
+      ...apiErrorMeta(error),
     });
-    if (firebaseCode === 'permission-denied') {
+    if (error instanceof ApiError && error.code === 'invite_not_found') {
       throw new AppError(
         'INVITE_INVALID',
         'The league owner changed this invite code. Ask for a fresh link.',
@@ -299,8 +278,12 @@ export async function joinLeague(input: { code: string; uid: string }): Promise<
     throw new AppError('NETWORK', 'Could not join right now. Check your connection and try again.');
   }
 
-  const bundle = await fetchLeagueBundle(preview.leagueId);
-  await applyLeagueBundleToLocal(bundle);
+  // The league's history is older than this phone's sync cursor, so fetch it in full.
+  try {
+    await pullLeague(preview.leagueId);
+  } catch (error) {
+    logger.warn('league.service', 'League history did not load yet', apiErrorMeta(error));
+  }
   const league = getStore().leagues.find((l) => l.id === preview.leagueId);
   if (!league) {
     throw new AppError('NETWORK', 'You joined, but the league did not load yet. Try again.');
@@ -310,27 +293,6 @@ export async function joinLeague(input: { code: string; uid: string }): Promise<
   await onActiveLeagueChanged(league.id);
   logger.info('league.service', 'Joined league', { leagueId: league.id });
   return league;
-}
-
-/**
- * Make sure the league's invite code works online (leagues made before invite documents
- * existed have none). Idempotent; any member may call it.
- */
-const ensuredInvites = new Set<string>();
-
-export async function ensureInviteDoc(leagueId: string): Promise<void> {
-  await loadStore();
-  const league = getStore().leagues.find((l) => l.id === leagueId);
-  if (!league || leagueKindOf(league) === 'city' || !shouldCloudSync(getStore().user)) {
-    return;
-  }
-  // Once per code per app session is enough; the write is idempotent anyway.
-  const key = `${league.id}:${league.inviteCode}`;
-  if (ensuredInvites.has(key)) {
-    return;
-  }
-  ensuredInvites.add(key);
-  await scheduleSync([inviteSyncItem(league)]);
 }
 
 /** Owner only: issue a new invite code. Old links and codes stop working. */
@@ -348,18 +310,7 @@ export async function regenerateInviteCode(leagueId: string, uid: string): Promi
     ...s,
     leagues: s.leagues.map((l) => (l.id === leagueId ? next : l)),
   }));
-  await scheduleSync([
-    leagueSyncItem(next, ['inviteCode', 'updatedAt']),
-    inviteSyncItem(next),
-    {
-      entity: 'invite',
-      docId: league.inviteCode,
-      leagueId: null,
-      action: 'delete',
-      payload: null,
-      updatedAt: next.updatedAt,
-    },
-  ]);
+  await scheduleSync([leagueSyncItem(next, ['inviteCode', 'updatedAt'])]);
   logger.info('league.service', 'Invite code regenerated', { leagueId });
   return next;
 }
@@ -401,8 +352,6 @@ export async function updateLeagueDefaults(
   }));
   await scheduleSync([
     leagueSyncItem(next, ['name', 'defaultRaceTarget', 'defaultBestOf', 'updatedAt']),
-    // Keep the name shown on the join screen in step with the league.
-    ...(next.name !== league.name ? [inviteSyncItem(next)] : []),
   ]);
   return next;
 }
@@ -472,14 +421,6 @@ export async function deleteLeague(input: {
     ...deletes('race', raceIds),
     ...deletes('event', eventIds),
     {
-      entity: 'invite',
-      docId: league.inviteCode,
-      leagueId: null,
-      action: 'delete',
-      payload: null,
-      updatedAt: now,
-    },
-    {
       entity: 'league',
       docId: input.leagueId,
       leagueId: null,
@@ -488,7 +429,6 @@ export async function deleteLeague(input: {
       updatedAt: now,
     },
   ]);
-  await scheduleProfileLeagueRemoval(input.leagueId);
   await scheduleUserProfileSync();
   await onActiveLeagueChanged(getStore().activeLeagueId);
 

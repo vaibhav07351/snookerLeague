@@ -1,73 +1,54 @@
-import { FirebaseError } from 'firebase/app';
+import { ApiError } from '@/shared/api/client';
+import { deleteCommunityDoc, putCommunityDoc } from '@/shared/api/community-api';
 import {
-  arrayRemove,
-  arrayUnion,
-  deleteDoc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  type DocumentReference,
-} from 'firebase/firestore';
-
+  joinCityHub,
+  leaveLeague,
+  pushOps,
+  type DocEntity,
+  type PushOp,
+  type PushResult,
+  type ServerDoc,
+} from '@/shared/api/sync-api';
 import { logger } from '@/shared/logging/logger';
+import { getStore } from '@/shared/storage/local-store';
 import {
-  MATCH_SETTINGS_FIELDS,
-  type CloudUserProfile,
+  localRowOf,
+  recordVersion,
+  replaceWithServerDoc,
+  storeRebasedRow,
+} from '@/shared/sync/apply';
+import { removeLeagueLocally } from '@/shared/sync/cloud-leagues';
+import { sameJson, toJsonObject, versionKey } from '@/shared/sync/mappers';
+import { lastWriteWins, resolveLeague, resolveMatch } from '@/shared/sync/merge';
+import { RejectedWriteError } from '@/shared/sync/sync-errors';
+import {
+  cityHubId,
+  type FeedEvent,
+  type League,
+  type Match,
   type PendingOp,
+  type Player,
+  type Race,
 } from '@/shared/types/domain';
-import {
-  eventDocRef,
-  challengeDocRef,
-  directoryListingDocRef,
-  followDocRef,
-  leagueDocRef,
-  leagueInviteDocRef,
-  lookingPostDocRef,
-  matchDocRef,
-  playerDocRef,
-  playerProfileDocRef,
-  raceDocRef,
-  cloudUserWritePayload,
-  stripUndefined,
-  userDocRef,
-} from '@/shared/sync/firestore-paths';
 
-const WRITE_TIMEOUT_MS = 20_000;
+/** What happened to one queued write. */
+export type PushOutcome =
+  | { status: 'applied' }
+  /** The server held a newer copy and the merged result is exactly the server's: nothing to send. */
+  | { status: 'resolved' }
+  /** Merged with a newer server copy; send again (with `payload` when the write changed). */
+  | { status: 'retry'; payload?: unknown }
+  | { status: 'rejected'; error: RejectedWriteError };
 
-async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`Timeout: ${label}`)), WRITE_TIMEOUT_MS);
-      }),
-    ]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
+/** Documents versioned by /v1/sync (everything else goes to its own endpoint). */
+const DOC_ENTITIES: readonly string[] = ['league', 'player', 'match', 'race', 'event'];
+
+/** True for a plain write of a league document, which can travel in a batched push. */
+export function isBatchable(op: PendingOp): boolean {
+  return DOC_ENTITIES.includes(op.entity) && !op.membership;
 }
 
-export async function pushPendingOp(op: PendingOp): Promise<void> {
-  if (op.action === 'delete') {
-    await withTimeout(deleteRemote(op), `delete ${op.entity}/${op.docId}`);
-    return;
-  }
-  if (op.payload == null) {
-    throw new Error(`Missing payload for upsert ${op.entity}/${op.docId}`);
-  }
-  await withTimeout(upsertRemote(op), `upsert ${op.entity}/${op.docId}`);
-}
-
-function omit(data: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
-  const out = { ...data };
-  for (const key of keys) {
-    delete out[key];
-  }
-  return out;
-}
+type Row = League | Player | Match | Race | FeedEvent;
 
 function pick(data: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -79,247 +60,188 @@ function pick(data: Record<string, unknown>, keys: readonly string[]): Record<st
   return out;
 }
 
+function localRow(entity: DocEntity, id: string): Row | undefined {
+  const s = getStore();
+  switch (entity) {
+    case 'league':
+      return s.leagues.find((r) => r.id === id);
+    case 'player':
+      return s.players.find((r) => r.id === id);
+    case 'match':
+      return s.matches.find((r) => r.id === id);
+    case 'race':
+      return s.races.find((r) => r.id === id);
+    case 'event':
+      return s.events.find((r) => r.id === id);
+  }
+}
+
 /**
- * Update only `fields`; if the document does not exist yet, create it from `full`.
- * Shared documents are never rewritten wholesale, so a stale copy on one phone cannot undo
- * changes other phones made to fields it does not own.
+ * The whole document to send. A field-only write (stats, a title, match settings) is laid
+ * over this phone's current copy, which is the server's copy plus our own changes: the
+ * baseVersion check then guarantees we never overwrite fields someone else changed.
  */
-async function updateOrCreate(
-  ref: DocumentReference,
-  fields: Record<string, unknown>,
-  full: Record<string, unknown>,
-): Promise<void> {
-  try {
-    await updateDoc(ref, fields);
-  } catch (error) {
-    // A missing document can surface as not-found or, when rules cannot read it, as
-    // permission-denied. Only create when it really does not exist yet.
-    const code = error instanceof FirebaseError ? error.code : '';
-    if (code === 'not-found' || code === 'permission-denied') {
-      const snap = await getDoc(ref);
-      if (!snap.exists()) {
-        await setDoc(ref, full);
-        return;
+function documentFor(op: PendingOp): Record<string, unknown> {
+  const payload = toJsonObject(op.payload);
+  if (!op.fieldsOnly) {
+    return payload;
+  }
+  const base = localRow(op.entity as DocEntity, op.docId);
+  return { ...toJsonObject(base ?? payload), ...pick(payload, op.fieldsOnly) };
+}
+
+function toPushOp(op: PendingOp): PushOp {
+  const entity = op.entity as DocEntity;
+  const leagueId = entity === 'league' ? op.docId : (op.leagueId ?? '');
+  return {
+    opId: op.opId,
+    entity,
+    id: op.docId,
+    leagueId,
+    action: op.action,
+    baseVersion: getStore().serverVersions[versionKey(entity, op.docId)] ?? 0,
+    ...(op.action === 'upsert' ? { data: documentFor(op) } : {}),
+  };
+}
+
+function resolverFor(entity: DocEntity): (local: Row, remote: Row) => Row {
+  switch (entity) {
+    case 'league':
+      return (l, r) => resolveLeague(l as League, r as League, false);
+    case 'match':
+      return (l, r) => resolveMatch(l as Match, r as Match, false);
+    default:
+      return (l, r) => lastWriteWins(l, r, false);
+  }
+}
+
+/**
+ * The server holds a newer copy than the one this write was based on. Merge with the same
+ * rules a pull uses; if the server's copy already wins, the write is done.
+ */
+async function rebase(op: PendingOp, current: ServerDoc | null | undefined): Promise<PushOutcome> {
+  const entity = op.entity as DocEntity;
+  if (!current) {
+    // Gone from the server without a tombstone (never fully created): send it as new.
+    await recordVersion(entity, op.docId, 0);
+    return { status: 'retry' };
+  }
+  if (op.action === 'delete') {
+    await recordVersion(entity, op.docId, current.version);
+    return { status: 'retry' }; // a delete wins over edits made meanwhile
+  }
+  const server = localRowOf(current);
+  if (!server) {
+    await replaceWithServerDoc(current);
+    return { status: 'resolved' };
+  }
+  if (op.fieldsOnly) {
+    const patched = { ...server, ...pick(toJsonObject(op.payload), op.fieldsOnly) } as Row;
+    await storeRebasedRow(entity, patched, current.version);
+    return { status: 'retry' };
+  }
+  const mine = (localRowOf({ ...current, data: toJsonObject(op.payload) }) ?? server) as Row;
+  const merged = resolverFor(entity)(mine, server);
+  if (sameJson(merged, server)) {
+    await replaceWithServerDoc(current);
+    return { status: 'resolved' };
+  }
+  await storeRebasedRow(entity, merged, current.version);
+  return { status: 'retry', payload: merged };
+}
+
+async function outcomeOf(op: PendingOp, result: PushResult): Promise<PushOutcome> {
+  const entity = op.entity as DocEntity;
+  switch (result.status) {
+    case 'applied':
+      await recordVersion(entity, op.docId, result.version ?? 0);
+      return { status: 'applied' };
+    case 'conflict':
+      return rebase(op, result.current);
+    default:
+      if (result.code === 'deleted' || (op.action === 'delete' && result.code === 'not_found')) {
+        // Someone deleted it: follow the server instead of reporting an error.
+        if (entity === 'league') {
+          await removeLeagueLocally(op.docId);
+        }
+        return { status: 'resolved' };
       }
+      return {
+        status: 'rejected',
+        error: new RejectedWriteError(result.code ?? 'rejected', result.message ?? 'Refused'),
+      };
+  }
+}
+
+/** Send up to 100 league-document writes in one request; one outcome per op, in order. */
+export async function pushDocBatch(ops: PendingOp[]): Promise<PushOutcome[]> {
+  const results = await pushOps(ops.map(toPushOp));
+  const outcomes: PushOutcome[] = [];
+  for (const [i, op] of ops.entries()) {
+    const result = results[i];
+    if (!result || result.opId !== op.opId) {
+      throw new Error('Push results do not match the request');
     }
-    throw error;
+    outcomes.push(await outcomeOf(op, result));
   }
+  return outcomes;
 }
 
-/**
- * League fields never sent by a plain save: membership changes only via join/leave ops,
- * and the invite code only via the owner's "new code" (fieldsOnly).
- */
-const LEAGUE_SERVER_FIELDS = ['memberUids', 'createdByUid', 'inviteCode'] as const;
-
-async function upsertLeague(op: PendingOp, data: Record<string, unknown>): Promise<void> {
-  const ref = leagueDocRef(op.docId);
-  if (op.membership) {
-    const change = op.membership.add
-      ? { memberUids: arrayUnion(op.membership.add) }
-      : op.membership.remove
-        ? { memberUids: arrayRemove(op.membership.remove) }
-        : {};
-    await updateOrCreate(ref, { ...change, updatedAt: data.updatedAt }, data);
-    return;
+/** Join or leave a league (city hubs are created on the server by the first join). */
+async function pushMembership(op: PendingOp): Promise<PushOutcome> {
+  const league = op.payload as Partial<League> | null;
+  if (op.membership?.add) {
+    const cityId = league?.cityId ?? (op.docId.startsWith('city_') ? op.docId.slice(5) : null);
+    if (!cityId || op.docId !== cityHubId(cityId)) {
+      // Club leagues are joined online with an invite code, never through the queue.
+      logger.warn('sync.push', 'Dropping a queued join for a club league', { leagueId: op.docId });
+      return { status: 'resolved' };
+    }
+    const cityName = getStore().user?.cityName ?? cityId;
+    await replaceWithServerDoc(await joinCityHub(cityId, cityName));
+    return { status: 'applied' };
   }
-  if (op.fieldsOnly) {
-    await updateOrCreate(ref, pick(data, op.fieldsOnly), data);
-    return;
-  }
-  await updateOrCreate(ref, omit(data, LEAGUE_SERVER_FIELDS), data);
-}
-
-async function upsertMatch(op: PendingOp, data: Record<string, unknown>): Promise<void> {
-  if (!op.leagueId) {
-    throw new Error('match upsert requires leagueId');
-  }
-  const ref = matchDocRef(op.leagueId, op.docId);
-  if (op.fieldsOnly) {
-    await updateDoc(ref, pick(data, op.fieldsOnly));
-    return;
-  }
-  // Scorer saves never carry settings (scorer, policy, title): those change on their own.
-  await updateOrCreate(ref, omit(data, [...MATCH_SETTINGS_FIELDS, 'createdByUid']), data);
-}
-
-/**
- * The profile's league list only grows here (arrayUnion), so two phones never overwrite
- * each other's lists; leaving a league removes it explicitly (membership.remove).
- */
-async function upsertUser(op: PendingOp, data: Record<string, unknown>): Promise<void> {
-  const ref = userDocRef(op.docId);
   if (op.membership?.remove) {
-    await updateDoc(ref, { leagueIds: arrayRemove(op.membership.remove) });
-    return;
+    try {
+      await replaceWithServerDoc(await leaveLeague(op.docId));
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'not_member') {
+        return { status: 'resolved' }; // already out
+      }
+      throw error;
+    }
+    return { status: 'applied' };
   }
-  const leagueIds = Array.isArray(data.leagueIds) ? (data.leagueIds as string[]) : [];
-  const { leagueIds: _ignored, ...rest } = data;
-  await setDoc(
-    ref,
-    leagueIds.length > 0 ? { ...rest, leagueIds: arrayUnion(...leagueIds) } : rest,
-    { merge: true },
-  );
+  return { status: 'resolved' };
 }
 
-async function upsertRemote(op: PendingOp): Promise<void> {
-  const raw = stripUndefined(op.payload as Record<string, unknown>);
-  const data = op.entity === 'user' ? cloudUserWritePayload(raw) : raw;
+/** Send one queued write that is not a plain league-document write. */
+export async function pushSingle(op: PendingOp): Promise<PushOutcome> {
+  if (op.membership && DOC_ENTITIES.includes(op.entity)) {
+    return pushMembership(op);
+  }
   switch (op.entity) {
-    case 'user':
-      await upsertUser(op, data);
-      return;
-    case 'league':
-      await upsertLeague(op, data);
-      return;
-    case 'player':
-      if (!op.leagueId) {
-        throw new Error('player upsert requires leagueId');
-      }
-      if (op.fieldsOnly) {
-        // e.g. stats only: never rewrite the name or owner from a stale copy.
-        await updateOrCreate(playerDocRef(op.leagueId, op.docId), pick(data, op.fieldsOnly), data);
-        return;
-      }
-      await setDoc(playerDocRef(op.leagueId, op.docId), data, { merge: true });
-      return;
-    case 'match':
-      await upsertMatch(op, data);
-      return;
-    case 'race':
-      if (!op.leagueId) {
-        throw new Error('race upsert requires leagueId');
-      }
-      await setDoc(raceDocRef(op.leagueId, op.docId), data, { merge: true });
-      return;
-    case 'event':
-      if (!op.leagueId) {
-        throw new Error('event upsert requires leagueId');
-      }
-      await setDoc(eventDocRef(op.leagueId, op.docId), data, { merge: true });
-      return;
-    case 'profile':
-      await setDoc(playerProfileDocRef(op.docId), data, { merge: true });
-      return;
-    case 'challenge':
-      await setDoc(challengeDocRef(op.docId), data, { merge: true });
-      return;
-    case 'looking':
-      await setDoc(lookingPostDocRef(op.docId), data, { merge: true });
-      return;
-    case 'directory':
-      await setDoc(directoryListingDocRef(op.docId), data, { merge: true });
-      return;
-    case 'follow':
-      await setDoc(followDocRef(op.docId), data, { merge: true });
-      return;
     case 'invite':
-      await setDoc(leagueInviteDocRef(op.docId), data, { merge: true });
-      return;
-    default:
-      throw new Error(`Unknown entity ${op.entity as string}`);
-  }
-}
-
-async function deleteRemote(op: PendingOp): Promise<void> {
-  switch (op.entity) {
+      // The server finds leagues by the inviteCode inside the league itself.
+      return { status: 'resolved' };
     case 'user':
-      await deleteDoc(userDocRef(op.docId));
-      return;
-    case 'league':
-      await deleteDoc(leagueDocRef(op.docId));
-      return;
-    case 'player':
-      if (!op.leagueId) {
-        throw new Error('player delete requires leagueId');
+      if (op.membership) {
+        return { status: 'resolved' }; // the server derives my leagues from membership
       }
-      await deleteDoc(playerDocRef(op.leagueId, op.docId));
-      return;
-    case 'match':
-      if (!op.leagueId) {
-        throw new Error('match delete requires leagueId');
-      }
-      await deleteDoc(matchDocRef(op.leagueId, op.docId));
-      return;
-    case 'race':
-      if (!op.leagueId) {
-        throw new Error('race delete requires leagueId');
-      }
-      await deleteDoc(raceDocRef(op.leagueId, op.docId));
-      return;
-    case 'event':
-      if (!op.leagueId) {
-        throw new Error('event delete requires leagueId');
-      }
-      await deleteDoc(eventDocRef(op.leagueId, op.docId));
-      return;
+      break;
     case 'profile':
-      await deleteDoc(playerProfileDocRef(op.docId));
-      return;
     case 'challenge':
-      await deleteDoc(challengeDocRef(op.docId));
-      return;
     case 'looking':
-      await deleteDoc(lookingPostDocRef(op.docId));
-      return;
     case 'directory':
-      await deleteDoc(directoryListingDocRef(op.docId));
-      return;
     case 'follow':
-      await deleteDoc(followDocRef(op.docId));
-      return;
-    case 'invite':
-      await deleteDoc(leagueInviteDocRef(op.docId));
-      return;
+      break;
     default:
-      throw new Error(`Unknown entity ${op.entity as string}`);
+      throw new Error(`Unexpected queued write for ${op.entity}`);
   }
-}
-
-/**
- * Add the signed-in user to a league they were invited to. Online only: this is the one
- * league write a non-member may make, and the rules accept it only with the league's
- * current invite code and no other change. Safe to repeat (arrayUnion).
- */
-export async function joinLeagueRemote(
-  leagueId: string,
-  code: string,
-  uid: string,
-  at: string,
-): Promise<void> {
-  await withTimeout(
-    updateDoc(leagueDocRef(leagueId), {
-      memberUids: arrayUnion(uid),
-      lastJoinCode: code.toUpperCase(),
-      updatedAt: at,
-    }),
-    `join league/${leagueId}`,
-  );
-}
-
-export async function upsertCloudUser(profile: CloudUserProfile): Promise<void> {
-  try {
-    await withTimeout(
-      upsertUser(
-        {
-          opId: 'direct',
-          entity: 'user',
-          docId: profile.uid,
-          leagueId: null,
-          action: 'upsert',
-          payload: profile,
-          updatedAt: profile.updatedAt,
-          attempts: 0,
-        },
-        cloudUserWritePayload({ ...profile }),
-      ),
-      `upsert user/${profile.uid}`,
-    );
-  } catch (error) {
-    logger.error('sync.push', 'Failed to upsert cloud user', {
-      shape: error instanceof Error ? error.name : 'unknown',
-      uid: profile.uid,
-    });
-    throw error;
+  if (op.action === 'delete') {
+    await deleteCommunityDoc(op.entity, op.docId);
+  } else {
+    await putCommunityDoc(op.entity, op.docId, toJsonObject(op.payload));
   }
+  return { status: 'applied' };
 }

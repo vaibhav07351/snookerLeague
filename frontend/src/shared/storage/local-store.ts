@@ -34,6 +34,8 @@ export function emptyStore(): AppDataStore {
     lookingPosts: [],
     directoryListings: [],
     follows: [],
+    serverVersions: {},
+    syncCursor: 0,
   };
 }
 
@@ -108,6 +110,13 @@ export function normalizeStore(raw: Partial<AppDataStore>): AppDataStore {
       ? uniqueBy(raw.directoryListings as DirectoryListing[], byId)
       : [],
     follows: Array.isArray(raw.follows) ? uniqueBy(raw.follows as FollowEdge[], byId) : [],
+    serverVersions:
+      raw.serverVersions != null &&
+      typeof raw.serverVersions === 'object' &&
+      !Array.isArray(raw.serverVersions)
+        ? raw.serverVersions
+        : {},
+    syncCursor: typeof raw.syncCursor === 'number' && raw.syncCursor >= 0 ? raw.syncCursor : 0,
   };
 }
 
@@ -138,7 +147,7 @@ const LOAD_ATTEMPTS = 2;
 async function loadFromDisk(): Promise<AppDataStore> {
   let result: DiskReadResult = { kind: 'failed', reason: 'not attempted' };
   for (let attempt = 1; attempt <= LOAD_ATTEMPTS; attempt += 1) {
-    result = await readStoreFromDisk(normalizeStore);
+    result = await readStoreFromDisk();
     if (result.kind !== 'failed') {
       break;
     }
@@ -151,11 +160,6 @@ async function loadFromDisk(): Promise<AppDataStore> {
   } else if (result.kind === 'loaded') {
     memory = normalizeStore(result.raw);
     persisted.seed(memory);
-    if (result.migratedFromV1) {
-      logger.info('local-store', 'Migrated store to per-key layout', {
-        matches: memory.matches.length,
-      });
-    }
   }
   loaded = true;
   return memory;

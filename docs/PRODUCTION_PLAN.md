@@ -4,11 +4,11 @@
 > growing by itself with no paid marketing. Backend: own Go + PostgreSQL server on Oracle
 > Cloud Always Free (Firebase removed).
 
-|               |                                                                                               |
-| ------------- | --------------------------------------------------------------------------------------------- |
-| **Status**    | v4.2 - Oracle + Go backend. Phone storage fix, auth and sync core done; app not switched yet. |
-| **Created**   | 2026-10-12 (v1-v3 Firebase plan), 2026-10-12 (v4 Oracle plan)                                 |
-| **Next step** | Deploy the backend to the VM, then switch the app to it (Phase 2b)                            |
+|               |                                                                                                    |
+| ------------- | -------------------------------------------------------------------------------------------------- |
+| **Status**    | v4.4 - App switched to the Snookit API, Firebase removed (2026-10-31). Not yet tested on a device. |
+| **Created**   | 2026-10-12 (v1-v3 Firebase plan), 2026-10-12 (v4 Oracle plan)                                      |
+| **Next step** | Device test of Phase 2b, then the stats + Elo worker (Phase 1)                                     |
 
 ---
 
@@ -100,7 +100,7 @@ now run the server yourself.
 | **One VM = one point of failure**                               | Fine at this size. Boot volume backups + runbook to rebuild in under an hour.                                                                                            |
 | **Live scoring for watchers** (Firestore did this for free)     | WebSocket from the Go server; one VM means no extra message broker.                                                                                                      |
 | **Sync between phone and server** (Firestore SDK did this)      | Our own push/pull endpoints with idempotent operations (section 4).                                                                                                      |
-| **Moving existing data and users** off Firebase                 | One-off migration script; existing user ids are kept (section 8, Phase 2b).                                                                                              |
+| **Moving existing data and users** off Firebase                 | Not needed: the app is not live, so the new server starts blank (decided 2026-10-31, section 3b).                                                                        |
 | **Scoring logic in two languages** (TypeScript app + Go server) | Shared test fixtures: the same JSON cases run in Jest and `go test`, so the two can't drift.                                                                             |
 | **Push notifications**                                          | Android push only works through Google's FCM. A Firebase project stays **only** as the free FCM pipe (no database, no login). Push is in the last phase.                 |
 
@@ -131,6 +131,7 @@ now run the server yourself.
 | D5  | **No strict 18+ gate, but an easy safe limit** | A simple "I am 13 or older" confirmation, no date of birth stored, under-18 players hidden from public boards. Risk: India's DPDP Act sets the child line at 18; revisit before a public Play launch.                                                                                                                                                                                                                                                                                                   |
 | D6  | **Approve new libraries**, checked             | All seven Go libraries were checked: official modules at current versions (chi v5.5.0, pgx v5.11.0, goose v3.29.0, google.golang.org/api v0.308.0, golang-jwt v5.3.1, coder/websocket v1.8.15, sentry-go v0.50.0).                                                                                                                                                                                                                                                                                      |
 | D7  | **Per-league Elo + separate public rating**    | As recommended.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| D8  | **Blank start, no data move** (2026-10-31)     | The app is not live, so no Firebase data or users are moved. Phase 2b drops the migration script and the staged cutover; testers simply sign in again on the new build.                                                                                                                                                                                                                                                                                                                                 |
 
 ---
 
@@ -234,8 +235,8 @@ but you fix the plumbing. The plan keeps the plumbing simple: one house, four ro
 - 20 files import Firebase today (sync layer, auth, community and league services). All move to
   the API client.
 - **One "upload everything" path** (a full snapshot of local data sent as idempotent upserts,
-  keyed by existing ids). It is used twice: when a demo user signs in with Google, and on the
-  first launch after the switch from Firebase (recovers anything that never synced).
+  keyed by existing ids), used when a demo user signs in with Google. (It was also planned for
+  the first launch after the switch from Firebase; with the blank start, D8, that use is gone.)
 
 ### Cloudflare and Caddy, done safely
 
@@ -367,22 +368,25 @@ Tick boxes as work completes so the next session knows where we are.
 
 **Goal:** a secure, backed-up, monitored server that deploys with one command.
 
-- [ ] Decide D1-D3. Create the VM (Ubuntu 24.04, Arm), or resize the existing one.
+- [x] Decide D1-D3. (done: shares the existing `ironcoach-api` VM, Ubuntu 22.04 Arm, with 2 GB
+      swap added; resizing it is still optional)
 - [ ] **Firewall, in two places** (a common Oracle gotcha):
   - OCI security list: 80/443 open **only to Cloudflare's IP ranges**; 22 only to your IP.
   - The VM's own iptables: Oracle's Ubuntu image ends INPUT with a REJECT rule, so the 80/443
     accept rules must go **above** it and be saved with `netfilter-persistent`.
   - SSH by key only, password login off, `fail2ban`.
 - [ ] `unattended-upgrades` for automatic security patches.
-- [x] Docker Compose: `caddy`, `api`, `postgres` (written 2026-10-24, not yet run on the VM; Caddy is optional because the VM is shared), all **arm64** images. Postgres publishes no
+- [x] Docker Compose: `api`, `postgres` (running on the VM since 2026-10-30; no Caddy of its own, one route in IronCoach's Caddy serves `https://snookit.duckdns.org`; steps in `docs/DEPLOY_BACKEND.md`), all **arm64** images. Postgres publishes no
       host port at all (Docker-published ports skip the host firewall). Healthchecks plus
       `depends_on: service_healthy`; log rotation (`max-size`); `stop_grace_period` for clean shutdown.
 - [ ] Postgres tuned for the VM's memory; `statement_timeout` set.
-- [ ] Domain on Cloudflare (free plan): `api.`, `app.`, `www.`, proxied; SSL **Full (strict)**
-      with a Cloudflare Origin certificate in Caddy (see section 4).
-- [ ] Secrets (`DATABASE_URL`, `JWT_SIGNING_KEY`, Google client ids, Sentry DSN) in a server-only
+- [x] ~~Domain on Cloudflare~~ Dropped by D2: free DuckDNS name with Caddy's automatic HTTPS
+      (Let's Encrypt certificate issued 2026-10-30).
+- [x] Secrets (done 2026-10-30) (`DATABASE_URL`, `JWT_SIGNING_KEY`, Google client ids, Sentry DSN) in a server-only
       `.env` with `chmod 600`; placeholders in a committed `.env.example`.
-- [ ] **Backups:**
+- [ ] **Backups:** (partly done 2026-10-30: nightly `pg_dump` at 03:00 UTC by a systemd timer,
+      `backend/deploy/backup.sh`, 7 days kept in `~/backups` on the VM. Still to do: encryption,
+      the off-VM copies and the restore drill below)
   - Nightly `pg_dump`, **encrypted** (with `age`) before it leaves the VM.
   - To Oracle Object Storage with a lifecycle rule deleting copies after 14 days. Note: the free
     20 GB (and the 5 free volume backups) are shared with IronCoach.
@@ -391,7 +395,7 @@ Tick boxes as work completes so the next session knows where we are.
 - [ ] **Monitoring:** UptimeRobot (free) on `/healthz`; Sentry for Go and the app; disk-space alert.
 - [ ] **Deploy pipeline:** GitHub Actions builds an `arm64` image (buildx) -> GitHub Container
       Registry (free) -> SSH deploy -> health check -> keep the previous image for rollback.
-- [ ] Database migrations with `goose`, run on deploy, always in **expand/contract** style: add
+- [x] Database migrations with `goose` (done: they run on every API start), run on deploy, always in **expand/contract** style: add
       new columns, backfill, and only drop old ones a release later, because offline phones can be
       weeks behind.
 - [ ] `docs/RUNBOOK.md`: rebuild server, restore backup, rotate secrets, roll back a deploy.
@@ -400,9 +404,9 @@ Tick boxes as work completes so the next session knows where we are.
 
 **Goal:** the server does everything Firestore did, plus trusted stats.
 
-- [x] Repo layout: `server/` (done 2026-10-24: `server/` with config, httpx, auth, db packages) (Go module) inside this repo, layered
+- [x] Repo layout: `backend/` (done 2026-10-24: config, httpx, db, auth, sync packages) (Go module) inside this repo, layered
       `handlers -> services -> repositories`, matching the app's rules.
-- [x] **Auth** as designed in section 5 (done 2026-10-24: Google verify, access + rotating refresh tokens, grace window, theft detection, rate limit; tested with in-memory fakes, NOT yet run against real Postgres or a real Google token) (`users`, `sessions` tables; `/auth/google`,
+- [x] **Auth** as designed in section 5 (done 2026-10-24: Google verify, access + rotating refresh tokens, grace window, theft detection, rate limit; tested with in-memory fakes and, since 2026-10-30, against real Postgres on the VM; NOT yet tried with a real Google token) (`users`, `sessions` tables; `/auth/google`,
       `/auth/refresh`, `/auth/logout`, `/me`).
 - [x] **Schema**: (partly done: users, sessions, league_members, docs (JSONB), applied_ops, change sequence; stats/rating tables, invites, follows and challenges still to come) `users`, `sessions`, `player_profiles`, `leagues`, `league_members`, `players`
       (league cards), `matches` (JSONB document + version), `frames`, `shots` (rebuilt from the
@@ -418,7 +422,7 @@ Tick boxes as work completes so the next session knows where we are.
   - Match: scorer writes shots; creator/owner manage; take-over follows the scoring policy.
   - Races get the same scorer lock as matches.
   - Guest card claim: request -> league owner approves (claim links come in P4).
-- [x] **Sync endpoints** under `/v1` (done 2026-10-24: `backend/internal/sync`, idempotent per user + opId, `baseVersion` conflicts, tombstones, paged pull; 17 tests on an in-memory store, NOT yet run against real Postgres) (designed in section 4): `/sync/push` (batched, per-op
+- [x] **Sync endpoints** under `/v1` (done 2026-10-24: `backend/internal/sync`, idempotent per user + opId, `baseVersion` conflicts, tombstones, paged pull; 17 tests on an in-memory store, plus integration tests on real Postgres passing on the VM 2026-10-30) (designed in section 4): `/sync/push` (batched, per-op
       results, `opId` + `baseVersion`, 409 on conflict), `/sync/pull` (paged, with tombstones and
       access-lost entries). City hubs pull only what the phone needs (own matches + top boards),
       never "all 500 cards".
@@ -437,7 +441,9 @@ Tick boxes as work completes so the next session knows where we are.
       emails).
 - [ ] Every list endpoint paginated; every query parameterised (`pgx`).
 - [ ] Tests: service tests with a real Postgres (Docker) for permissions, sync idempotency and
-      stats.
+      stats. (partly done: `backend/internal/integration` covers auth, sync idempotency, conflicts,
+      tombstones, cross-league ids and concurrent writers; stats and the remaining permissions
+      still to come)
 
 ### Phase 2a - Phone storage fix (ships first, still on Firebase)
 
@@ -452,18 +458,30 @@ the same release.
 - [ ] Minimum-version check: `/config` (first read from a public Firestore doc, later from the Go
       API) returns `minVersion`; old app versions see "Update required".
 
-### Phase 2b - App switch + data move
+### Phase 2b - App switch (blank start)
 
-**Goal:** the app runs on the new server with no data lost.
+**Goal:** the app runs on the new server. Per D8 nothing is moved from Firebase: the server
+starts empty and testers sign in again.
 
-- [ ] `src/shared/api/` client + per-feature `repositories/`; rework `src/shared/sync/` as
-      described in section 4 (error table, version-based merge, no derived data, tombstones).
-- [ ] The "upload everything" path (used by demo upgrade and by the first launch after switch).
-- [ ] Sign-in: native Google picker -> `/v1/auth/google`; tokens in `expo-secure-store`.
-- [ ] Remove the `firebase` package from the app. **Keep** the Google Cloud/Firebase project
-      (OAuth clients, SHA-1s, later push). Web client id moves to `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`.
+- [x] `src/shared/api/` client (timeouts, auth header, single-flight token refresh, typed
+      errors) and `src/shared/sync/` reworked (done 2026-10-31): batched pushes with
+      `baseVersion`, conflicts merged with the existing resolvers, version-cursor pull with
+      tombstones, 10 s poll while the app is open. Still to do from section 4: phones still
+      send derived data (stats, titles, feed events) until the stats worker exists.
+- [x] Server endpoints the app needed (done 2026-10-31): join by invite code, invite preview,
+      leave, city hubs created by the server on first join, single-league pull after joining,
+      and a `community` module for user settings, profiles, directory, looking posts, follows
+      and challenges. Guest card claim ("That's me") allowed for an unowned card, for yourself.
+- [x] The "upload everything" path (used by demo upgrade) (done: any owned league the server
+      has never seen is queued with its players, matches, races and events).
+- [x] Sign-in: native Google picker -> `/v1/auth/google`; tokens in `expo-secure-store` (web
+      uses browser storage) (done 2026-10-31).
+- [x] Remove the `firebase` package from the app (done 2026-10-31; `legacy-firebase/` deleted
+      too). **Keep** the Google Cloud/Firebase project (OAuth clients, SHA-1s, later push).
+- [ ] Test on a real phone and the web build: sign in, create a league, join it from a second
+      account, score a match, city hub, community screens.
 - [ ] Web build served from `app.<domain>` by Caddy.
-- [ ] **Data migration script** (one-off, run by you, **safe to rerun**: it upserts by id):
+- [x] ~~**Data migration script**~~ Not needed (D8, blank start). Kept below for reference only:
   1. Count Firestore documents first, to confirm the read total fits the free daily limit
      (50,000 reads); otherwise run it over two days.
   2. `firebase auth:export` -> map Firebase uid -> Google `sub` (`rawId`).
@@ -476,13 +494,11 @@ the same release.
   5. Give every row a starting server version; queue a full stats + Elo replay.
   6. Verify counts for users, leagues, matches, frames, shots, races and race shots; spot-check
      10 matches by hand against the old app.
-- [ ] **Cutover** (assuming D4 = internal only):
-  1. Ask testers to open the old app online until its "unsynced" badge is empty.
-  2. Set Firestore rules to read-only.
-  3. Run the migration.
-  4. Release the new build. On first launch it runs "upload everything", so anything that still
-     never synced is recovered (upserts by id, server merges by version).
-  5. After a month, delete Firestore data (keep an export file).
+- [ ] **Cutover** (blank start, D8):
+  1. Release the new build to internal testing; testers sign in with Google again.
+  2. The new build ignores data saved on the phone by the Firebase build (it starts empty).
+  3. Delete the Firestore data and remove `legacy-firebase/` whenever convenient. Keep the
+     Firebase project itself (OAuth clients, SHA-1s, later push).
 
 ### Phase 3 - Launch-ready
 
