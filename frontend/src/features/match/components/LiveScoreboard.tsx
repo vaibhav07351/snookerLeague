@@ -51,6 +51,11 @@ export function LiveScoreboard({
   // 7 balls across the pad: cloth padding (2 x 8) + gaps (6 x 4) inside the screen gutters (2 x 16).
   const ballSize = Math.max(30, Math.min(46, Math.floor((width - 32 - 16 - 24) / 7) - 6));
   const snookersNeeded = deficit > table.pointsRemaining;
+  // One short line beside the ball-on label so it fits the narrowest phones: once snookers are
+  // needed, the deficit replaces the points left, since that is what matters then.
+  const remainingText = snookersNeeded
+    ? `Snookers needed · ${deficit} behind`
+    : `${table.pointsRemaining} left on the table`;
 
   return (
     <View style={styles.wrap}>
@@ -62,8 +67,7 @@ export function LiveScoreboard({
           style={[styles.remaining, snookersNeeded && { color: palette.warning }]}
           numberOfLines={1}
         >
-          {table.pointsRemaining} left on the table
-          {snookersNeeded ? ` · snookers needed (${deficit} behind)` : ''}
+          {remainingText}
         </Text>
       </View>
 
@@ -203,7 +207,9 @@ const makeStyles = (c: Palette) =>
       justifyContent: 'space-between',
       gap: spacing.sm,
     },
+    // The ball on is what the scorer needs; the line beside it gives way first.
     onText: {
+      flexShrink: 0,
       fontFamily: fonts.bodyBold,
       fontSize: 15,
       color: c.text,

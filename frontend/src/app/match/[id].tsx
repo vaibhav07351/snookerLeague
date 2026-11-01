@@ -11,7 +11,8 @@ import {
 import { useSession } from '@/features/auth/hooks/use-session';
 import { ShareMatchCard } from '@/features/match/components/ShareMatchCard';
 import { maybeAskForRating } from '@/features/home/services/rating-prompt.service';
-import { FrameLiveRanks, type FrameRankView } from '@/features/match/components/FrameLiveRanks';
+import { FrameLeaderStrip } from '@/features/match/components/FrameLeaderStrip';
+import type { FrameRankView } from '@/features/match/components/FrameLiveRanks';
 import { LiveScoreboard } from '@/features/match/components/LiveScoreboard';
 import { ManualFrameForm } from '@/features/match/components/ManualFrameForm';
 import { MatchCelebration } from '@/features/match/components/MatchCelebration';
@@ -446,6 +447,9 @@ export default function MatchDetailScreen(): ReactNode {
         </TourTarget>
       ) : null}
 
+      {/* Shown from the first shot to the last, so the ball pad never jumps when play starts. */}
+      {inProgress ? <FrameLeaderStrip ranks={liveRanks} layout="list" /> : null}
+
       {inProgress && !scoring ? topBreakLine : null}
       {inProgress ? carriedBanner : null}
 
@@ -526,11 +530,6 @@ export default function MatchDetailScreen(): ReactNode {
         title={finished ? 'Match details' : 'Frames'}
         onClose={() => setShowFrames(false)}
       >
-        {inProgress && liveRanks.some((r) => r.scored > 0 || r.foulPoints > 0) ? (
-          <Card style={styles.ranksCard}>
-            <FrameLiveRanks ranks={liveRanks} title="This frame" />
-          </Card>
-        ) : null}
         {inProgress ? topBreakLine : null}
         {finished && s.summary ? (
           <MatchSummaryCard
@@ -645,10 +644,6 @@ const makeStyles = (c: Palette) =>
       fontSize: 14,
       color: c.text,
       textAlign: 'center',
-    },
-    ranksCard: {
-      padding: spacing.sm,
-      gap: 4,
     },
     banner: {
       fontFamily: fonts.bodyMedium,

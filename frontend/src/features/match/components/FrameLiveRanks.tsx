@@ -24,9 +24,16 @@ interface FrameLiveRanksProps {
   title?: string;
 }
 
+/** Most points potted first; fewer foul points, then the bigger break, settle ties. */
+export function sortFrameRanks(ranks: FrameRankView[]): FrameRankView[] {
+  return [...ranks].sort(
+    (a, b) => b.scored - a.scored || a.foulPoints - b.foulPoints || b.highestBreak - a.highestBreak,
+  );
+}
+
 /**
- * Players ranked by points potted, one compact line each so it fits above the scoring pad
- * without scrolling. A header row labels the number columns (Pts, Fouls) once.
+ * Players ranked by points potted, one compact line each. A header row labels the number
+ * columns (Pts, Fouls) once.
  */
 export function FrameLiveRanks({
   ranks,
@@ -38,9 +45,7 @@ export function FrameLiveRanks({
   if (ranks.length === 0) {
     return null;
   }
-  const sorted = [...ranks].sort(
-    (a, b) => b.scored - a.scored || a.foulPoints - b.foulPoints || b.highestBreak - a.highestBreak,
-  );
+  const sorted = sortFrameRanks(ranks);
   const top = sorted[0]?.scored ?? 0;
 
   return (

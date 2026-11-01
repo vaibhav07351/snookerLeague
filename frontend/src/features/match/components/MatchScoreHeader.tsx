@@ -106,55 +106,59 @@ function SideCard({
   const doubles = view.players.length > 1;
 
   return (
-    <View
-      style={[
-        styles.card,
-        { borderColor: atTable ? tone : palette.border },
-        atTable && { backgroundColor: sideSoftColor(palette, view.side) },
-      ]}
-    >
-      <View style={[styles.sideBar, { backgroundColor: tone }]} />
-      <Text
+    <View style={styles.cardWrap}>
+      <View
         style={[
-          styles.points,
-          { fontSize: scale(38), lineHeight: scale(44) },
-          atTable && { color: tone },
+          styles.card,
+          { borderColor: atTable ? tone : palette.border },
+          atTable && { backgroundColor: sideSoftColor(palette, view.side) },
         ]}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        accessibilityLabel={`${view.framePoints} points`}
       >
-        {view.framePoints}
-      </Text>
-      <View style={styles.names}>
-        {view.players.map((p) => {
-          const on = atTable && (p.id === atTablePlayerId || !doubles);
-          return (
-            <Pressable
-              key={p.id}
-              disabled={!canSelectPlayer}
-              onPress={() => onSelectPlayer(p.id)}
-              accessibilityRole={canSelectPlayer ? 'button' : 'text'}
-              accessibilityLabel={`${p.name}${on ? ', at the table' : ''}`}
-              accessibilityHint={canSelectPlayer ? 'Set as the player at the table' : undefined}
-              hitSlop={4}
-              style={[
-                styles.nameRow,
-                canSelectPlayer && styles.nameRowTappable,
-                on && doubles && { borderColor: tone },
-              ]}
-            >
-              {on ? <View style={[styles.dot, { backgroundColor: tone }]} /> : null}
-              <Text style={[styles.name, on && styles.nameOn]} numberOfLines={1}>
-                {p.name}
-              </Text>
-              {doubles ? <Text style={styles.playerPts}>{p.framePoints}</Text> : null}
-            </Pressable>
-          );
-        })}
+        <View style={[styles.sideBar, { backgroundColor: tone }]} />
+        <Text
+          style={[
+            styles.points,
+            { fontSize: scale(38), lineHeight: scale(44) },
+            atTable && { color: tone },
+          ]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          accessibilityLabel={`${view.framePoints} points`}
+        >
+          {view.framePoints}
+        </Text>
+        <View style={styles.names}>
+          {view.players.map((p) => {
+            const on = atTable && (p.id === atTablePlayerId || !doubles);
+            return (
+              <Pressable
+                key={p.id}
+                disabled={!canSelectPlayer}
+                onPress={() => onSelectPlayer(p.id)}
+                accessibilityRole={canSelectPlayer ? 'button' : 'text'}
+                accessibilityLabel={`${p.name}${on ? ', at the table' : ''}`}
+                accessibilityHint={canSelectPlayer ? 'Set as the player at the table' : undefined}
+                hitSlop={4}
+                style={[
+                  styles.nameRow,
+                  canSelectPlayer && styles.nameRowTappable,
+                  on && doubles && { borderColor: tone },
+                ]}
+              >
+                {on ? <View style={[styles.dot, { backgroundColor: tone }]} /> : null}
+                <Text style={[styles.name, on && styles.nameOn]} numberOfLines={1}>
+                  {p.name}
+                </Text>
+                {doubles ? <Text style={styles.playerPts}>{p.framePoints}</Text> : null}
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
+      {/* Sits on the card's bottom edge, out of the flow, so a break starting or ending never
+          changes the card's height and the leaderboard and ball pad below stay put. */}
       {atTable && currentBreak > 0 ? (
-        <View style={styles.metaRow}>
+        <View style={styles.breakBadge} pointerEvents="none">
           <Text style={[styles.breakPill, { color: tone, borderColor: tone }]}>
             Break {currentBreak}
           </Text>
@@ -197,9 +201,12 @@ const makeStyles = (c: Palette) =>
       color: c.textMuted,
       textAlign: 'center',
     },
-    card: {
+    cardWrap: {
       flex: 1,
       minWidth: 0,
+    },
+    card: {
+      flex: 1,
       borderRadius: radii.md,
       borderWidth: 1.5,
       backgroundColor: c.card,
@@ -257,25 +264,22 @@ const makeStyles = (c: Palette) =>
       fontSize: 13,
       color: c.textMuted,
     },
-    metaRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
+    breakBadge: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: -9,
       alignItems: 'center',
-      justifyContent: 'center',
-      gap: 6,
     },
+    // Opaque page background so the pill cuts cleanly through the card border it sits on.
     breakPill: {
       fontFamily: fonts.bodyBold,
       fontSize: 12,
+      lineHeight: 16,
       paddingHorizontal: 8,
-      paddingVertical: 2,
       borderRadius: radii.pill,
       borderWidth: 1,
+      backgroundColor: c.bg,
       overflow: 'hidden',
-    },
-    meta: {
-      fontFamily: fonts.bodyMedium,
-      fontSize: 12,
-      color: c.textMuted,
     },
   });
