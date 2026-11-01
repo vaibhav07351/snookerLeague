@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import * as safety from '@/features/community/services/safety.service';
-import { Button } from '@/features/home/components/Button';
+import { Button } from '@/shared/ui/Button';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { BottomSheet } from '@/shared/ui/BottomSheet';
 import { notify } from '@/shared/ui/notify';

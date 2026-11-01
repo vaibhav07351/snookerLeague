@@ -3,8 +3,8 @@ import { useState, type ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
-import { Button } from '@/features/home/components/Button';
-import { Screen } from '@/features/home/components/Screen';
+import { Button } from '@/shared/ui/Button';
+import { Screen } from '@/shared/ui/Screen';
 import { CityBoard } from '@/features/stats/components/CityBoard';
 import { LeaderboardRow } from '@/features/stats/components/LeaderboardRow';
 import { NEXT_TARGET_HEIGHT, NextTargetCard } from '@/features/stats/components/NextTargetCard';

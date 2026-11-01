@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Button } from '@/features/home/components/Button';
+import { Button } from '@/shared/ui/Button';
 import { shareLeagueInvite } from '@/features/league/services/invite-link.service';
 import * as leagueService from '@/features/league/services/league.service';
 import { toUserMessage } from '@/shared/errors/app-error';

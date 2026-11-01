@@ -213,12 +213,17 @@ const daylight: Palette = {
 
 export const PALETTES: Record<ThemeId, Palette> = { charcoal, navy, felt, daylight };
 
-export const THEME_ORDER: readonly ThemeId[] = ['charcoal', 'navy', 'felt', 'daylight'];
+/** The one light palette; the others are the dark styles a person can pick from. */
+export const LIGHT_THEME_ID = 'daylight' satisfies ThemeId;
 
-export const DEFAULT_THEME_ID: ThemeId = 'charcoal';
+export type DarkThemeId = Exclude<ThemeId, typeof LIGHT_THEME_ID>;
 
-export function isThemeId(value: unknown): value is ThemeId {
-  return typeof value === 'string' && value in PALETTES;
+export const DARK_THEME_ORDER: readonly DarkThemeId[] = ['charcoal', 'navy', 'felt'];
+
+export const DEFAULT_DARK_THEME_ID: DarkThemeId = 'charcoal';
+
+export function isDarkThemeId(value: unknown): value is DarkThemeId {
+  return typeof value === 'string' && (DARK_THEME_ORDER as readonly string[]).includes(value);
 }
 
 /** Side colour for a match side ('a' | 'b'). */

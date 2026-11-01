@@ -5,10 +5,10 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { BrandWordmark } from '@/features/home/components/BrandWordmark';
-import { Button } from '@/features/home/components/Button';
+import { Button } from '@/shared/ui/Button';
 import { SignOutLink } from '@/features/auth/components/SignOutLink';
-import { Screen } from '@/features/home/components/Screen';
-import { TextField } from '@/features/home/components/TextField';
+import { Screen } from '@/shared/ui/Screen';
+import { TextField } from '@/shared/ui/TextField';
 import * as locationService from '@/features/location/services/location.service';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { EmptyState } from '@/shared/ui/EmptyState';

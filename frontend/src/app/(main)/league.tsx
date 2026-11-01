@@ -4,9 +4,9 @@ import { useEffect, useState, type ComponentProps, type ReactNode } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
-import { Button } from '@/features/home/components/Button';
-import { Screen } from '@/features/home/components/Screen';
-import { TextField } from '@/features/home/components/TextField';
+import { Button } from '@/shared/ui/Button';
+import { Screen } from '@/shared/ui/Screen';
+import { TextField } from '@/shared/ui/TextField';
 import { DeleteLeaguePanel } from '@/features/league/components/DeleteLeaguePanel';
 import { InviteCard } from '@/features/league/components/InviteCard';
 import * as leagueService from '@/features/league/services/league.service';

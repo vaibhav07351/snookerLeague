@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Button } from '@/features/home/components/Button';
-import { TextField } from '@/features/home/components/TextField';
+import { Button } from '@/shared/ui/Button';
+import { TextField } from '@/shared/ui/TextField';
 import { FrameLiveRanks } from '@/features/match/components/FrameLiveRanks';
 import type { FrameScore } from '@/shared/types/domain';
 import { confirmAction } from '@/shared/utils/confirm';

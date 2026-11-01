@@ -10,8 +10,8 @@ import { divisionFromDob, divisionLabel } from '@/features/auth/services/divisio
 import { ProfileGraph } from '@/features/community/components/ProfileGraph';
 import { useFollowGraph } from '@/features/community/hooks/use-follow-graph';
 import { profileCompleteness } from '@/features/community/services/profile-completeness';
-import { Button } from '@/features/home/components/Button';
-import { Screen } from '@/features/home/components/Screen';
+import { Button } from '@/shared/ui/Button';
+import { Screen } from '@/shared/ui/Screen';
 import { LeagueSwitchList } from '@/features/league/components/LeagueSwitchList';
 import { inviteUrl, shareLeagueInvite } from '@/features/league/services/invite-link.service';
 import { PlayerDashboard } from '@/features/stats/components/PlayerDashboard';

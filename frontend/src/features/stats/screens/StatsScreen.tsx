@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 
 import { useSession } from '@/features/auth/hooks/use-session';
-import { Screen } from '@/features/home/components/Screen';
+import { Screen } from '@/shared/ui/Screen';
 import { PlayerDashboard } from '@/features/stats/components/PlayerDashboard';
 import { PlayerPickerSheet } from '@/features/stats/components/PlayerPickerSheet';
 import { useLeagueStats } from '@/features/stats/hooks/use-league-stats';

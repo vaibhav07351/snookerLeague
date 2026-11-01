@@ -13,7 +13,7 @@ import {
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { FeltAtmosphere } from '@/features/home/components/FeltBackground';
+import { FeltAtmosphere } from '@/shared/ui/FeltBackground';
 import { useKeyboardVisible } from '@/shared/hooks/use-keyboard-visible';
 import { ScrollRevealProvider, useScrollRevealHost } from '@/shared/hooks/use-scroll-reveal';
 import { useStyles } from '@/theme/ThemeProvider';

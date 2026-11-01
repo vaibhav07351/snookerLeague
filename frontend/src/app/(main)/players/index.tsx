@@ -5,9 +5,9 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { shareClaimLink } from '@/features/players/services/claim-link.service';
-import { Button } from '@/features/home/components/Button';
-import { Screen } from '@/features/home/components/Screen';
-import { TextField } from '@/features/home/components/TextField';
+import { Button } from '@/shared/ui/Button';
+import { Screen } from '@/shared/ui/Screen';
+import { TextField } from '@/shared/ui/TextField';
 import * as playersService from '@/features/players/services/players.service';
 import { TourTarget } from '@/features/tour/components/TourTarget';
 import { useAutoTour } from '@/features/tour/hooks/use-tour';

@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
-import { Button } from '@/features/home/components/Button';
+import { Button } from '@/shared/ui/Button';
 import { Chip } from '@/shared/ui/Chip';
 import type { Match, Player, ScoringPolicy } from '@/shared/types/domain';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';

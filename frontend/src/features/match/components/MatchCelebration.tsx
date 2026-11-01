@@ -3,7 +3,9 @@ import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   interpolate,
+  ReduceMotion,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withDelay,
   withRepeat,
@@ -138,6 +140,7 @@ export function MatchCelebration({
   const hero = useSharedValue(0);
   const pulse = useSharedValue(0);
   const glow = useSharedValue(0);
+  const reduceMotion = useReducedMotion();
 
   const headlines = useMemo(() => {
     if (crownsChampion) {
@@ -166,6 +169,13 @@ export function MatchCelebration({
   );
 
   useEffect(() => {
+    // Reduce motion: the card fades in and then holds still (no pulse, glow loop or confetti).
+    if (reduceMotion) {
+      hero.value = withTiming(1, { duration: 250, reduceMotion: ReduceMotion.Never });
+      pulse.value = 0;
+      glow.value = 0.6;
+      return;
+    }
     hero.value = withSpring(1, { damping: 12, stiffness: 120 });
     pulse.value = withRepeat(
       withSequence(
@@ -180,15 +190,19 @@ export function MatchCelebration({
       -1,
       false,
     );
-  }, [hero, pulse, glow]);
+  }, [hero, pulse, glow, reduceMotion]);
 
-  const heroStyle = useAnimatedStyle(() => ({
-    opacity: hero.value,
-    transform: [
-      { scale: interpolate(hero.value, [0, 1], [0.72, 1]) },
-      { translateY: interpolate(hero.value, [0, 1], [28, 0]) },
-    ],
-  }));
+  const heroStyle = useAnimatedStyle(() =>
+    reduceMotion
+      ? { opacity: hero.value }
+      : {
+          opacity: hero.value,
+          transform: [
+            { scale: interpolate(hero.value, [0, 1], [0.72, 1]) },
+            { translateY: interpolate(hero.value, [0, 1], [28, 0]) },
+          ],
+        },
+  );
 
   const scoreStyle = useAnimatedStyle(() => ({
     transform: [{ scale: interpolate(pulse.value, [0, 1], [1, 1.06]) }],
@@ -201,11 +215,13 @@ export function MatchCelebration({
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.particleLayer} pointerEvents="none">
-        {particles.map((p) => (
-          <Particle key={p.id} spec={p} />
-        ))}
-      </View>
+      {reduceMotion ? null : (
+        <View style={styles.particleLayer} pointerEvents="none">
+          {particles.map((p) => (
+            <Particle key={p.id} spec={p} />
+          ))}
+        </View>
+      )}
 
       <Animated.View
         style={[

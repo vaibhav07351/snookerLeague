@@ -2,26 +2,44 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Screen } from '@/features/home/components/Screen';
+import { Screen } from '@/shared/ui/Screen';
 import { SnookerBall } from '@/features/match/components/SnookerBall';
-import { PALETTES, THEME_ORDER, type ThemeId } from '@/theme/palettes';
+import { SectionTitle } from '@/shared/ui/SectionTitle';
+import { SegmentedTabs } from '@/shared/ui/SegmentedTabs';
+import { DARK_THEME_ORDER, PALETTES, type ThemeId } from '@/theme/palettes';
 import { useStyles, useTheme } from '@/theme/ThemeProvider';
+import { THEME_MODE_LABELS, THEME_MODES, type ThemeMode } from '@/theme/theme-preference';
 import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
 
-/** Theme picker. The choice is saved on this device and applies instantly. */
+const MODE_ITEMS = THEME_MODES.map((key) => ({ key, label: THEME_MODE_LABELS[key] }));
+
+const MODE_HINTS: Record<ThemeMode, string> = {
+  light: 'Always light, whatever your phone is set to.',
+  dark: 'Always dark, in the style you pick below.',
+  system: 'Follows your phone: light by day, your dark style when the phone goes dark.',
+};
+
+/** Appearance: light, dark or follow the phone, plus which dark style. Saved on this device. */
 export default function ThemeSettingsScreen(): ReactNode {
-  const { themeId, setThemeId } = useTheme();
+  const { mode, darkThemeId, setMode, setDarkThemeId } = useTheme();
   const styles = useStyles(makeStyles);
   const typography = useStyles(makeTypography);
 
   return (
     <Screen>
-      <Text style={[typography.subtitle, styles.intro]}>
-        Changes straight away and is saved on this phone.
-      </Text>
+      <SectionTitle title="Mode" />
+      <SegmentedTabs items={MODE_ITEMS} value={mode} onChange={setMode} />
+      <Text style={[typography.caption, styles.hint]}>{MODE_HINTS[mode]}</Text>
+
+      <SectionTitle title="Dark style" />
       <View style={styles.list}>
-        {THEME_ORDER.map((id) => (
-          <ThemeOption key={id} id={id} selected={id === themeId} onSelect={() => setThemeId(id)} />
+        {DARK_THEME_ORDER.map((id) => (
+          <ThemeOption
+            key={id}
+            id={id}
+            selected={id === darkThemeId}
+            onSelect={() => setDarkThemeId(id)}
+          />
         ))}
       </View>
     </Screen>
@@ -61,7 +79,6 @@ function ThemeOption({
       </View>
       <View style={styles.optionText}>
         <Text style={styles.optionName}>{preview.name}</Text>
-        <Text style={styles.optionMeta}>{preview.isDark ? 'Dark' : 'Light'}</Text>
       </View>
       {selected ? <Ionicons name="checkmark-circle" size={24} color={preview.primary} /> : null}
     </Pressable>
@@ -70,8 +87,8 @@ function ThemeOption({
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
-    intro: {
-      marginTop: spacing.xs,
+    hint: {
+      marginTop: spacing.sm,
       marginBottom: spacing.lg,
     },
     list: {
@@ -139,10 +156,5 @@ const makeStyles = (c: Palette) =>
       fontFamily: fonts.bodyBold,
       color: c.text,
       fontSize: 16,
-    },
-    optionMeta: {
-      fontFamily: fonts.body,
-      color: c.textMuted,
-      fontSize: 13,
     },
   });

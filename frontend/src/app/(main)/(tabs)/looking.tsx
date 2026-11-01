@@ -11,9 +11,9 @@ import {
   createLookingPost,
   listLookingPosts,
 } from '@/features/community/services/looking.service';
-import { Button } from '@/features/home/components/Button';
-import { Screen } from '@/features/home/components/Screen';
-import { TextField } from '@/features/home/components/TextField';
+import { Button } from '@/shared/ui/Button';
+import { Screen } from '@/shared/ui/Screen';
+import { TextField } from '@/shared/ui/TextField';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { LookingKind, LookingPost } from '@/shared/types/domain';

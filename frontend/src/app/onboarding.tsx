@@ -5,10 +5,10 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { BrandLogo } from '@/features/home/components/BrandLogo';
-import { Button } from '@/features/home/components/Button';
+import { Button } from '@/shared/ui/Button';
 import { SignOutLink } from '@/features/auth/components/SignOutLink';
-import { Screen } from '@/features/home/components/Screen';
-import { TextField } from '@/features/home/components/TextField';
+import { Screen } from '@/shared/ui/Screen';
+import { TextField } from '@/shared/ui/TextField';
 import * as leagueService from '@/features/league/services/league.service';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { notify } from '@/shared/ui/notify';

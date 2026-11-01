@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { SnookerBall } from '@/features/match/components/SnookerBall';
+import { haptic } from '@/shared/feedback/haptics';
 import { useLayout } from '@/shared/hooks/use-layout';
 import type { BallValue } from '@/shared/types/domain';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
@@ -68,8 +69,11 @@ export function RaceBallPad({
           {BALL_ORDER.map((value) => (
             <Pressable
               key={value}
-              onPress={() => onPot(value)}
-              style={({ pressed }) => [styles.ballHit, pressed && styles.pressed]}
+              onPress={() => {
+                haptic('tap');
+                onPot(value);
+              }}
+              style={({ pressed }) => [styles.ballHit, pressed && styles.ballPressed]}
               accessibilityRole="button"
               accessibilityLabel={`Pot ${value} for ${playerName}`}
             >
@@ -212,6 +216,10 @@ const makeStyles = (c: Palette) =>
     },
     pressed: {
       opacity: 0.75,
+    },
+    // Same press as the match ball pad, so both scorers feel alike.
+    ballPressed: {
+      transform: [{ scale: 0.95 }],
     },
     disabled: {
       opacity: 0.4,

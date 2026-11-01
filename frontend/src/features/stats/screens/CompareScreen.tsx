@@ -4,7 +4,7 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
-import { Screen } from '@/features/home/components/Screen';
+import { Screen } from '@/shared/ui/Screen';
 import {
   COMPARE_TABS,
   compareRows,

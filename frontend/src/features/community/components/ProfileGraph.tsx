@@ -10,7 +10,7 @@ import {
   profileDeepLink,
   shareProfile,
 } from '@/features/community/services/share.service';
-import { Button } from '@/features/home/components/Button';
+import { Button } from '@/shared/ui/Button';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { notify } from '@/shared/ui/notify';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';

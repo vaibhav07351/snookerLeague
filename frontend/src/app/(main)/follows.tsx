@@ -5,7 +5,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { useFollowGraph } from '@/features/community/hooks/use-follow-graph';
 import { displayNameForUid } from '@/features/community/services/follow.service';
-import { Screen } from '@/features/home/components/Screen';
+import { Screen } from '@/shared/ui/Screen';
 import { Card } from '@/shared/ui/Card';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';

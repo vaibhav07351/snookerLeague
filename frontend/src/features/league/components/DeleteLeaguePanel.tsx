@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Button } from '@/features/home/components/Button';
-import { TextField } from '@/features/home/components/TextField';
+import { Button } from '@/shared/ui/Button';
+import { TextField } from '@/shared/ui/TextField';
 import type { League } from '@/shared/types/domain';
 import { confirmAction } from '@/shared/utils/confirm';
 import { useStyles } from '@/theme/ThemeProvider';

@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Button } from '@/features/home/components/Button';
-import { TextField } from '@/features/home/components/TextField';
+import { Button } from '@/shared/ui/Button';
+import { TextField } from '@/shared/ui/TextField';
 import type { MidwayInput } from '@/features/match/services/match-admin.service';
 import { Chip } from '@/shared/ui/Chip';
 import { FULL_RACK_REDS } from '@/shared/types/domain';

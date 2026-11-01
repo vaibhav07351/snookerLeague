@@ -1,7 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  Easing,
+  ReduceMotion,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { scheduleOnRN } from 'react-native-worklets';
 
 import { subscribeToasts, type ToastMessage } from '@/shared/ui/notify';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
@@ -9,38 +18,63 @@ import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
 
 const VISIBLE_MS = 3200;
 const ERROR_VISIBLE_MS = 5000;
+const ENTER_MS = 200;
+const EXIT_MS = 160;
+/** Drops in from just above its resting spot, so it reads as coming from the top edge. */
+const ENTER_OFFSET = -12;
+const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
+// Under reduce motion the slide is dropped but the fade stays; Reanimated would skip it.
+const ENTER = { duration: ENTER_MS, easing: EASE_OUT, reduceMotion: ReduceMotion.Never };
+const EXIT = { duration: EXIT_MS, easing: EASE_OUT, reduceMotion: ReduceMotion.Never };
 
 /** Renders the latest toast at the top of the app. Mount once, near the root. */
 export function ToastHost(): ReactNode {
   const styles = useStyles(makeStyles);
   const palette = usePalette();
   const insets = useSafeAreaInsets();
+  const reduceMotion = useReducedMotion();
   const [toast, setToast] = useState<ToastMessage | null>(null);
-  const opacity = useRef(new Animated.Value(0)).current;
+  const shown = useSharedValue(0);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    const useNative = Platform.OS !== 'web';
-    const hide = (): void => {
-      Animated.timing(opacity, { toValue: 0, duration: 180, useNativeDriver: useNative }).start(
-        () => setToast(null),
-      );
-    };
-    const unsubscribe = subscribeToasts((next) => {
-      if (hideTimer.current) {
-        clearTimeout(hideTimer.current);
+  const clearHideTimer = useCallback((): void => {
+    if (hideTimer.current) {
+      clearTimeout(hideTimer.current);
+      hideTimer.current = null;
+    }
+  }, []);
+
+  const hide = useCallback((): void => {
+    clearHideTimer();
+    shown.value = withTiming(0, EXIT, (finished) => {
+      // A new toast that arrives mid-exit interrupts this, and must not be cleared by it.
+      if (finished) {
+        scheduleOnRN(setToast, null);
       }
+    });
+  }, [clearHideTimer, shown]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToasts((next) => {
+      clearHideTimer();
       setToast(next);
-      Animated.timing(opacity, { toValue: 1, duration: 160, useNativeDriver: useNative }).start();
+      shown.value = withTiming(1, ENTER);
       hideTimer.current = setTimeout(hide, next.kind === 'error' ? ERROR_VISIBLE_MS : VISIBLE_MS);
     });
     return () => {
       unsubscribe();
-      if (hideTimer.current) {
-        clearTimeout(hideTimer.current);
-      }
+      clearHideTimer();
     };
-  }, [opacity]);
+  }, [clearHideTimer, hide, shown]);
+
+  const animatedStyle = useAnimatedStyle(() =>
+    reduceMotion
+      ? { opacity: shown.value }
+      : {
+          opacity: shown.value,
+          transform: [{ translateY: (1 - shown.value) * ENTER_OFFSET }],
+        },
+  );
 
   if (!toast) {
     return null;
@@ -61,11 +95,11 @@ export function ToastHost(): ReactNode {
 
   return (
     <View pointerEvents="box-none" style={[styles.layer, { top: insets.top + spacing.sm }]}>
-      <Animated.View style={[styles.toast, { borderLeftColor: tone, opacity }]}>
+      <Animated.View style={[styles.toast, { borderLeftColor: tone }, animatedStyle]}>
         <Pressable
           accessibilityRole="alert"
           accessibilityLiveRegion="polite"
-          onPress={() => setToast(null)}
+          onPress={hide}
           style={styles.row}
         >
           <Ionicons name={icon} size={22} color={tone} />

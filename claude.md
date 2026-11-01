@@ -133,6 +133,8 @@ Before writing a new util, check `src/shared/` first. If logic is reusable acros
 - Group imports: external packages → internal modules (`@/…`) → relative → types.
 - No `any` — use `unknown` and narrow, or explicit interfaces. Type exported function params/returns. Model state with discriminated unions (`Match` vs `Race`, `completed` | `forfeited`, `place | 'dnf'`).
 - Tests co-locate with the file they cover when a runner is added (`foo.ts` → `foo.test.ts`).
+- Motion and feel: use the `animate-expo` skill (with `apple-design` for reasoning), never the web `animate` skill, even for the Expo web build. Reanimated, not core `Animated`; every animation handles reduce motion (drop movement, keep fades with `ReduceMotion.Never`). Haptics only through `src/shared/feedback/haptics`, always alongside a visual change.
+- Product context for design work lives in `PRODUCT.md` (impeccable). Theme: light by default, Light / Dark / System in Settings > Appearance (`src/theme/theme-preference.ts`).
 
 ## Post-coding checklist
 

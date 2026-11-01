@@ -12,7 +12,7 @@ module.exports = ({ config }) => ({
   orientation: 'portrait',
   icon: './assets/icon.png',
   scheme: 'snooker',
-  userInterfaceStyle: 'dark',
+  userInterfaceStyle: 'automatic',
   newArchEnabled: true,
   splash: {
     image: './assets/splash-icon.png',

@@ -3,8 +3,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { StyleSheet, Text } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
-import { Button } from '@/features/home/components/Button';
-import { Screen } from '@/features/home/components/Screen';
+import { Button } from '@/shared/ui/Button';
+import { Screen } from '@/shared/ui/Screen';
 import { redeemClaimLink } from '@/features/players/services/claim-link.service';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { LoadingState } from '@/shared/ui/LoadingState';

@@ -11,9 +11,9 @@ import {
   deleteDirectoryListing,
   listDirectory,
 } from '@/features/community/services/directory.service';
-import { Button } from '@/features/home/components/Button';
-import { Screen } from '@/features/home/components/Screen';
-import { TextField } from '@/features/home/components/TextField';
+import { Button } from '@/shared/ui/Button';
+import { Screen } from '@/shared/ui/Screen';
+import { TextField } from '@/shared/ui/TextField';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { DirectoryKind, DirectoryListing } from '@/shared/types/domain';

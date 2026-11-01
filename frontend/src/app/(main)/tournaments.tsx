@@ -3,8 +3,8 @@ import { useCallback, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
-import { Button } from '@/features/home/components/Button';
-import { Screen } from '@/features/home/components/Screen';
+import { Button } from '@/shared/ui/Button';
+import { Screen } from '@/shared/ui/Screen';
 import * as tournamentService from '@/features/tournament/services/tournament.service';
 import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { Tournament } from '@/shared/types/domain';

@@ -6,11 +6,11 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSession } from '@/features/auth/hooks/use-session';
 import { BrandLogo } from '@/features/home/components/BrandLogo';
 import { GettingStartedCard } from '@/features/home/components/GettingStartedCard';
-import { Button } from '@/features/home/components/Button';
+import { Button } from '@/shared/ui/Button';
 import { HomeActivityList } from '@/features/home/components/HomeActivityList';
 import { HomeFilterChips } from '@/features/home/components/HomeFilterChips';
 import { LiveResumeCard } from '@/features/home/components/LiveResumeCard';
-import { Screen } from '@/features/home/components/Screen';
+import { Screen } from '@/shared/ui/Screen';
 import {
   matchResumeCopy,
   raceResumeCopy,

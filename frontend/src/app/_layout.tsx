@@ -24,7 +24,7 @@ import * as Notifications from 'expo-notifications';
 import { HeaderBack } from '@/shared/ui/HeaderBack';
 import { SyncBanner } from '@/shared/ui/SyncBanner';
 import { ToastHost } from '@/shared/ui/ToastHost';
-import { ThemeProvider, usePalette } from '@/theme/ThemeProvider';
+import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
 import { fonts } from '@/theme/tokens';
 
 initMonitoring();
@@ -39,12 +39,6 @@ export default function RootLayout(): ReactNode {
     DMSans_500Medium,
     DMSans_700Bold,
   });
-
-  useEffect(() => {
-    if (fontsLoaded) {
-      void SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded]);
 
   // Fallback web shell styles when +html.tsx reset is not present (some export paths).
   useEffect(() => {
@@ -73,8 +67,16 @@ export default function RootLayout(): ReactNode {
 }
 
 function AppShell({ fontsLoaded }: { fontsLoaded: boolean }): ReactNode {
-  const palette = usePalette();
+  const { palette, ready: themeReady } = useTheme();
   const router = useRouter();
+  const ready = fontsLoaded && themeReady;
+
+  // The splash stays up until fonts and the saved theme are in, so nothing repaints after it.
+  useEffect(() => {
+    if (ready) {
+      void SplashScreen.hideAsync();
+    }
+  }, [ready]);
 
   // Tapping a notification opens the screen it is about (e.g. a challenge or a profile).
   useEffect(() => {
@@ -90,7 +92,7 @@ function AppShell({ fontsLoaded }: { fontsLoaded: boolean }): ReactNode {
     return () => sub.remove();
   }, [router]);
 
-  if (!fontsLoaded) {
+  if (!ready) {
     return (
       <View style={[styles.loading, { backgroundColor: palette.bg }]}>
         <ActivityIndicator color={palette.primary} size="large" />

@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Button } from '@/features/home/components/Button';
+import { Button } from '@/shared/ui/Button';
 import type { HeadToHead, Meeting } from '@/features/stats/services/head-to-head.service';
 import { Card } from '@/shared/ui/Card';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';

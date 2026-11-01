@@ -10,8 +10,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Button } from '@/features/home/components/Button';
-import { FeltAtmosphere } from '@/features/home/components/FeltBackground';
+import { Button } from '@/shared/ui/Button';
+import { FeltAtmosphere } from '@/shared/ui/FeltBackground';
 import { WelcomeArt, type WelcomeArtKind } from '@/features/tour/components/WelcomeArt';
 import { useStyles } from '@/theme/ThemeProvider';
 import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';

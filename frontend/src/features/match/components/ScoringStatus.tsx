@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Button } from '@/features/home/components/Button';
+import { Button } from '@/shared/ui/Button';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
 import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
 

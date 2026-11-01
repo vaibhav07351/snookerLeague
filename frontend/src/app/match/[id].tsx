@@ -2,7 +2,7 @@ import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Screen } from '@/features/home/components/Screen';
+import { Screen } from '@/shared/ui/Screen';
 import {
   canConfirm,
   confirmResult,
@@ -33,8 +33,9 @@ import { TourTarget } from '@/features/tour/components/TourTarget';
 import { useAutoTour } from '@/features/tour/hooks/use-tour';
 import { notify } from '@/shared/ui/notify';
 import { Card } from '@/shared/ui/Card';
-import { Button } from '@/features/home/components/Button';
+import { Button } from '@/shared/ui/Button';
 import { toUserMessage } from '@/shared/errors/app-error';
+import { haptic } from '@/shared/feedback/haptics';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { HeaderBack, useSafeBack } from '@/shared/ui/HeaderBack';
 import { BottomSheet } from '@/shared/ui/BottomSheet';
@@ -263,8 +264,11 @@ export default function MatchDetailScreen(): ReactNode {
       `End this frame at ${open.teamAPoints}-${open.teamBPoints} with ${name} winning it. You can undo this.${behind}`,
       'End frame',
     );
-    if (ok) {
-      await run('Could not end the frame', () => shotService.completeLiveFrame(m.id, winner));
+    if (
+      ok &&
+      (await run('Could not end the frame', () => shotService.completeLiveFrame(m.id, winner)))
+    ) {
+      haptic('success');
     }
   }
 

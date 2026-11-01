@@ -4,7 +4,7 @@ import { useCallback, useState, type ReactNode } from 'react';
 import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
-import { Screen } from '@/features/home/components/Screen';
+import { Screen } from '@/shared/ui/Screen';
 import * as playersService from '@/features/players/services/players.service';
 import { roundName, type TournamentState } from '@/features/tournament/services/bracket';
 import * as tournamentService from '@/features/tournament/services/tournament.service';

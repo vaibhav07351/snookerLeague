@@ -4,7 +4,7 @@ import { StyleSheet, Text } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { CommunityHubTiles } from '@/features/community/components/CommunityHubTiles';
-import { Screen } from '@/features/home/components/Screen';
+import { Screen } from '@/shared/ui/Screen';
 import { useStyles } from '@/theme/ThemeProvider';
 import { makeTypography } from '@/theme/tokens';
 

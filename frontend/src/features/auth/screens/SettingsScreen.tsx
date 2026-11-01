@@ -7,8 +7,8 @@ import { useLinkGoogle } from '@/features/auth/hooks/use-link-google';
 import { useSession } from '@/features/auth/hooks/use-session';
 import * as authService from '@/features/auth/services/auth.service';
 import { divisionFromDob, divisionLabel } from '@/features/auth/services/division.service';
-import { Button } from '@/features/home/components/Button';
-import { Screen } from '@/features/home/components/Screen';
+import { Button } from '@/shared/ui/Button';
+import { Screen } from '@/shared/ui/Screen';
 import { useTour } from '@/features/tour/hooks/use-tour';
 import * as tourService from '@/features/tour/services/tour.service';
 import { toUserMessage } from '@/shared/errors/app-error';
@@ -16,7 +16,7 @@ import { resetHints } from '@/shared/hooks/use-hint';
 import { Card } from '@/shared/ui/Card';
 import { notify } from '@/shared/ui/notify';
 import { confirmAction } from '@/shared/utils/confirm';
-import { PALETTES } from '@/theme/palettes';
+import { describeAppearance } from '@/theme/theme-preference';
 import { usePalette, useStyles, useTheme } from '@/theme/ThemeProvider';
 import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
 
@@ -24,7 +24,7 @@ import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tok
 export function SettingsScreen(): ReactNode {
   const styles = useStyles(makeStyles);
   const typography = useStyles(makeTypography);
-  const { themeId } = useTheme();
+  const { mode, darkThemeId } = useTheme();
   const { user, league, refresh } = useSession();
   const linkGoogle = useLinkGoogle();
   const tour = useTour();
@@ -146,7 +146,7 @@ export function SettingsScreen(): ReactNode {
         <SettingsRow
           icon="color-palette-outline"
           label="Appearance"
-          value={PALETTES[themeId].name}
+          value={describeAppearance({ mode, darkThemeId })}
           onPress={() => router.push('/settings/theme')}
         />
         <SettingsRow

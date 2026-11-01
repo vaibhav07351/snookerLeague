@@ -5,9 +5,9 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 
 import { useLinkGoogle } from '@/features/auth/hooks/use-link-google';
 import { useSession } from '@/features/auth/hooks/use-session';
-import { Button } from '@/features/home/components/Button';
-import { Screen } from '@/features/home/components/Screen';
-import { TextField } from '@/features/home/components/TextField';
+import { Button } from '@/shared/ui/Button';
+import { Screen } from '@/shared/ui/Screen';
+import { TextField } from '@/shared/ui/TextField';
 import { useJoinLeague } from '@/features/league/hooks/use-join-league';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { Card } from '@/shared/ui/Card';

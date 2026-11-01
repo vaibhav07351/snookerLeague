@@ -3,9 +3,9 @@ import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Button } from '@/features/home/components/Button';
-import { Screen } from '@/features/home/components/Screen';
-import { TextField } from '@/features/home/components/TextField';
+import { Button } from '@/shared/ui/Button';
+import { Screen } from '@/shared/ui/Screen';
+import { TextField } from '@/shared/ui/TextField';
 import * as playersService from '@/features/players/services/players.service';
 import { RaceBallPad } from '@/features/race/components/RaceBallPad';
 import { RaceLiveBoard } from '@/features/race/components/RaceLiveBoard';

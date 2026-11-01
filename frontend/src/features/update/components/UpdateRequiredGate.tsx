@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { AppState, StyleSheet, Text, View } from 'react-native';
 
-import { Button } from '@/features/home/components/Button';
+import { Button } from '@/shared/ui/Button';
 import { BrandLogo } from '@/features/home/components/BrandLogo';
 import { openPlayStoreListing } from '@/features/community/services/share.service';
 import { isUpdateRequired } from '@/features/update/services/version.service';

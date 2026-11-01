@@ -2,7 +2,7 @@ import { useRef, type ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { BrandLogo } from '@/features/home/components/BrandLogo';
-import { Button } from '@/features/home/components/Button';
+import { Button } from '@/shared/ui/Button';
 import {
   matchHighestBreak,
   shareMatchCard,
