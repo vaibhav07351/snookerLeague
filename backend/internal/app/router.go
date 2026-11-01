@@ -39,8 +39,9 @@ const (
 	playStoreURL   = "https://play.google.com/store/apps/details?id=" + androidPackage
 )
 
-// liveOrigins are the web app hosts allowed to open the live socket (phones send no Origin).
-var liveOrigins = []string{"snookit.expo.app", "*.snookit.expo.app", "localhost:*", "snookit.duckdns.org"}
+// webOrigins are the web app hosts allowed to call the API from a browser (CORS) and to open
+// the live socket. Phones send no Origin and are not affected.
+var webOrigins = []string{"snookit.expo.app", "*.snookit.expo.app", "localhost:*", "snookit.duckdns.org"}
 
 // NewRouter wires every module and returns the full HTTP handler.
 func NewRouter(cfg config.Config, pool *pgxpool.Pool) http.Handler {
@@ -55,7 +56,7 @@ func NewRouter(cfg config.Config, pool *pgxpool.Pool) http.Handler {
 	syncSvc.SetClaims(sync.NewPGClaims(pool))
 	hub := live.NewHub()
 	syncSvc.SetPublisher(hub)
-	liveHandler := live.NewHandler(hub, authSvc, syncSvc, liveOrigins)
+	liveHandler := live.NewHandler(hub, authSvc, syncSvc, webOrigins)
 	statsRepo := stats.NewPGRepository(pool)
 	communityRepo := community.NewPGRepository(pool)
 	communitySvc := community.NewService(communityRepo, statsRepo)
@@ -75,7 +76,7 @@ func NewRouter(cfg config.Config, pool *pgxpool.Pool) http.Handler {
 	userLimiter := httpx.NewRateLimiter(userRateLimit, userRateWindow)
 
 	r := chi.NewRouter()
-	r.Use(httpx.RequestIDMiddleware, httpx.Recoverer)
+	r.Use(httpx.RequestIDMiddleware, httpx.Recoverer, httpx.CORS(webOrigins))
 	r.Get("/healthz", healthHandler(pool))
 	accountHandler.PublicRoutes(r)
 	publicHandler.Routes(r)
