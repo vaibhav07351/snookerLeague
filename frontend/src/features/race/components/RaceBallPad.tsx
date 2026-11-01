@@ -57,9 +57,12 @@ export function RaceBallPad({
           </View>
         ) : null}
       </View>
-      <Text style={styles.hint}>
-        A miss or a foul passes the table. Tap a name to pick who scores.
-      </Text>
+      {/* Teaching line only until the first shot; after that it is noise above the pad. */}
+      {!canUndo ? (
+        <Text style={styles.hint}>
+          A miss or a foul passes the table. Tap a name to pick who scores.
+        </Text>
+      ) : null}
       <View style={styles.cloth}>
         <View style={styles.balls}>
           {BALL_ORDER.map((value) => (

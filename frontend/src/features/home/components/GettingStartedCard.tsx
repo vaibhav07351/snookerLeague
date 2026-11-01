@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
 import { useHint } from '@/shared/hooks/use-hint';
+import { BottomSheet } from '@/shared/ui/BottomSheet';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
 import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
 
@@ -15,19 +16,19 @@ export interface GettingStartedStep {
   onPress: () => void;
 }
 
-const RING = 48;
-const STROKE = 5;
+const RING = 40;
+const STROKE = 4;
 
 /**
- * First-run checklist. Steps tick themselves off from real data; the card hides once
- * everything is done or the user dismisses it. Compact: only the next step is shown until
- * the list is expanded.
+ * First-run checklist as a single row: tapping it jumps straight to the next step. The full
+ * list lives in a sheet so the home screen stays short. Steps tick themselves off from real
+ * data; the row hides once everything is done or the user dismisses it.
  */
 export function GettingStartedCard({ steps }: { steps: GettingStartedStep[] }): ReactNode {
   const styles = useStyles(makeStyles);
   const palette = usePalette();
   const { visible, dismiss } = useHint('home-getting-started');
-  const [expanded, setExpanded] = useState(false);
+  const [listOpen, setListOpen] = useState(false);
   const doneCount = steps.filter((s) => s.done).length;
   if (!visible || doneCount === steps.length) {
     return null;
@@ -36,48 +37,57 @@ export function GettingStartedCard({ steps }: { steps: GettingStartedStep[] }): 
 
   return (
     <View style={styles.card}>
-      <View style={styles.head}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={nextStep ? `Next step: ${nextStep.label}` : 'Getting started'}
+        onPress={nextStep ? nextStep.onPress : () => setListOpen(true)}
+        style={({ pressed }) => [styles.head, pressed && styles.pressed]}
+      >
         <ProgressRing done={doneCount} total={steps.length} />
         <View style={styles.headText}>
-          <Text style={styles.title}>Get started</Text>
           <Text style={styles.progress}>
-            {doneCount} of {steps.length} done · a minute or two
+            Get started · {doneCount} of {steps.length}
+          </Text>
+          <Text style={styles.title} numberOfLines={1}>
+            {nextStep ? nextStep.label : 'All set'}
           </Text>
         </View>
+        <Ionicons name="chevron-forward" size={18} color={palette.primary} />
+      </Pressable>
+      <View style={styles.side}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="See all getting started steps"
+          hitSlop={8}
+          onPress={() => setListOpen(true)}
+          style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+        >
+          <Ionicons name="list" size={18} color={palette.textMuted} />
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Hide getting started"
-          hitSlop={12}
+          hitSlop={8}
           onPress={dismiss}
+          style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
         >
-          <Ionicons name="close" size={20} color={palette.textMuted} />
+          <Ionicons name="close" size={18} color={palette.textMuted} />
         </Pressable>
       </View>
 
-      {expanded ? (
-        steps.map((step) => (
-          <StepRow key={step.key} step={step} isNext={step.key === nextStep?.key} />
-        ))
-      ) : nextStep ? (
-        <StepRow step={nextStep} isNext />
-      ) : null}
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ expanded }}
-        onPress={() => setExpanded((v) => !v)}
-        hitSlop={8}
-        style={styles.toggle}
-      >
-        <Text style={styles.toggleText}>
-          {expanded ? 'Show less' : `See all ${steps.length} steps`}
-        </Text>
-        <Ionicons
-          name={expanded ? 'chevron-up' : 'chevron-down'}
-          size={14}
-          color={palette.textMuted}
-        />
-      </Pressable>
+      <BottomSheet visible={listOpen} title="Get started" onClose={() => setListOpen(false)}>
+        {steps.map((step) => (
+          <StepRow
+            key={step.key}
+            step={step}
+            isNext={step.key === nextStep?.key}
+            onPress={() => {
+              setListOpen(false);
+              step.onPress();
+            }}
+          />
+        ))}
+      </BottomSheet>
     </View>
   );
 }
@@ -122,7 +132,13 @@ function ProgressRing({ done, total }: { done: number; total: number }): ReactNo
   );
 }
 
-function StepRow({ step, isNext }: { step: GettingStartedStep; isNext: boolean }): ReactNode {
+interface StepRowProps {
+  step: GettingStartedStep;
+  isNext: boolean;
+  onPress: () => void;
+}
+
+function StepRow({ step, isNext, onPress }: StepRowProps): ReactNode {
   const styles = useStyles(makeStyles);
   const palette = usePalette();
   return (
@@ -130,7 +146,7 @@ function StepRow({ step, isNext }: { step: GettingStartedStep; isNext: boolean }
       accessibilityRole="button"
       accessibilityState={{ checked: step.done }}
       disabled={step.done}
-      onPress={step.onPress}
+      onPress={onPress}
       style={({ pressed }) => [styles.step, isNext && styles.stepNext, pressed && styles.pressed]}
     >
       <Ionicons
@@ -150,8 +166,12 @@ function StepRow({ step, isNext }: { step: GettingStartedStep; isNext: boolean }
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     card: {
-      gap: spacing.sm,
-      padding: spacing.md,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      paddingVertical: spacing.sm,
+      paddingLeft: spacing.sm,
+      paddingRight: spacing.xs,
       borderRadius: radii.md,
       borderWidth: 1,
       borderColor: c.borderStrong,
@@ -159,9 +179,21 @@ const makeStyles = (c: Palette) =>
       marginBottom: spacing.md,
     },
     head: {
+      flex: 1,
+      minWidth: 0,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 12,
+    },
+    side: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    iconBtn: {
+      width: 36,
+      height: 36,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     headText: {
       flex: 1,
@@ -169,7 +201,7 @@ const makeStyles = (c: Palette) =>
     },
     title: {
       fontFamily: fonts.bodyBold,
-      fontSize: 17,
+      fontSize: 15,
       color: c.text,
     },
     progress: {
@@ -186,7 +218,7 @@ const makeStyles = (c: Palette) =>
     ringText: {
       position: 'absolute',
       fontFamily: fonts.bodyBold,
-      fontSize: 12,
+      fontSize: 11,
       color: c.text,
     },
     step: {
@@ -220,18 +252,6 @@ const makeStyles = (c: Palette) =>
       fontFamily: fonts.body,
       fontSize: 12,
       lineHeight: 16,
-      color: c.textMuted,
-    },
-    toggle: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 4,
-      minHeight: 32,
-    },
-    toggleText: {
-      fontFamily: fonts.bodyMedium,
-      fontSize: 13,
       color: c.textMuted,
     },
   });

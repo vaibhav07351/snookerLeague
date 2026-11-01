@@ -1,10 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState, type ComponentProps, type ReactNode } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
-import { CommunityHubTiles } from '@/features/community/components/CommunityHubTiles';
 import * as challengeService from '@/features/community/services/challenge.service';
 import * as profileService from '@/features/community/services/profile.service';
 import { Button } from '@/features/home/components/Button';
@@ -20,6 +19,17 @@ import { notify } from '@/shared/ui/notify';
 import { SectionTitle } from '@/shared/ui/SectionTitle';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
 import { fonts, makeTypography, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+
+const DIRECTORY: ReadonlyArray<{
+  kind: string;
+  label: string;
+  icon: ComponentProps<typeof Ionicons>['name'];
+}> = [
+  { kind: 'club', label: 'Clubs', icon: 'business-outline' },
+  { kind: 'table', label: 'Tables', icon: 'grid-outline' },
+  { kind: 'referee', label: 'Referees', icon: 'flag-outline' },
+  { kind: 'organiser', label: 'Organisers', icon: 'calendar-outline' },
+];
 
 export default function CommunityScreen(): ReactNode {
   const { user } = useSession();
@@ -164,154 +174,136 @@ export default function CommunityScreen(): ReactNode {
 
   return (
     <Screen>
-      <Text style={typography.label}>Snooker community in</Text>
-      <Text style={typography.title} numberOfLines={2}>
-        {user.cityName}
-      </Text>
+      <View style={styles.cityRow}>
+        <Ionicons name="location" size={18} color={palette.primary} />
+        <Text style={styles.city} numberOfLines={1}>
+          {user.cityName}
+        </Text>
+      </View>
 
-      <CommunityHubTiles
-        tiles={[
-          {
-            label: 'Looking',
-            hint: 'Opponent · table · club',
-            icon: 'search-outline',
-            onPress: () => router.push('/(main)/looking'),
-          },
-          {
-            label: 'Clubs',
-            hint: 'Local clubs',
-            icon: 'business-outline',
-            onPress: () => router.push('/(main)/directory?kind=club'),
-          },
-          {
-            label: 'Tables',
-            hint: 'Venues & tables',
-            icon: 'grid-outline',
-            onPress: () => router.push('/(main)/directory?kind=table'),
-          },
-          {
-            label: 'Referees',
-            hint: 'Officials',
-            icon: 'flag-outline',
-            onPress: () => router.push('/(main)/directory?kind=referee'),
-          },
-          {
-            label: 'Organisers',
-            hint: 'Events & leagues',
-            icon: 'calendar-outline',
-            onPress: () => router.push('/(main)/directory?kind=organiser'),
-          },
-        ]}
-      />
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.dirRow}
+        style={styles.dirScroll}
+      >
+        {DIRECTORY.map((d) => (
+          <Pressable
+            key={d.kind}
+            accessibilityRole="button"
+            accessibilityLabel={`${d.label} in ${user.cityName}`}
+            onPress={() => router.push(`/(main)/directory?kind=${d.kind}`)}
+            style={({ pressed }) => [styles.dirChip, pressed && styles.pressed]}
+          >
+            <Ionicons name={d.icon} size={16} color={palette.primary} />
+            <Text style={styles.dirText}>{d.label}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
 
       {best ? (
-        <Card
-          tone="highlight"
+        <Pressable
+          accessibilityRole="button"
           accessibilityLabel={`Best in ${user.cityName}: ${best.displayName}`}
           onPress={() => router.push(`/(main)/city-player?uid=${best.uid}`)}
+          style={({ pressed }) => [styles.bestRow, pressed && styles.pressed]}
         >
-          <View style={styles.bestHead}>
-            <Ionicons name="trophy" size={16} color={palette.primary} />
-            <Text style={[typography.label, styles.shrink]} numberOfLines={1}>
+          <Ionicons name="trophy" size={18} color={palette.primary} />
+          <View style={styles.rowCopy}>
+            <Text style={typography.label} numberOfLines={1}>
               Best in {user.cityName}
             </Text>
+            <Text style={styles.name} numberOfLines={1}>
+              {best.displayName}
+              <Text style={styles.meta}>
+                {'  '}
+                {best.winPct}% · HB {best.highestBreak || '-'}
+              </Text>
+            </Text>
           </View>
-          <Text style={styles.bestName} numberOfLines={2}>
-            {best.displayName}
-          </Text>
-          <Text style={styles.meta}>
-            {best.winPct}% · {best.played} games · HB {best.highestBreak || '-'}
-          </Text>
-        </Card>
-      ) : (
-        <Card>
-          <Text style={styles.meta}>Play 3 city matches to crown a best player.</Text>
-        </Card>
-      )}
+          <Ionicons name="chevron-forward" size={18} color={palette.textFaint} />
+        </Pressable>
+      ) : null}
 
-      <SectionTitle title={`Live in ${user.cityName}`} />
-      {live.length === 0 ? (
-        <Text style={styles.meta}>No live matches right now.</Text>
-      ) : (
-        <View style={styles.list}>
-          {live.map((m, index) => {
-            const open = m.openFrame;
-            return (
-              <Pressable
-                key={m.id}
-                accessibilityRole="button"
-                style={({ pressed }) => [
-                  styles.row,
-                  index === live.length - 1 && styles.rowLast,
-                  pressed && styles.pressed,
-                ]}
-                onPress={() => router.push(`/match/${m.id}`)}
-              >
-                <View style={styles.liveDot} />
-                <View style={styles.rowCopy}>
-                  <Text style={styles.name} numberOfLines={1}>
-                    {m.namedLabel ?? `Best of ${m.bestOf}`}
-                  </Text>
-                  <Text style={styles.meta}>
-                    Frames {m.outcome.framesA}-{m.outcome.framesB}
-                    {open ? ` · ${open.teamAPoints}-${open.teamBPoints}` : ''}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={palette.textFaint} />
-              </Pressable>
-            );
-          })}
-        </View>
-      )}
-
-      <SectionTitle title="Challenges" />
-      {challenges.length === 0 ? (
-        <Text style={styles.meta}>
-          No challenges yet. You can challenge a player from the list.
-        </Text>
-      ) : (
-        <View style={styles.stack}>
-          {challenges.map((c) => {
-            const incoming = c.toUid === user.uid;
-            return (
-              <Card key={c.id} tone={incoming ? 'highlight' : 'default'}>
-                <Text style={styles.name}>
-                  {incoming ? 'Incoming challenge' : 'Sent challenge'}
-                </Text>
-                <Text style={styles.meta}>Best of {c.bestOf}</Text>
-                {incoming ? (
-                  <View style={styles.actions}>
-                    <Button
-                      label="Accept"
-                      size="sm"
-                      onPress={() => void onAccept(c.id)}
-                      style={styles.actionBtn}
-                    />
-                    <Button
-                      label="Decline"
-                      size="sm"
-                      variant="secondary"
-                      onPress={() => void setStatus(c.id, 'declined')}
-                      style={styles.actionBtn}
-                    />
+      {live.length > 0 ? (
+        <>
+          <SectionTitle title={`Live in ${user.cityName}`} />
+          <View style={styles.list}>
+            {live.map((m, index) => {
+              const open = m.openFrame;
+              return (
+                <Pressable
+                  key={m.id}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    styles.row,
+                    index === live.length - 1 && styles.rowLast,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => router.push(`/match/${m.id}`)}
+                >
+                  <View style={styles.liveDot} />
+                  <View style={styles.rowCopy}>
+                    <Text style={styles.name} numberOfLines={1}>
+                      {m.namedLabel ?? `Best of ${m.bestOf}`}
+                    </Text>
+                    <Text style={styles.meta}>
+                      Frames {m.outcome.framesA}-{m.outcome.framesB}
+                      {open ? ` · ${open.teamAPoints}-${open.teamBPoints}` : ''}
+                    </Text>
                   </View>
-                ) : (
-                  <Button
-                    label="Cancel"
-                    size="sm"
-                    variant="secondary"
-                    onPress={() => void setStatus(c.id, 'cancelled')}
-                  />
-                )}
-              </Card>
-            );
-          })}
-        </View>
-      )}
+                  <Ionicons name="chevron-forward" size={18} color={palette.textFaint} />
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      ) : null}
+
+      {challenges.length > 0 ? (
+        <>
+          <SectionTitle title="Challenges" />
+          <View style={styles.stack}>
+            {challenges.map((c) => {
+              const incoming = c.toUid === user.uid;
+              return (
+                <Card key={c.id} tone={incoming ? 'highlight' : 'default'} style={styles.challenge}>
+                  <View style={styles.rowCopy}>
+                    <Text style={styles.name}>{incoming ? 'Incoming' : 'Sent'}</Text>
+                    <Text style={styles.meta}>Best of {c.bestOf}</Text>
+                  </View>
+                  {incoming ? (
+                    <>
+                      <Button label="Accept" size="sm" onPress={() => void onAccept(c.id)} />
+                      <Button
+                        label="Decline"
+                        size="sm"
+                        variant="ghost"
+                        onPress={() => void setStatus(c.id, 'declined')}
+                      />
+                    </>
+                  ) : (
+                    <Button
+                      label="Cancel"
+                      size="sm"
+                      variant="ghost"
+                      onPress={() => void setStatus(c.id, 'cancelled')}
+                    />
+                  )}
+                </Card>
+              );
+            })}
+          </View>
+        </>
+      ) : null}
 
       <SectionTitle title="Players" />
       {profiles.length === 0 ? (
-        <Text style={styles.meta}>No players in this city yet.</Text>
+        <EmptyState
+          icon="people-outline"
+          title="No players here yet"
+          message="Play a match in your city hub to put yourself on the map."
+        />
       ) : (
         <View style={styles.list}>
           {profiles.map((p, index) => (
@@ -356,19 +348,55 @@ const makeStyles = (c: Palette) =>
       marginTop: spacing.xs,
       marginBottom: spacing.md,
     },
-    shrink: {
-      flexShrink: 1,
-    },
-    bestHead: {
+    cityRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
     },
-    bestName: {
+    city: {
+      flex: 1,
+      minWidth: 0,
       fontFamily: fonts.display,
-      fontSize: 22,
-      lineHeight: 28,
+      fontSize: 24,
+      lineHeight: 30,
       color: c.text,
+    },
+    dirScroll: {
+      flexGrow: 0,
+      marginTop: spacing.md,
+      marginHorizontal: -spacing.md,
+    },
+    dirRow: {
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+    },
+    dirChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      minHeight: 40,
+      paddingHorizontal: 14,
+      borderRadius: radii.pill,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.card,
+    },
+    dirText: {
+      fontFamily: fonts.bodyMedium,
+      fontSize: 14,
+      color: c.text,
+    },
+    bestRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginTop: spacing.md,
+      paddingVertical: 10,
+      paddingHorizontal: spacing.md,
+      borderRadius: radii.md,
+      borderWidth: 1,
+      borderColor: c.borderStrong,
+      backgroundColor: c.cardHighlight,
     },
     list: {
       backgroundColor: c.card,
@@ -378,6 +406,11 @@ const makeStyles = (c: Palette) =>
       overflow: 'hidden',
     },
     stack: {
+      gap: spacing.sm,
+    },
+    challenge: {
+      flexDirection: 'row',
+      alignItems: 'center',
       gap: spacing.sm,
     },
     row: {
@@ -417,16 +450,6 @@ const makeStyles = (c: Palette) =>
       color: c.textMuted,
       fontSize: 13,
       lineHeight: 18,
-    },
-    actions: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: spacing.sm,
-      marginTop: spacing.xs,
-    },
-    actionBtn: {
-      flexGrow: 1,
-      flexBasis: 120,
     },
     loadMore: {
       marginTop: spacing.md,

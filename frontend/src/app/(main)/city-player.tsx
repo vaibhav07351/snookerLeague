@@ -134,13 +134,25 @@ export default function CityPlayerScreen(): ReactNode {
 
   return (
     <Screen>
-      <Text style={typography.label} numberOfLines={1}>
-        {profile.cityName ?? 'Player'}
-      </Text>
-      <Text style={typography.title} numberOfLines={2}>
-        {profile.displayName}
-      </Text>
-      <Text style={styles.division}>{divisionLabel(profile.division)}</Text>
+      <View style={styles.headRow}>
+        <View style={styles.headText}>
+          <Text style={typography.label} numberOfLines={1}>
+            {profile.cityName ?? 'Player'} · {divisionLabel(profile.division)}
+          </Text>
+          <Text style={typography.title} numberOfLines={2}>
+            {profile.displayName}
+          </Text>
+        </View>
+        {!mine && user && !user.isDemo ? (
+          <SafetyActions
+            compact
+            targetKind="profile"
+            targetId={profile.uid}
+            targetUid={profile.uid}
+            name={profile.displayName}
+          />
+        ) : null}
+      </View>
       <View style={styles.followRow}>
         <Pressable
           accessibilityRole="button"
@@ -164,14 +176,16 @@ export default function CityPlayerScreen(): ReactNode {
       </View>
 
       <Card tone="highlight" style={styles.breakCard}>
-        <Text style={typography.label}>Highest break</Text>
-        <Text style={[styles.breakValue, { fontSize: scale(48), lineHeight: scale(56) }]}>
-          {profile.highestBreak > 0 ? String(profile.highestBreak) : '-'}
-        </Text>
-        <View style={styles.grid}>
-          <Stat label="50+" value={`${profile.breaks50}`} />
-          <Stat label="Centuries" value={`${profile.centuries}`} />
-          <Stat label="147s" value={`${profile.maximums}`} />
+        <View style={styles.breakMain}>
+          <Text style={typography.label}>Highest break</Text>
+          <Text style={[styles.breakValue, { fontSize: scale(40), lineHeight: scale(46) }]}>
+            {profile.highestBreak > 0 ? String(profile.highestBreak) : '-'}
+          </Text>
+        </View>
+        <View style={styles.breakStats}>
+          <MiniStat label="50+" value={`${profile.breaks50}`} />
+          <MiniStat label="100+" value={`${profile.centuries}`} />
+          <MiniStat label="147" value={`${profile.maximums}`} />
         </View>
       </Card>
 
@@ -182,41 +196,39 @@ export default function CityPlayerScreen(): ReactNode {
       </View>
 
       {!mine && user ? (
-        <View style={styles.actions}>
-          <Button
-            label={following ? 'Following' : 'Follow'}
-            icon={following ? 'checkmark' : 'person-add-outline'}
-            variant={following ? 'secondary' : 'primary'}
-            onPress={() => void toggleFollow()}
-            disabled={busy}
-            loading={busy}
-          />
-          {user.cityId ? (
-            <>
+        <>
+          <View style={styles.actions}>
+            <Button
+              label={following ? 'Following' : 'Follow'}
+              icon={following ? 'checkmark' : 'person-add-outline'}
+              variant={following ? 'secondary' : 'primary'}
+              onPress={() => void toggleFollow()}
+              disabled={busy}
+              loading={busy}
+              style={styles.flex}
+            />
+            {user.cityId ? (
               <Button
                 label="Challenge"
                 icon="flash-outline"
                 variant="secondary"
                 onPress={() => void challenge()}
                 disabled={busy}
+                style={styles.flex}
               />
-              <Button
-                label="Setup match"
-                variant="ghost"
-                onPress={() => void setupMatch()}
-                disabled={busy}
-              />
-            </>
+            ) : null}
+          </View>
+          {user.cityId ? (
+            <Pressable
+              accessibilityRole="button"
+              disabled={busy}
+              onPress={() => void setupMatch()}
+              style={styles.linkRow}
+            >
+              <Text style={styles.link}>Set up a match now</Text>
+            </Pressable>
           ) : null}
-        </View>
-      ) : null}
-      {!mine && user && !user.isDemo ? (
-        <SafetyActions
-          targetKind="profile"
-          targetId={profile.uid}
-          targetUid={profile.uid}
-          name={profile.displayName}
-        />
+        </>
       ) : null}
     </Screen>
   );
@@ -235,6 +247,16 @@ function Stat({ label, value }: { label: string; value: string }): ReactNode {
   );
 }
 
+function MiniStat({ label, value }: { label: string; value: string }): ReactNode {
+  const styles = useStyles(makeStyles);
+  return (
+    <View style={styles.mini}>
+      <Text style={styles.miniValue}>{value}</Text>
+      <Text style={styles.miniLabel}>{label}</Text>
+    </View>
+  );
+}
+
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     loading: {
@@ -243,11 +265,14 @@ const makeStyles = (c: Palette) =>
       gap: spacing.sm,
       paddingVertical: spacing.lg,
     },
-    division: {
-      fontFamily: fonts.bodyMedium,
-      color: c.primary,
-      fontSize: 15,
-      marginTop: spacing.xs,
+    headRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.sm,
+    },
+    headText: {
+      flex: 1,
+      minWidth: 0,
     },
     followRow: {
       flexDirection: 'row',
@@ -266,13 +291,36 @@ const makeStyles = (c: Palette) =>
       color: c.text,
     },
     breakCard: {
+      flexDirection: 'row',
       alignItems: 'center',
+      gap: spacing.md,
       marginTop: spacing.lg,
+    },
+    breakMain: {
+      flex: 1,
+      minWidth: 0,
     },
     breakValue: {
       fontFamily: fonts.display,
       color: c.primary,
-      textAlign: 'center',
+    },
+    breakStats: {
+      flexDirection: 'row',
+      gap: spacing.md,
+    },
+    mini: {
+      alignItems: 'center',
+      minWidth: 36,
+    },
+    miniValue: {
+      fontFamily: fonts.bodyBold,
+      color: c.text,
+      fontSize: 18,
+    },
+    miniLabel: {
+      fontFamily: fonts.body,
+      color: c.textMuted,
+      fontSize: 11,
     },
     grid: {
       flexDirection: 'row',
@@ -298,7 +346,22 @@ const makeStyles = (c: Palette) =>
       fontSize: 20,
     },
     actions: {
-      marginTop: spacing.xl,
+      flexDirection: 'row',
+      marginTop: spacing.lg,
       gap: spacing.sm,
+    },
+    flex: {
+      flex: 1,
+      minWidth: 0,
+    },
+    linkRow: {
+      minHeight: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    link: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 14,
+      color: c.primary,
     },
   });

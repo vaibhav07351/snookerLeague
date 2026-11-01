@@ -14,6 +14,7 @@ import { useHeaderHeight } from 'expo-router/react-navigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FeltAtmosphere } from '@/features/home/components/FeltBackground';
+import { useKeyboardVisible } from '@/shared/hooks/use-keyboard-visible';
 import { ScrollRevealProvider, useScrollRevealHost } from '@/shared/hooks/use-scroll-reveal';
 import { useStyles } from '@/theme/ThemeProvider';
 import { spacing, type Palette } from '@/theme/tokens';
@@ -27,6 +28,8 @@ interface ScreenProps {
   /** Override auto header-aware offset. */
   keyboardVerticalOffset?: number;
   edges?: Array<'top' | 'right' | 'bottom' | 'left'>;
+  /** Pinned below the content (e.g. the screen's main button), so it never scrolls away. */
+  footer?: ReactNode;
 }
 
 export function Screen({
@@ -36,12 +39,14 @@ export function Screen({
   scroll = true,
   keyboardVerticalOffset,
   edges,
+  footer,
 }: ScreenProps): ReactNode {
   const headerHeight = useHeaderHeight();
   const themed = useStyles(makeThemedStyles);
   const scrollRef = useRef<ScrollView>(null);
   // Lets children (e.g. a tour spotlight) scroll themselves into view.
   const reveal = useScrollRevealHost(scrollRef);
+  const keyboardVisible = useKeyboardVisible();
   // Header already clears the status bar; only inset top when there is no nav header.
   const resolvedEdges =
     edges ??
@@ -81,7 +86,11 @@ export function Screen({
       ref={scrollRef}
       // RN Web: flex:1 alone can disable scroll; a numeric height restores it.
       style={[styles.flex, Platform.OS === 'web' ? styles.webScroll : null]}
-      contentContainerStyle={[styles.scrollContent, contentStyle]}
+      contentContainerStyle={[
+        styles.scrollContent,
+        keyboardVisible ? styles.keyboardPad : null,
+        contentStyle,
+      ]}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       showsVerticalScrollIndicator={false}
@@ -111,6 +120,7 @@ export function Screen({
         enabled={Platform.OS === 'ios'}
       >
         {body}
+        {footer ? <View style={styles.footer}>{footer}</View> : null}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -148,8 +158,16 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
-    // Extra room so bottom fields (e.g. match name) can scroll above the keyboard.
-    // Web has no native keyboard inset, so keep a modest bottom pad only.
-    paddingBottom: Platform.OS === 'web' ? spacing.xxl : spacing.xxl + 120,
+    paddingBottom: spacing.lg,
+  },
+  // Only while the keyboard is open: room for the last field to scroll above it. Keeping this
+  // pad permanently made screens that fit scroll anyway.
+  keyboardPad: {
+    paddingBottom: spacing.xxl + 120,
+  },
+  footer: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
   },
 });

@@ -40,6 +40,7 @@ export default function RaceDetailScreen(): ReactNode {
   const [players, setPlayers] = useState<Player[]>([]);
   const [draftScores, setDraftScores] = useState<Record<string, string>>({});
   const [busyPlayerId, setBusyPlayerId] = useState<string | null>(null);
+  const [scoresOpen, setScoresOpen] = useState(false);
   const styles = useStyles(makeStyles);
   const typography = useStyles(makeTypography);
   const palette = usePalette();
@@ -151,6 +152,23 @@ export default function RaceDetailScreen(): ReactNode {
     }
   }
 
+  // The button is pinned on screen the whole race, so a stray tap must not end it.
+  async function completeRace(): Promise<void> {
+    const ok = await confirmAction(
+      'Complete the race?',
+      'Places are locked in from the current scores.',
+      'Complete race',
+    );
+    if (!ok) {
+      return;
+    }
+    try {
+      await raceService.completeRace(race!.id);
+    } catch (error) {
+      notify.error('Could not complete', toUserMessage(error));
+    }
+  }
+
   async function undoDidntFinish(playerId: string): Promise<void> {
     setBusyPlayerId(playerId);
     try {
@@ -162,28 +180,39 @@ export default function RaceDetailScreen(): ReactNode {
     }
   }
 
+  const showStandings = !inProgress || scoresOpen;
+
   return (
-    <Screen>
+    <Screen
+      footer={
+        inProgress ? (
+          <Button label="Complete race" icon="flag" onPress={() => void completeRace()} />
+        ) : undefined
+      }
+    >
       <View style={styles.header}>
-        {race.namedLabel ? (
-          <Text style={typography.label} numberOfLines={1}>
-            {race.namedLabel}
+        <View style={styles.headerText}>
+          {race.namedLabel ? (
+            <Text style={typography.label} numberOfLines={1}>
+              {race.namedLabel}
+            </Text>
+          ) : null}
+          <Text style={[styles.target, { fontSize: scale(26) }]} numberOfLines={1}>
+            Race to {race.targetScore}
           </Text>
-        ) : null}
-        <Text style={[styles.target, { fontSize: scale(32) }]}>Race to {race.targetScore}</Text>
+        </View>
         <View style={styles.metaRow}>
+          {race.crownsRaceChampion ? (
+            <View style={styles.crownPill} accessibilityLabel="Crowns race king">
+              <Ionicons name="trophy" size={12} color={palette.primary} />
+            </View>
+          ) : null}
           <View style={[styles.statusPill, !inProgress && styles.statusPillDone]}>
             {inProgress ? <View style={styles.liveDot} /> : null}
             <Text style={[styles.statusText, !inProgress && styles.statusTextDone]}>
-              {race.status === 'completed' ? 'Finished' : 'In progress'}
+              {race.status === 'completed' ? 'Finished' : 'Live'}
             </Text>
           </View>
-          {race.crownsRaceChampion ? (
-            <View style={styles.crownPill}>
-              <Ionicons name="trophy" size={12} color={palette.primary} />
-              <Text style={styles.crownText}>Crowns race king</Text>
-            </View>
-          ) : null}
         </View>
       </View>
 
@@ -220,81 +249,88 @@ export default function RaceDetailScreen(): ReactNode {
         />
       ) : null}
 
-      <SectionTitle title={inProgress ? 'Or set final scores' : 'Final standings'} />
-
-      <Card style={styles.list}>
-        {sorted.map((e, index) => {
-          const playerName = nameOf(e.playerId);
-          const busy = busyPlayerId === e.playerId;
-          return (
-            <View key={e.playerId} style={[styles.row, index > 0 && styles.rowDivider]}>
-              <View style={styles.rowHead}>
-                <Text style={styles.name} numberOfLines={1}>
-                  {playerName}
-                </Text>
-                <Text style={[styles.place, e.place === 'dnf' && styles.placeOut]}>
-                  {formatRacePlace(e.place)}
-                </Text>
-              </View>
-              {race.status === 'in_progress' && e.place === null ? (
-                <View style={styles.scoreEdit}>
-                  <View style={styles.scoreField}>
-                    <TextField
-                      label="Set score"
-                      value={draftScores[e.playerId] ?? ''}
-                      onChangeText={(t) => setDraftScores((prev) => ({ ...prev, [e.playerId]: t }))}
-                      keyboardType="number-pad"
-                      placeholder="Tap to type"
-                    />
-                  </View>
-                  <Button
-                    label="Save"
-                    variant="secondary"
-                    onPress={() => void saveScore(e.playerId)}
-                    style={styles.save}
-                  />
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Mark ${playerName} as didn't finish`}
-                    disabled={busy}
-                    onPress={() => void markDidntFinish(e.playerId, playerName)}
-                    style={styles.outLink}
-                  >
-                    <Text style={styles.outLinkText}>{busy ? '…' : 'Out'}</Text>
-                  </Pressable>
-                </View>
-              ) : race.status === 'in_progress' && e.place === 'dnf' ? (
-                <View style={styles.outRow}>
-                  <Text style={styles.finalScore}>Score {e.score}</Text>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Undo didn't finish for ${playerName}`}
-                    disabled={busy}
-                    onPress={() => void undoDidntFinish(e.playerId)}
-                    style={styles.outLink}
-                  >
-                    <Text style={styles.undoLinkText}>{busy ? '…' : 'Undo'}</Text>
-                  </Pressable>
-                </View>
-              ) : (
-                <Text style={styles.finalScore}>Score {e.score}</Text>
-              )}
-            </View>
-          );
-        })}
-      </Card>
-
       {inProgress ? (
-        <Button
-          label="Complete race"
-          icon="flag"
-          onPress={() => {
-            void raceService.completeRace(race.id).catch((error: unknown) => {
-              notify.error('Could not complete', toUserMessage(error));
-            });
-          }}
-          style={styles.complete}
-        />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: scoresOpen }}
+          onPress={() => setScoresOpen((v) => !v)}
+          style={styles.expander}
+        >
+          <Text style={styles.expanderText}>Set final scores or mark someone out</Text>
+          <Ionicons
+            name={scoresOpen ? 'chevron-up' : 'chevron-down'}
+            size={16}
+            color={palette.textMuted}
+          />
+        </Pressable>
+      ) : (
+        <SectionTitle title="Final standings" />
+      )}
+
+      {showStandings ? (
+        <Card style={styles.list}>
+          {sorted.map((e, index) => {
+            const playerName = nameOf(e.playerId);
+            const busy = busyPlayerId === e.playerId;
+            return (
+              <View key={e.playerId} style={[styles.row, index > 0 && styles.rowDivider]}>
+                <View style={styles.rowHead}>
+                  <Text style={styles.name} numberOfLines={1}>
+                    {playerName}
+                  </Text>
+                  <Text style={[styles.place, e.place === 'dnf' && styles.placeOut]}>
+                    {formatRacePlace(e.place)}
+                  </Text>
+                </View>
+                {race.status === 'in_progress' && e.place === null ? (
+                  <View style={styles.scoreEdit}>
+                    <View style={styles.scoreField}>
+                      <TextField
+                        label="Set score"
+                        value={draftScores[e.playerId] ?? ''}
+                        onChangeText={(t) =>
+                          setDraftScores((prev) => ({ ...prev, [e.playerId]: t }))
+                        }
+                        keyboardType="number-pad"
+                        placeholder="Tap to type"
+                      />
+                    </View>
+                    <Button
+                      label="Save"
+                      variant="secondary"
+                      onPress={() => void saveScore(e.playerId)}
+                      style={styles.save}
+                    />
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Mark ${playerName} as didn't finish`}
+                      disabled={busy}
+                      onPress={() => void markDidntFinish(e.playerId, playerName)}
+                      style={styles.outLink}
+                    >
+                      <Text style={styles.outLinkText}>{busy ? '…' : 'Out'}</Text>
+                    </Pressable>
+                  </View>
+                ) : race.status === 'in_progress' && e.place === 'dnf' ? (
+                  <View style={styles.outRow}>
+                    <Text style={styles.finalScore}>Score {e.score}</Text>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Undo didn't finish for ${playerName}`}
+                      disabled={busy}
+                      onPress={() => void undoDidntFinish(e.playerId)}
+                      style={styles.outLink}
+                    >
+                      <Text style={styles.undoLinkText}>{busy ? '…' : 'Undo'}</Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Text style={styles.finalScore}>Score {e.score}</Text>
+                )}
+              </View>
+            );
+          })}
+        </Card>
       ) : null}
     </Screen>
   );
@@ -309,8 +345,27 @@ const makeStyles = (c: Palette) =>
       marginTop: spacing.lg,
     },
     header: {
-      gap: spacing.xs,
-      marginBottom: spacing.lg,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginBottom: spacing.md,
+    },
+    headerText: {
+      flex: 1,
+      minWidth: 0,
+    },
+    expander: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+      minHeight: 44,
+      marginTop: spacing.sm,
+    },
+    expanderText: {
+      fontFamily: fonts.bodyMedium,
+      fontSize: 13,
+      color: c.textMuted,
     },
     target: {
       fontFamily: fonts.display,
@@ -354,15 +409,10 @@ const makeStyles = (c: Palette) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: 4,
-      paddingHorizontal: 10,
-      paddingVertical: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
       borderRadius: radii.pill,
       backgroundColor: c.cardHighlight,
-    },
-    crownText: {
-      fontFamily: fonts.bodyBold,
-      color: c.primary,
-      fontSize: 12,
     },
     list: {
       paddingVertical: spacing.xs,
@@ -439,8 +489,5 @@ const makeStyles = (c: Palette) =>
     finalScore: {
       fontFamily: fonts.body,
       color: c.textMuted,
-    },
-    complete: {
-      marginTop: spacing.lg,
     },
   });

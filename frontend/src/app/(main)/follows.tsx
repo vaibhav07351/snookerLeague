@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, type ReactNode } from 'react';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { useLayoutEffect, useMemo, type ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { useFollowGraph } from '@/features/community/hooks/use-follow-graph';
@@ -9,11 +9,11 @@ import { Screen } from '@/features/home/components/Screen';
 import { Card } from '@/shared/ui/Card';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, spacing, type Palette } from '@/theme/tokens';
+import { fonts, spacing, type Palette } from '@/theme/tokens';
 
 export default function FollowsScreen(): ReactNode {
   const styles = useStyles(makeStyles);
-  const typography = useStyles(makeTypography);
+  const navigation = useNavigation();
   const palette = usePalette();
   const { uid, kind } = useLocalSearchParams<{ uid?: string; kind?: string }>();
   const graph = useFollowGraph(uid ?? null);
@@ -23,11 +23,13 @@ export default function FollowsScreen(): ReactNode {
     [followingMode, graph.followers, graph.following],
   );
 
+  // The header says which list this is, so the page needs no title of its own.
+  useLayoutEffect(() => {
+    navigation.setOptions({ title: followingMode ? 'Following' : 'Followers' });
+  }, [navigation, followingMode]);
+
   return (
     <Screen>
-      <Text style={[typography.title, styles.heading]}>
-        {followingMode ? 'Following' : 'Followers'}
-      </Text>
       {rows.length === 0 ? (
         <EmptyState
           icon="people-outline"
@@ -64,9 +66,6 @@ export default function FollowsScreen(): ReactNode {
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
-    heading: {
-      marginBottom: spacing.md,
-    },
     list: {
       gap: spacing.sm,
     },

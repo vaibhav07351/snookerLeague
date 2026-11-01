@@ -1,6 +1,7 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useGoogleSignIn } from '@/features/auth/hooks/use-google-sign-in';
 import { useSession } from '@/features/auth/hooks/use-session';
@@ -17,15 +18,15 @@ import { TextField } from '@/features/home/components/TextField';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { isCloudEnabled } from '@/shared/config/env';
 import { useLayout } from '@/shared/hooks/use-layout';
-import { Card } from '@/shared/ui/Card';
 import { notify } from '@/shared/ui/notify';
-import { useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
+import { usePalette, useStyles } from '@/theme/ThemeProvider';
+import { fonts, makeTypography, spacing, type Palette } from '@/theme/tokens';
 
 export default function LoginScreen(): ReactNode {
   const { refresh } = useSession();
   const styles = useStyles(makeStyles);
   const typography = useStyles(makeTypography);
+  const palette = usePalette();
   const { scale } = useLayout();
   const { ready: googleReady, promptIdToken } = useGoogleSignIn();
   const [name, setName] = useState('');
@@ -34,6 +35,8 @@ export default function LoginScreen(): ReactNode {
   const [nameError, setNameError] = useState<string | undefined>();
   const [dobError, setDobError] = useState<string | undefined>();
   const [agreed, setAgreed] = useState(false);
+  // Google first; the local-only profile form is a second, opt-in step.
+  const [step, setStep] = useState<'choose' | 'demo'>('choose');
 
   function needsAgreement(): boolean {
     if (agreed) {
@@ -85,8 +88,9 @@ export default function LoginScreen(): ReactNode {
     if (!isCloudEnabled()) {
       notify.info(
         'Almost there',
-        'Online sign-in is not set up in this build. For now, enter your name below and tap Try without an account: everything works on this phone.',
+        'Online sign-in is not set up in this build. Enter your name to play on this phone.',
       );
+      setStep('demo');
       return;
     }
     if (!googleReady) {
@@ -122,44 +126,22 @@ export default function LoginScreen(): ReactNode {
     }
   }
 
-  return (
-    <Screen keyboardVerticalOffset={0}>
-      <View style={styles.hero}>
-        <BrandLogo size={scale(96)} style={styles.logo} />
-        <Text style={typography.label}>Your table. Your city.</Text>
-        <BrandWordmark />
-        <Text style={[typography.subtitle, styles.tagline]}>
-          Live-score snooker with your friends and see who rules the table in your city.
-        </Text>
-      </View>
-
-      <AgreeTerms checked={agreed} onChange={setAgreed} />
-
-      <Card tone="highlight" style={styles.googleCard}>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>Recommended</Text>
-        </View>
-        <Button
-          label="Continue with Google"
-          icon="logo-google"
-          onPress={() => void onGoogle()}
-          disabled={busy || !googleReady}
-        />
-        <Text style={styles.googleNote}>
-          Needed to join your friends&apos; leagues and keep your scores synced across devices.
-        </Text>
-      </Card>
-
-      <View style={styles.divider}>
-        <View style={styles.dividerLine} />
-        <Text style={styles.dividerText}>or</Text>
-        <View style={styles.dividerLine} />
-      </View>
-
-      <View style={styles.demo}>
-        <Text style={typography.heading}>Try without an account</Text>
-        <Text style={[typography.caption, styles.demoNote]}>
-          Demo mode: everything stays on this device only.
+  if (step === 'demo') {
+    return (
+      <Screen keyboardVerticalOffset={0}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Back to sign-in options"
+          hitSlop={8}
+          onPress={() => setStep('choose')}
+          style={styles.back}
+        >
+          <Ionicons name="chevron-back" size={20} color={palette.textMuted} />
+          <Text style={styles.backText}>Back</Text>
+        </Pressable>
+        <Text style={typography.title}>Try without an account</Text>
+        <Text style={[typography.subtitle, styles.demoNote]}>
+          Everything stays on this phone. You can link Google later and keep it all.
         </Text>
         <TextField
           label="What should we call you?"
@@ -173,19 +155,55 @@ export default function LoginScreen(): ReactNode {
           placeholder="Your name"
           autoCapitalize="words"
           autoCorrect={false}
-          returnKeyType="done"
-          onSubmitEditing={() => void onDemo()}
+          autoFocus
+          returnKeyType="next"
           error={nameError}
-          hint="This is how you appear on the leaderboard"
         />
         <DateOfBirthField value={dob} onChange={setDob} error={dobError} />
         <Button
-          label="Try without an account"
-          variant="secondary"
+          label="Start playing"
+          icon="arrow-forward"
           loading={busy}
           onPress={() => void onDemo()}
           disabled={busy}
+          style={styles.demoButton}
         />
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen keyboardVerticalOffset={0}>
+      <View style={styles.hero}>
+        <BrandLogo size={scale(88)} style={styles.logo} />
+        <BrandWordmark />
+        <Text style={[typography.subtitle, styles.tagline]}>
+          Live-score snooker with friends and see who rules the table in your city.
+        </Text>
+      </View>
+
+      <View style={styles.actions}>
+        <AgreeTerms checked={agreed} onChange={setAgreed} />
+        <Button
+          label="Continue with Google"
+          icon="logo-google"
+          onPress={() => void onGoogle()}
+          disabled={busy || !googleReady}
+          loading={busy}
+        />
+        <Text style={styles.googleNote}>Join friends&apos; leagues and sync across devices.</Text>
+        <Pressable
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={() => {
+            if (!needsAgreement()) {
+              setStep('demo');
+            }
+          }}
+          style={styles.demoLink}
+        >
+          <Text style={styles.demoLinkText}>Try without an account</Text>
+        </Pressable>
       </View>
     </Screen>
   );
@@ -194,10 +212,11 @@ export default function LoginScreen(): ReactNode {
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     hero: {
-      marginTop: spacing.md,
-      marginBottom: spacing.lg,
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
       gap: spacing.sm,
-      alignItems: 'flex-start',
+      paddingVertical: spacing.lg,
     },
     logo: {
       marginBottom: spacing.sm,
@@ -205,52 +224,47 @@ const makeStyles = (c: Palette) =>
       borderColor: c.borderStrong,
     },
     tagline: {
-      maxWidth: 360,
+      maxWidth: 320,
+      textAlign: 'center',
     },
-    googleCard: {
+    actions: {
       gap: spacing.sm,
-      padding: spacing.md,
-    },
-    badge: {
-      alignSelf: 'flex-start',
-      paddingHorizontal: 10,
-      paddingVertical: 3,
-      borderRadius: radii.pill,
-      backgroundColor: c.primary,
-    },
-    badgeText: {
-      fontFamily: fonts.bodyBold,
-      color: c.onPrimary,
-      fontSize: 11,
-      letterSpacing: 0.6,
-      textTransform: 'uppercase',
     },
     googleNote: {
       fontFamily: fonts.body,
       color: c.textMuted,
       fontSize: 13,
       lineHeight: 18,
+      textAlign: 'center',
     },
-    divider: {
+    demoLink: {
+      minHeight: 48,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    demoLinkText: {
+      fontFamily: fonts.bodyBold,
+      color: c.primary,
+      fontSize: 15,
+    },
+    back: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.sm,
-      marginVertical: spacing.lg,
+      alignSelf: 'flex-start',
+      gap: 2,
+      minHeight: 40,
+      marginBottom: spacing.sm,
     },
-    dividerLine: {
-      flex: 1,
-      height: 1,
-      backgroundColor: c.border,
-    },
-    dividerText: {
+    backText: {
       fontFamily: fonts.bodyMedium,
-      color: c.textFaint,
-      fontSize: 13,
-    },
-    demo: {
-      gap: spacing.xs,
+      color: c.textMuted,
+      fontSize: 15,
     },
     demoNote: {
-      marginBottom: spacing.md,
+      marginTop: spacing.xs,
+      marginBottom: spacing.lg,
+    },
+    demoButton: {
+      marginTop: spacing.sm,
     },
   });

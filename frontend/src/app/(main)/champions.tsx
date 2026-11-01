@@ -17,13 +17,12 @@ import { Card } from '@/shared/ui/Card';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { formatDateTimeSubtle } from '@/shared/utils/datetime';
 import { useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
 
 type ChampTab = 'match' | 'race';
 
 export default function ChampionsHistoryScreen(): ReactNode {
   const styles = useStyles(makeStyles);
-  const typography = useStyles(makeTypography);
   const { league } = useSession();
   const [players, setPlayers] = useState<Player[]>([]);
   const [teams, setTeams] = useState<TeamChampionRecord[]>([]);
@@ -61,8 +60,6 @@ export default function ChampionsHistoryScreen(): ReactNode {
 
   return (
     <Screen>
-      <Text style={typography.subtitle}>Match titles and race kings, newest first.</Text>
-
       <View style={styles.tabs} accessibilityRole="tablist">
         {tabs.map((t) => {
           const on = tab === t.key;

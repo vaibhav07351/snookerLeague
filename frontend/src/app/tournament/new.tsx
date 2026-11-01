@@ -66,7 +66,19 @@ export default function NewTournamentScreen(): ReactNode {
   }
 
   return (
-    <Screen>
+    <Screen
+      footer={
+        <Button
+          label={
+            entrants.length >= 2 ? `Create (${entrants.length} players)` : 'Pick 2 or more players'
+          }
+          icon="trophy-outline"
+          onPress={() => void create()}
+          loading={busy}
+          disabled={busy || entrants.length < 2}
+        />
+      }
+    >
       <TextField
         label="Tournament name"
         value={name}
@@ -84,10 +96,7 @@ export default function NewTournamentScreen(): ReactNode {
         onChange={setBestOf}
       />
       <Text style={styles.heading}>Players, in seed order</Text>
-      <Text style={styles.hint}>
-        Tap players in order of strength: the first tap is the top seed. In a knockout, top seeds
-        get any byes and meet as late as possible.
-      </Text>
+      <Text style={styles.hint}>Tap in order of strength: first tap is the top seed.</Text>
       <View style={styles.chips}>
         {players.map((p) => {
           const seed = entrants.indexOf(p.id);
@@ -101,13 +110,6 @@ export default function NewTournamentScreen(): ReactNode {
           );
         })}
       </View>
-      <Button
-        label={`Create (${entrants.length} players)`}
-        icon="trophy-outline"
-        onPress={() => void create()}
-        loading={busy}
-        disabled={busy || entrants.length < 2}
-      />
     </Screen>
   );
 }

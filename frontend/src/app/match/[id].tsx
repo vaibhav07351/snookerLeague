@@ -37,12 +37,15 @@ import { Button } from '@/features/home/components/Button';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { HeaderBack, useSafeBack } from '@/shared/ui/HeaderBack';
-import { SectionTitle } from '@/shared/ui/SectionTitle';
+import { BottomSheet } from '@/shared/ui/BottomSheet';
 import { confirmAction } from '@/shared/utils/confirm';
 import type { Match } from '@/shared/types/domain';
 import { sideColor } from '@/theme/palettes';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
 import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+
+/** Time for a bottom sheet's slide-out before another dialog can safely open. */
+const SHEET_CLOSE_MS = 400;
 
 function useLiveElapsed(startedAt: string | null | undefined, enabled: boolean): number {
   const [elapsed, setElapsed] = useState(0);
@@ -78,6 +81,9 @@ export default function MatchDetailScreen(): ReactNode {
   const { match } = s;
   const goBack = useSafeBack('/(main)');
   const [showManual, setShowManual] = useState(false);
+  const [showFrames, setShowFrames] = useState(false);
+  const [showMore, setShowMore] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   // Opened from "New match" with "We are already mid-match" switched on.
   const [showMidway, setShowMidway] = useState(midway === '1');
 
@@ -266,7 +272,7 @@ export default function MatchDetailScreen(): ReactNode {
     teamAPoints: number;
     teamBPoints: number;
     winner: 'a' | 'b';
-  }): Promise<void> {
+  }): Promise<boolean> {
     const name = frame.winner === 'a' ? fullA : fullB;
     const shots = open?.shots.length ?? 0;
     const ok = await confirmAction(
@@ -274,9 +280,7 @@ export default function MatchDetailScreen(): ReactNode {
       `Log ${frame.teamAPoints}-${frame.teamBPoints} to ${name}.${shots > 0 ? ' The shots logged in this frame are replaced.' : ''}`,
       'Log frame',
     );
-    if (ok && (await run('Could not log the frame', () => matchService.addFrame(m.id, frame)))) {
-      setShowManual(false);
-    }
+    return ok && (await run('Could not log the frame', () => matchService.addFrame(m.id, frame)));
   }
 
   async function undo(): Promise<void> {
@@ -360,24 +364,31 @@ export default function MatchDetailScreen(): ReactNode {
   );
 
   const topBreak = s.summary?.topBreak;
-  const frameNotes = (
-    <>
-      {topBreak && topBreak.value > 0 ? (
-        <Text style={styles.topBreak}>
-          Highest break so far: {topBreak.value} by{' '}
-          <Text style={{ color: sideColor(palette, topBreak.side) }}>
-            {topBreak.playerId ? s.shortName(topBreak.playerId) : s.sideLabel(topBreak.side, true)}
-          </Text>
+  const topBreakLine =
+    topBreak && topBreak.value > 0 ? (
+      <Text style={styles.topBreak}>
+        Highest break so far: {topBreak.value} by{' '}
+        <Text style={{ color: sideColor(palette, topBreak.side) }}>
+          {topBreak.playerId ? s.shortName(topBreak.playerId) : s.sideLabel(topBreak.side, true)}
         </Text>
-      ) : null}
-      {open?.carriedPoints ? (
-        <Text style={styles.banner}>
-          Ball-by-ball scoring started at {open.carriedPoints.a}-{open.carriedPoints.b} in this
-          frame.
-        </Text>
-      ) : null}
-    </>
-  );
+      </Text>
+    ) : null;
+  const carriedBanner = open?.carriedPoints ? (
+    <Text style={styles.banner}>
+      Ball-by-ball scoring started at {open.carriedPoints.a}-{open.carriedPoints.b} in this frame.
+    </Text>
+  ) : null;
+
+  const hasMore = canScore || s.canManage;
+  const closeMore = (): void => {
+    setShowMore(false);
+    setShowManual(false);
+  };
+  // iOS drops an alert opened while the sheet is still sliding away, so wait for it to close.
+  const afterMoreCloses = (action: () => void): void => {
+    closeMore();
+    setTimeout(action, SHEET_CLOSE_MS);
+  };
 
   return (
     <Screen contentStyle={styles.content}>
@@ -393,14 +404,13 @@ export default function MatchDetailScreen(): ReactNode {
           scoreLockedLine={null}
         />
       ) : null}
-      {finished && winnerLabel ? <ShareMatchCard match={m} sideA={fullA} sideB={fullB} /> : null}
       {canConfirm(m, user?.uid, s.players) ? (
         <Card style={styles.confirmCard}>
           <Text style={styles.confirmText}>
-            Did this result happen? Confirming it counts the match for the public rating.
+            Did this result happen? Confirming counts it for the public rating.
           </Text>
           <Button
-            label="Confirm this result"
+            label="Confirm"
             icon="checkmark-done-outline"
             size="sm"
             onPress={() => {
@@ -411,7 +421,7 @@ export default function MatchDetailScreen(): ReactNode {
           />
         </Card>
       ) : isConfirmedBy(m, user?.uid) ? (
-        <Text style={styles.confirmText}>You confirmed this result.</Text>
+        <Text style={styles.confirmedText}>You confirmed this result.</Text>
       ) : null}
 
       {inProgress && !scoring ? scoringStatus : null}
@@ -432,13 +442,8 @@ export default function MatchDetailScreen(): ReactNode {
         </TourTarget>
       ) : null}
 
-      {inProgress && !scoring ? frameNotes : null}
-
-      {inProgress && liveRanks.some((r) => r.scored > 0 || r.foulPoints > 0) ? (
-        <Card style={styles.ranksCard}>
-          <FrameLiveRanks ranks={liveRanks} title="This frame" />
-        </Card>
-      ) : null}
+      {inProgress && !scoring ? topBreakLine : null}
+      {inProgress ? carriedBanner : null}
 
       {canStartMidway && showMidway ? (
         <Card>
@@ -477,78 +482,129 @@ export default function MatchDetailScreen(): ReactNode {
         />
       ) : null}
 
-      {scoring ? (
-        <>
-          {canStartMidway && !showMidway ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setShowMidway(true)}
-              style={styles.linkRow}
-            >
-              <Text style={styles.link}>Already playing? Start from the current score</Text>
-            </Pressable>
-          ) : null}
-          {frameNotes}
-          {scoringStatus}
-        </>
-      ) : null}
+      {/* Everything secondary sits one tap away, so scoring and the result fit on one screen. */}
+      <View style={styles.actionBar}>
+        {finished && winnerLabel ? (
+          <Button
+            label="Share"
+            icon="share-social-outline"
+            size="sm"
+            onPress={() => setShowShare(true)}
+            style={styles.actionFlex}
+          />
+        ) : null}
+        <Button
+          label={m.frames.length > 0 ? `Frames (${m.frames.length})` : 'Frames'}
+          icon="list-outline"
+          size="sm"
+          variant="secondary"
+          onPress={() => setShowFrames(true)}
+          style={styles.actionFlex}
+        />
+        {hasMore ? (
+          <Button
+            label="More"
+            icon="ellipsis-horizontal"
+            size="sm"
+            variant="secondary"
+            onPress={() => setShowMore(true)}
+            style={styles.actionFlex}
+          />
+        ) : null}
+      </View>
 
-      {scoring ? (
-        showManual ? (
-          <Card>
-            <ManualFrameForm teamALabel={labelA} teamBLabel={labelB} onSubmit={logManualFrame} />
-            <Pressable onPress={() => setShowManual(false)} style={styles.linkRow}>
-              <Text style={styles.linkMuted}>Cancel</Text>
-            </Pressable>
+      <BottomSheet visible={showShare} title="Share the result" onClose={() => setShowShare(false)}>
+        <ShareMatchCard match={m} sideA={fullA} sideB={fullB} />
+      </BottomSheet>
+
+      <BottomSheet
+        visible={showFrames}
+        title={finished ? 'Match details' : 'Frames'}
+        onClose={() => setShowFrames(false)}
+      >
+        {inProgress && liveRanks.some((r) => r.scored > 0 || r.foulPoints > 0) ? (
+          <Card style={styles.ranksCard}>
+            <FrameLiveRanks ranks={liveRanks} title="This frame" />
           </Card>
-        ) : (
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setShowManual(true)}
-            style={styles.linkRow}
-          >
-            <Text style={styles.linkMuted}>
-              Not scoring ball by ball? Log a frame by final score
-            </Text>
-          </Pressable>
-        )
-      ) : null}
-
-      {finished && s.summary ? (
-        <MatchSummaryCard
-          summary={s.summary}
+        ) : null}
+        {inProgress ? topBreakLine : null}
+        {finished && s.summary ? (
+          <MatchSummaryCard
+            summary={s.summary}
+            teamALabel={labelA}
+            teamBLabel={labelB}
+            nameOf={s.shortName}
+          />
+        ) : null}
+        <MatchFrameList
+          frames={m.frames}
+          playerPoints={frameLines}
           teamALabel={labelA}
           teamBLabel={labelB}
-          nameOf={s.shortName}
+          canEdit={canScore || s.canManage}
+          onUpdate={(index, patch) =>
+            run('Could not update the frame', () => matchService.updateFrame(m.id, index, patch))
+          }
+          onDelete={(index) =>
+            run('Could not delete the frame', () => matchService.deleteFrame(m.id, index))
+          }
+          onClearTime={(index) =>
+            run('Could not clear the time', () => matchService.clearFrameDuration(m.id, index))
+          }
         />
-      ) : null}
+      </BottomSheet>
 
-      {finished && canScore && m.frames.length > 0 ? (
-        <Pressable accessibilityRole="button" onPress={() => void undo()} style={styles.linkRow}>
-          <Text style={styles.link}>Undo last frame and keep playing</Text>
-        </Pressable>
-      ) : null}
-
-      <SectionTitle title={m.frames.length > 0 ? `Frames (${m.frames.length})` : 'Frames'} />
-      <MatchFrameList
-        frames={m.frames}
-        playerPoints={frameLines}
-        teamALabel={labelA}
-        teamBLabel={labelB}
-        canEdit={canScore || s.canManage}
-        onUpdate={(index, patch) =>
-          run('Could not update the frame', () => matchService.updateFrame(m.id, index, patch))
-        }
-        onDelete={(index) =>
-          run('Could not delete the frame', () => matchService.deleteFrame(m.id, index))
-        }
-        onClearTime={(index) =>
-          run('Could not clear the time', () => matchService.clearFrameDuration(m.id, index))
-        }
-      />
-
-      <View style={styles.options}>
+      <BottomSheet visible={showMore} title="Match options" onClose={closeMore}>
+        {scoring ? scoringStatus : null}
+        {canStartMidway && !showMidway ? (
+          <Button
+            label="Already playing? Start from the current score"
+            icon="play-forward-outline"
+            size="sm"
+            variant="secondary"
+            onPress={() => {
+              closeMore();
+              setShowMidway(true);
+            }}
+          />
+        ) : null}
+        {scoring ? (
+          showManual ? (
+            <Card>
+              <ManualFrameForm
+                teamALabel={labelA}
+                teamBLabel={labelB}
+                onSubmit={async (frame) => {
+                  if (await logManualFrame(frame)) {
+                    closeMore();
+                  }
+                }}
+              />
+              <Pressable onPress={() => setShowManual(false)} style={styles.linkRow}>
+                <Text style={styles.linkMuted}>Cancel</Text>
+              </Pressable>
+            </Card>
+          ) : (
+            <Button
+              label="Log a frame by final score"
+              icon="create-outline"
+              size="sm"
+              variant="secondary"
+              onPress={() => setShowManual(true)}
+            />
+          )
+        ) : null}
+        {finished && canScore && m.frames.length > 0 ? (
+          <Button
+            label="Undo last frame and keep playing"
+            icon="arrow-undo-outline"
+            size="sm"
+            variant="secondary"
+            onPress={() => afterMoreCloses(() => void undo())}
+          />
+        ) : null}
         <MatchOptions
+          embedded
           match={m}
           inProgress={inProgress}
           canScore={canScore}
@@ -564,10 +620,10 @@ export default function MatchDetailScreen(): ReactNode {
               matchAdmin.setScoringPolicy(m.id, policy, allowed),
             )
           }
-          onForfeit={(side) => void forfeit(side)}
-          onDelete={() => void removeMatch()}
+          onForfeit={(side) => afterMoreCloses(() => void forfeit(side))}
+          onDelete={() => afterMoreCloses(() => void removeMatch())}
         />
-      </View>
+      </BottomSheet>
     </Screen>
   );
 }
@@ -605,30 +661,33 @@ const makeStyles = (c: Palette) =>
       justifyContent: 'center',
       alignItems: 'center',
     },
-    link: {
-      fontFamily: fonts.bodyBold,
-      fontSize: 14,
-      color: c.primary,
-      textAlign: 'center',
-    },
     linkMuted: {
       fontFamily: fonts.bodyMedium,
       fontSize: 13,
       color: c.textMuted,
       textAlign: 'center',
     },
-    options: {
-      marginTop: spacing.sm,
+    actionBar: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    actionFlex: {
+      flex: 1,
+      minWidth: 0,
     },
     confirmCard: {
       gap: spacing.sm,
-      marginBottom: spacing.lg,
     },
     confirmText: {
       fontFamily: fonts.body,
       fontSize: 13,
       lineHeight: 18,
       color: c.textMuted,
-      marginBottom: spacing.sm,
+    },
+    confirmedText: {
+      fontFamily: fonts.body,
+      fontSize: 13,
+      color: c.textMuted,
+      textAlign: 'center',
     },
   });

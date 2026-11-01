@@ -1,6 +1,7 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import type { ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import type { ComponentProps, ReactNode } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useLinkGoogle } from '@/features/auth/hooks/use-link-google';
 import { useSession } from '@/features/auth/hooks/use-session';
@@ -8,17 +9,15 @@ import * as authService from '@/features/auth/services/auth.service';
 import { divisionFromDob, divisionLabel } from '@/features/auth/services/division.service';
 import { Button } from '@/features/home/components/Button';
 import { Screen } from '@/features/home/components/Screen';
-import { LeagueSwitchList } from '@/features/league/components/LeagueSwitchList';
 import { useTour } from '@/features/tour/hooks/use-tour';
 import * as tourService from '@/features/tour/services/tour.service';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { resetHints } from '@/shared/hooks/use-hint';
 import { Card } from '@/shared/ui/Card';
 import { notify } from '@/shared/ui/notify';
-import { SectionTitle } from '@/shared/ui/SectionTitle';
 import { confirmAction } from '@/shared/utils/confirm';
 import { PALETTES } from '@/theme/palettes';
-import { useStyles, useTheme } from '@/theme/ThemeProvider';
+import { usePalette, useStyles, useTheme } from '@/theme/ThemeProvider';
 import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
 
 /** Account, leagues and app preferences: everything that used to make Profile scroll. */
@@ -26,7 +25,7 @@ export function SettingsScreen(): ReactNode {
   const styles = useStyles(makeStyles);
   const typography = useStyles(makeTypography);
   const { themeId } = useTheme();
-  const { user, refresh } = useSession();
+  const { user, league, refresh } = useSession();
   const linkGoogle = useLinkGoogle();
   const tour = useTour();
 
@@ -93,17 +92,26 @@ export function SettingsScreen(): ReactNode {
   return (
     <Screen>
       <Card style={styles.account}>
-        <Text style={typography.heading}>{user.displayName}</Text>
-        {user.email ? <Text style={styles.meta}>{user.email}</Text> : null}
-        <Text style={styles.badge}>{user.isDemo ? 'Local profile' : 'Google account'}</Text>
+        <View style={styles.accountHead}>
+          <View style={styles.accountText}>
+            <Text style={typography.heading} numberOfLines={1}>
+              {user.displayName}
+            </Text>
+            {user.email ? (
+              <Text style={styles.meta} numberOfLines={1}>
+                {user.email}
+              </Text>
+            ) : null}
+          </View>
+          <Text style={styles.badge}>{user.isDemo ? 'Local' : 'Google'}</Text>
+        </View>
         {linkGoogle.available ? (
           <>
-            <Text style={styles.meta}>
-              You started with a local name. Link Google to keep this data and sync it to the cloud.
-            </Text>
+            <Text style={styles.meta}>Link Google to keep this data and sync it to the cloud.</Text>
             <Button
               label="Continue with Google"
               variant="secondary"
+              size="sm"
               loading={linkGoogle.linking}
               disabled={linkGoogle.linking}
               onPress={() => void linkGoogle.link()}
@@ -112,49 +120,40 @@ export function SettingsScreen(): ReactNode {
         ) : null}
       </Card>
 
-      <SectionTitle
-        title="Your leagues"
-        actionLabel="Manage"
-        onAction={() => router.push('/(main)/league')}
-      />
-      <Text style={styles.hint}>
-        Tap a league to switch. Home, players and stats follow the active league.
-      </Text>
-      <LeagueSwitchList onSwitched={() => router.dismissTo('/(main)')} />
-
-      <SectionTitle title="Profile" />
       <View style={styles.group}>
-        <Button
-          label={user.cityId ? `City: ${user.cityName ?? 'set'}` : 'Choose city'}
-          variant="ghost"
+        <SettingsRow
+          icon="trophy-outline"
+          label="League"
+          value={league?.name ?? 'None'}
+          onPress={() => router.push('/(main)/league')}
+        />
+        <SettingsRow
           icon="location-outline"
+          label="City"
+          value={user.cityId ? (user.cityName ?? 'Set') : 'Choose'}
           onPress={() => router.push('/location')}
         />
-        <Button
-          label={
+        <SettingsRow
+          icon="calendar-outline"
+          label="Division"
+          value={
             user.dateOfBirth
-              ? `Division: ${divisionLabel(divisionFromDob(user.dateOfBirth))}`
+              ? divisionLabel(divisionFromDob(user.dateOfBirth))
               : 'Add date of birth'
           }
-          variant="ghost"
-          icon="calendar-outline"
           onPress={() => router.push('/birthday')}
         />
-      </View>
-
-      <SectionTitle title="App" />
-      <View style={styles.group}>
-        <Button
-          label={`Appearance: ${PALETTES[themeId].name}`}
-          variant="ghost"
+        <SettingsRow
           icon="color-palette-outline"
+          label="Appearance"
+          value={PALETTES[themeId].name}
           onPress={() => router.push('/settings/theme')}
         />
-        <Button
-          label="Replay app tour"
-          variant="ghost"
+        <SettingsRow
           icon="compass-outline"
+          label="Replay app tour"
           onPress={() => void onReplayTour()}
+          last
         />
       </View>
 
@@ -170,10 +169,52 @@ export function SettingsScreen(): ReactNode {
   );
 }
 
+interface SettingsRowProps {
+  icon: ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  value?: string;
+  onPress: () => void;
+  last?: boolean;
+}
+
+function SettingsRow({ icon, label, value, onPress, last = false }: SettingsRowProps): ReactNode {
+  const styles = useStyles(makeStyles);
+  const palette = usePalette();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={value ? `${label}: ${value}` : label}
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, !last && styles.rowDivider, pressed && styles.pressed]}
+    >
+      <Ionicons name={icon} size={20} color={palette.primary} />
+      <Text style={styles.rowLabel}>{label}</Text>
+      {value ? (
+        <Text style={styles.rowValue} numberOfLines={1}>
+          {value}
+        </Text>
+      ) : (
+        <View style={styles.flex} />
+      )}
+      <Ionicons name="chevron-forward" size={18} color={palette.textFaint} />
+    </Pressable>
+  );
+}
+
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     account: {
       marginBottom: spacing.lg,
+      gap: spacing.sm,
+    },
+    accountHead: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    accountText: {
+      flex: 1,
+      minWidth: 0,
     },
     meta: {
       fontFamily: fonts.body,
@@ -182,25 +223,52 @@ const makeStyles = (c: Palette) =>
       color: c.textMuted,
     },
     badge: {
-      alignSelf: 'flex-start',
       fontFamily: fonts.bodyBold,
       fontSize: 12,
       color: c.onPrimary,
       backgroundColor: c.success,
-      paddingHorizontal: spacing.md,
-      paddingVertical: 4,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 3,
       borderRadius: radii.pill,
       overflow: 'hidden',
     },
-    hint: {
-      fontFamily: fonts.body,
-      fontSize: 13,
-      lineHeight: 18,
-      color: c.textMuted,
-      marginBottom: spacing.sm,
-    },
     group: {
       marginBottom: spacing.lg,
+      borderRadius: radii.md,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.card,
+      overflow: 'hidden',
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      minHeight: 52,
+      paddingHorizontal: spacing.md,
+    },
+    rowDivider: {
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+    pressed: {
+      backgroundColor: c.cardRaised,
+    },
+    rowLabel: {
+      fontFamily: fonts.bodyMedium,
+      fontSize: 15,
+      color: c.text,
+    },
+    rowValue: {
+      flex: 1,
+      minWidth: 0,
+      textAlign: 'right',
+      fontFamily: fonts.body,
+      fontSize: 14,
+      color: c.textMuted,
+    },
+    flex: {
+      flex: 1,
     },
     delete: {
       marginTop: spacing.md,

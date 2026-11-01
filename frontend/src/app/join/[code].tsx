@@ -171,12 +171,21 @@ export default function JoinLeagueScreen(): ReactNode {
   }
 
   return (
-    <Screen>
+    <Screen
+      footer={
+        <Button
+          label={choice === 'new' ? 'Add me to the league' : 'That is me'}
+          loading={busy}
+          disabled={busy || choice == null || (choice === 'new' && name.trim().length < 2)}
+          onPress={() => void confirm()}
+        />
+      }
+    >
       <Text style={typography.title}>Which player are you?</Text>
       <Text style={[typography.subtitle, styles.intro]}>
         {guests.length > 0
-          ? `If someone already added you to ${step.leagueName}, pick your name to keep your match history. Otherwise add yourself.`
-          : `Add yourself to ${step.leagueName}. You can change your name later.`}
+          ? 'Pick your name to keep your match history.'
+          : `Add yourself to ${step.leagueName}.`}
       </Text>
 
       {guests.length > 0 ? (
@@ -238,14 +247,6 @@ export default function JoinLeagueScreen(): ReactNode {
           />
         ) : null}
       </Card>
-
-      <Button
-        label={choice === 'new' ? 'Add me to the league' : 'That is me'}
-        loading={busy}
-        disabled={busy || choice == null || (choice === 'new' && name.trim().length < 2)}
-        onPress={() => void confirm()}
-        style={styles.confirm}
-      />
     </Screen>
   );
 }

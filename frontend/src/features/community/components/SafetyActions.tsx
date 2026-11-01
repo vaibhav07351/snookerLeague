@@ -1,12 +1,18 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState, type ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import * as safety from '@/features/community/services/safety.service';
 import { Button } from '@/features/home/components/Button';
 import { toUserMessage } from '@/shared/errors/app-error';
+import { BottomSheet } from '@/shared/ui/BottomSheet';
 import { notify } from '@/shared/ui/notify';
 import { confirmAction } from '@/shared/utils/confirm';
-import { spacing } from '@/theme/tokens';
+import { usePalette } from '@/theme/ThemeProvider';
+import { spacing, TOUCH_TARGET } from '@/theme/tokens';
+
+/** Time for the sheet's slide-out before a confirm dialog can safely open (iOS drops it). */
+const SHEET_CLOSE_MS = 400;
 
 interface SafetyActionsProps {
   /** What is being reported. */
@@ -16,6 +22,8 @@ interface SafetyActionsProps {
   targetUid?: string | null;
   /** Name used in the confirmations. */
   name?: string;
+  /** A small "..." button that opens the actions in a sheet, for dense cards and rows. */
+  compact?: boolean;
 }
 
 /** Report (and optionally block) buttons for content made by someone else. */
@@ -24,8 +32,11 @@ export function SafetyActions({
   targetId,
   targetUid,
   name = 'this person',
+  compact = false,
 }: SafetyActionsProps): ReactNode {
+  const palette = usePalette();
   const [blocked, setBlocked] = useState(() => safety.isBlocked(targetUid));
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     void safety.blockedUids().then(() => setBlocked(safety.isBlocked(targetUid)));
@@ -73,6 +84,42 @@ export function SafetyActions({
     }
   }
 
+  if (compact) {
+    const fromMenu = (action: () => Promise<void>) => () => {
+      setMenuOpen(false);
+      setTimeout(() => void action(), SHEET_CLOSE_MS);
+    };
+    return (
+      <>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="More actions"
+          hitSlop={4}
+          onPress={() => setMenuOpen(true)}
+          style={({ pressed }) => [styles.menuBtn, pressed && styles.pressed]}
+        >
+          <Ionicons name="ellipsis-horizontal" size={18} color={palette.textMuted} />
+        </Pressable>
+        <BottomSheet visible={menuOpen} title={name} onClose={() => setMenuOpen(false)}>
+          <Button
+            label="Report"
+            icon="flag-outline"
+            variant="secondary"
+            onPress={fromMenu(onReport)}
+          />
+          {targetUid ? (
+            <Button
+              label={blocked ? 'Unblock' : 'Block'}
+              icon={blocked ? 'person-outline' : 'remove-circle-outline'}
+              variant="secondary"
+              onPress={fromMenu(onBlock)}
+            />
+          ) : null}
+        </BottomSheet>
+      </>
+    );
+  }
+
   return (
     <View style={styles.row}>
       <Button
@@ -96,6 +143,17 @@ export function SafetyActions({
 }
 
 const styles = StyleSheet.create({
+  menuBtn: {
+    width: TOUCH_TARGET,
+    height: TOUCH_TARGET,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: -spacing.sm,
+    marginRight: -spacing.sm,
+  },
+  pressed: {
+    opacity: 0.6,
+  },
   row: {
     flexDirection: 'row',
     flexWrap: 'wrap',

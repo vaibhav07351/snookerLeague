@@ -16,9 +16,8 @@ export default function ThemeSettingsScreen(): ReactNode {
 
   return (
     <Screen>
-      <Text style={typography.title}>Appearance</Text>
       <Text style={[typography.subtitle, styles.intro]}>
-        Pick the look you like. It changes straight away and is saved on this device.
+        Changes straight away and is saved on this phone.
       </Text>
       <View style={styles.list}>
         {THEME_ORDER.map((id) => (

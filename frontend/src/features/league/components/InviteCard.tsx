@@ -1,28 +1,29 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useState, type ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/features/home/components/Button';
-import { inviteUrl, shareLeagueInvite } from '@/features/league/services/invite-link.service';
+import { shareLeagueInvite } from '@/features/league/services/invite-link.service';
 import * as leagueService from '@/features/league/services/league.service';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { Card } from '@/shared/ui/Card';
 import { notify } from '@/shared/ui/notify';
 import type { League } from '@/shared/types/domain';
 import { confirmAction } from '@/shared/utils/confirm';
-import { useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
+import { usePalette, useStyles } from '@/theme/ThemeProvider';
+import { fonts, makeTypography, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
 
 interface InviteCardProps {
   league: League;
   /** Signed-in uid; the owner also gets "New code". */
   uid: string;
-  compact?: boolean;
 }
 
 /** Invite friends: share link (or code), and for the owner, reset the code. */
-export function InviteCard({ league, uid, compact = false }: InviteCardProps): ReactNode {
+export function InviteCard({ league, uid }: InviteCardProps): ReactNode {
   const styles = useStyles(makeStyles);
   const typography = useStyles(makeTypography);
+  const palette = usePalette();
   const [busy, setBusy] = useState(false);
   const isOwner = league.createdByUid === uid;
 
@@ -62,51 +63,60 @@ export function InviteCard({ league, uid, compact = false }: InviteCardProps): R
 
   return (
     <Card tone="highlight">
-      <Text style={typography.label}>Invite friends to {league.name}</Text>
-      <View style={styles.codeRow}>
-        <Text
-          style={styles.code}
-          selectable
-          accessibilityLabel={`Invite code ${league.inviteCode.split('').join(' ')}`}
-        >
-          {league.inviteCode}
-        </Text>
-      </View>
-      {!compact ? (
-        <Text style={styles.link} selectable numberOfLines={2}>
-          {inviteUrl(league.inviteCode)}
-        </Text>
-      ) : null}
-      <Text style={styles.hint}>
-        Friends tap the link (or enter the code under Join a league), sign in with Google and pick
-        their player.
+      <Text style={typography.label} numberOfLines={1}>
+        Invite friends to {league.name}
       </Text>
-      <View style={styles.actions}>
+      <View style={styles.row}>
+        <View style={styles.codeRow}>
+          <Text
+            style={styles.code}
+            selectable
+            accessibilityLabel={`Invite code ${league.inviteCode.split('').join(' ')}`}
+          >
+            {league.inviteCode}
+          </Text>
+        </View>
         <Button
-          label="Share invite"
+          label="Share"
           icon="share-social-outline"
           onPress={() => void share()}
           loading={busy}
           style={styles.flex}
         />
-        {isOwner && !compact ? (
-          <Button
-            label="New code"
-            variant="secondary"
-            icon="refresh"
-            onPress={() => void regenerate()}
+        {isOwner ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Make a new invite code"
             disabled={busy}
-          />
+            onPress={() => void regenerate()}
+            style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+          >
+            <Ionicons name="refresh" size={20} color={palette.textMuted} />
+          </Pressable>
         ) : null}
       </View>
+      <Text style={styles.hint}>Friends tap the link, sign in and pick their player.</Text>
     </Card>
   );
 }
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    iconBtn: {
+      width: TOUCH_TARGET,
+      height: TOUCH_TARGET,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    pressed: {
+      opacity: 0.6,
+    },
     codeRow: {
-      alignSelf: 'flex-start',
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.xs,
       borderRadius: radii.sm,
@@ -116,14 +126,9 @@ const makeStyles = (c: Palette) =>
     },
     code: {
       fontFamily: fonts.display,
-      fontSize: 28,
-      letterSpacing: 4,
+      fontSize: 22,
+      letterSpacing: 3,
       color: c.text,
-    },
-    link: {
-      fontFamily: fonts.body,
-      fontSize: 13,
-      color: c.info,
     },
     hint: {
       fontFamily: fonts.body,
@@ -131,13 +136,8 @@ const makeStyles = (c: Palette) =>
       lineHeight: 18,
       color: c.textMuted,
     },
-    actions: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: spacing.sm,
-      marginTop: spacing.xs,
-    },
     flex: {
-      flexGrow: 1,
+      flex: 1,
+      minWidth: 0,
     },
   });

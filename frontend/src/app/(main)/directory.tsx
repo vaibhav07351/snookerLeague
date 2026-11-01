@@ -1,6 +1,7 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState, type ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { SafetyActions } from '@/features/community/components/SafetyActions';
@@ -19,8 +20,8 @@ import type { DirectoryKind, DirectoryListing } from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { notify } from '@/shared/ui/notify';
-import { useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, spacing, type Palette } from '@/theme/tokens';
+import { usePalette, useStyles } from '@/theme/ThemeProvider';
+import { fonts, makeTypography, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
 
 function parseKind(raw: string | undefined): DirectoryKind {
   if (raw === 'table' || raw === 'referee' || raw === 'organiser' || raw === 'club') {
@@ -38,6 +39,7 @@ const ADD_LABEL: Record<DirectoryKind, string> = {
 
 export default function DirectoryScreen(): ReactNode {
   const styles = useStyles(makeStyles);
+  const palette = usePalette();
   const typography = useStyles(makeTypography);
   const { kind: kindParam } = useLocalSearchParams<{ kind?: string }>();
   const kind = parseKind(kindParam);
@@ -105,18 +107,24 @@ export default function DirectoryScreen(): ReactNode {
 
   return (
     <Screen>
-      <Text style={typography.label} numberOfLines={1}>
-        {user.cityName}
-      </Text>
-      <Text style={typography.title}>{heading}</Text>
-      <Text style={styles.lead}>Add a club, table, referee or organiser others can find.</Text>
-
-      <Button
-        label={compose ? 'Cancel' : ADD_LABEL[kind]}
-        icon={compose ? 'close' : 'add'}
-        variant={compose ? 'secondary' : 'primary'}
-        onPress={() => setCompose((v) => !v)}
-      />
+      <View style={styles.topRow}>
+        <View style={styles.flex}>
+          <Text style={typography.label} numberOfLines={1}>
+            {user.cityName}
+          </Text>
+          <Text style={typography.title} numberOfLines={1}>
+            {heading}
+          </Text>
+        </View>
+        <Button
+          label={compose ? 'Cancel' : 'Add'}
+          icon={compose ? 'close' : 'add'}
+          size="sm"
+          variant={compose ? 'secondary' : 'primary'}
+          accessibilityLabel={compose ? 'Cancel' : ADD_LABEL[kind]}
+          onPress={() => setCompose((v) => !v)}
+        />
+      </View>
 
       {compose ? (
         <Card style={styles.compose}>
@@ -145,27 +153,32 @@ export default function DirectoryScreen(): ReactNode {
           />
         ) : (
           rows.map((row) => (
-            <Card key={row.id}>
-              <Text style={styles.name}>{row.name}</Text>
-              {row.detail ? <Text style={styles.detail}>{row.detail}</Text> : null}
+            <Card key={row.id} style={styles.row}>
+              <View style={styles.flex}>
+                <Text style={styles.name}>{row.name}</Text>
+                {row.detail ? <Text style={styles.detail}>{row.detail}</Text> : null}
+              </View>
               {row.createdByUid === user.uid ? (
-                <Button
-                  label="Remove"
-                  icon="trash-outline"
-                  variant="ghost"
-                  size="sm"
-                  style={styles.remove}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${row.name}`}
+                  hitSlop={4}
+                  style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
                   onPress={() => {
                     void deleteDirectoryListing(row.id).catch((error: unknown) => {
                       notify.error('Could not remove', toUserMessage(error));
                     });
                   }}
-                />
+                >
+                  <Ionicons name="trash-outline" size={18} color={palette.textMuted} />
+                </Pressable>
               ) : (
                 <SafetyActions
+                  compact
                   targetKind="directory"
                   targetId={row.id}
                   targetUid={row.createdByUid}
+                  name={row.name}
                 />
               )}
             </Card>
@@ -181,13 +194,30 @@ const makeStyles = (c: Palette) =>
     heading: {
       marginBottom: spacing.md,
     },
-    lead: {
-      fontFamily: fonts.body,
-      color: c.textMuted,
-      fontSize: 14,
-      lineHeight: 20,
-      marginTop: spacing.xs,
-      marginBottom: spacing.md,
+    topRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    flex: {
+      flex: 1,
+      minWidth: 0,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    iconBtn: {
+      width: TOUCH_TARGET,
+      height: TOUCH_TARGET,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginVertical: -spacing.sm,
+      marginRight: -spacing.sm,
+    },
+    pressed: {
+      opacity: 0.6,
     },
     compose: {
       marginTop: spacing.md,
@@ -206,8 +236,5 @@ const makeStyles = (c: Palette) =>
       color: c.textMuted,
       fontSize: 14,
       lineHeight: 20,
-    },
-    remove: {
-      alignSelf: 'flex-end',
     },
   });

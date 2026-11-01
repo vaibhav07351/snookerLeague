@@ -1,6 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { WEB_SHELL_MAX_WIDTH } from '@/shared/hooks/use-layout';
@@ -29,7 +38,11 @@ export function BottomSheet({ visible, title, onClose, children }: BottomSheetPr
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <View style={styles.backdrop}>
+      {/* iOS needs padding to lift fields inside the sheet; Android resizes the modal window. */}
+      <KeyboardAvoidingView
+        style={styles.backdrop}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <Pressable
           style={StyleSheet.absoluteFill}
           accessibilityRole="button"
@@ -60,7 +73,7 @@ export function BottomSheet({ visible, title, onClose, children }: BottomSheetPr
             {children}
           </ScrollView>
         </SafeAreaView>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

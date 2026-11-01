@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
@@ -12,10 +13,8 @@ import { TourTarget } from '@/features/tour/components/TourTarget';
 import { useAutoTour } from '@/features/tour/hooks/use-tour';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { Card } from '@/shared/ui/Card';
-import { Chip } from '@/shared/ui/Chip';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { notify } from '@/shared/ui/notify';
-import { SectionTitle } from '@/shared/ui/SectionTitle';
 import type { MatchFormat, Player } from '@/shared/types/domain';
 import { sideColor } from '@/theme/palettes';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
@@ -37,6 +36,7 @@ export default function NewMatchScreen(): ReactNode {
   const [label, setLabel] = useState('');
   const [crowns, setCrowns] = useState(false);
   const [midway, setMidway] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const perSide = format === 'singles' ? 1 : 2;
@@ -55,6 +55,10 @@ export default function NewMatchScreen(): ReactNode {
     void playersService.listPlayers(scoringLeagueId).then((list) => {
       setPlayers(list);
       setLoaded(true);
+      // Doubles needs 4; a small roster would open on a "need more players" message.
+      if (list.length < 4) {
+        setFormat('singles');
+      }
       const opponent = typeof params.opponentPlayerId === 'string' ? params.opponentPlayerId : null;
       if (opponent) {
         setFormat('singles');
@@ -139,9 +143,28 @@ export default function NewMatchScreen(): ReactNode {
   }
 
   const needed = perSide * 2;
+  const extrasSummary = [
+    crowns ? 'Title match' : null,
+    midway ? 'Mid-match' : null,
+    label.trim() || null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
-    <Screen>
+    <Screen
+      footer={
+        <TourTarget id="match-new.start">
+          <Button
+            label={ready ? 'Start match' : `Pick ${needed} players`}
+            icon="play"
+            loading={busy}
+            onPress={() => void create()}
+            disabled={busy || !ready}
+          />
+        </TourTarget>
+      }
+    >
       <TourTarget id="match-new.format" style={styles.segment}>
         {(['singles', 'doubles'] as const).map((f) => (
           <Pressable
@@ -164,7 +187,7 @@ export default function NewMatchScreen(): ReactNode {
         <SideSlot side="b" ids={sideB} perSide={perSide} nameOf={nameOf} onRemove={toggle} />
       </TourTarget>
 
-      <SectionTitle title="Players" />
+      <Text style={[styles.label, styles.labelGap]}>Players</Text>
       {loaded && players.length < needed ? (
         <EmptyState
           icon="person-add-outline"
@@ -207,54 +230,71 @@ export default function NewMatchScreen(): ReactNode {
         </View>
       )}
 
-      <SectionTitle title="Best of" />
-      <View style={styles.grid}>
+      <View style={[styles.bestOfHead, styles.labelGap]}>
+        <Text style={styles.label}>Best of</Text>
+        <Text style={styles.hint}>First to {matchService.framesToWin(bestOf)} wins</Text>
+      </View>
+      <View style={styles.bestOfRow}>
         {BEST_OF_OPTIONS.map((n) => (
-          <Chip
+          <Pressable
             key={n}
-            label={`${n} frame${n === 1 ? '' : 's'}`}
-            selected={bestOf === n}
+            accessibilityRole="radio"
+            accessibilityLabel={`Best of ${n}`}
+            accessibilityState={{ selected: bestOf === n }}
             onPress={() => setBestOf(n)}
-          />
+            style={[styles.bestOf, bestOf === n && styles.bestOfOn]}
+          >
+            <Text style={[styles.bestOfText, bestOf === n && styles.bestOfTextOn]}>{n}</Text>
+          </Pressable>
         ))}
       </View>
-      <Text style={styles.hint}>First to {matchService.framesToWin(bestOf)} wins.</Text>
 
-      <SectionTitle title="Extras" />
-      <TourTarget id="match-new.extras">
-        <Card>
-          <ToggleRow
-            title="Title match"
-            hint="The winner becomes the league champion."
-            value={crowns}
-            onChange={setCrowns}
-          />
-          <View style={styles.divider} />
-          <ToggleRow
-            title="We are already mid-match"
-            hint="Enter frames won and the current score next."
-            value={midway}
-            onChange={setMidway}
-          />
+      <TourTarget id="match-new.extras" style={styles.labelGap}>
+        <Card style={styles.moreCard}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: moreOpen }}
+            onPress={() => setMoreOpen((v) => !v)}
+            style={styles.moreHead}
+          >
+            <Ionicons name="options-outline" size={18} color={palette.textMuted} />
+            <View style={styles.toggleText}>
+              <Text style={styles.toggleTitle}>More options</Text>
+              <Text style={styles.moreSummary} numberOfLines={1}>
+                {extrasSummary || 'Title match, mid-match, name'}
+              </Text>
+            </View>
+            <Ionicons
+              name={moreOpen ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={palette.textMuted}
+            />
+          </Pressable>
+          {moreOpen ? (
+            <View style={styles.moreBody}>
+              <ToggleRow
+                title="Title match"
+                hint="The winner becomes the league champion."
+                value={crowns}
+                onChange={setCrowns}
+              />
+              <View style={styles.divider} />
+              <ToggleRow
+                title="We are already mid-match"
+                hint="Enter frames won and the current score next."
+                value={midway}
+                onChange={setMidway}
+              />
+              <TextField
+                label="Match name (optional)"
+                value={label}
+                onChangeText={setLabel}
+                placeholder="e.g. Friday final"
+                maxLength={40}
+              />
+            </View>
+          ) : null}
         </Card>
-      </TourTarget>
-
-      <TextField
-        label="Match name (optional)"
-        value={label}
-        onChangeText={setLabel}
-        placeholder="e.g. Friday final"
-        maxLength={40}
-      />
-
-      <TourTarget id="match-new.start">
-        <Button
-          label={ready ? 'Start match' : `Pick ${needed} players`}
-          icon="play"
-          loading={busy}
-          onPress={() => void create()}
-          disabled={busy || !ready}
-        />
       </TourTarget>
     </Screen>
   );
@@ -446,5 +486,65 @@ const makeStyles = (c: Palette) =>
     divider: {
       height: 1,
       backgroundColor: c.border,
+    },
+    label: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 11,
+      letterSpacing: 1,
+      textTransform: 'uppercase',
+      color: c.textMuted,
+      marginBottom: spacing.sm,
+    },
+    labelGap: {
+      marginTop: spacing.lg,
+    },
+    bestOfHead: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
+    },
+    bestOfRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    bestOf: {
+      flex: 1,
+      minHeight: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: radii.sm,
+      borderWidth: 1.5,
+      borderColor: c.border,
+      backgroundColor: c.card,
+    },
+    bestOfOn: {
+      borderColor: c.primary,
+      backgroundColor: c.primary,
+    },
+    bestOfText: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 16,
+      color: c.text,
+    },
+    bestOfTextOn: {
+      color: c.onPrimary,
+    },
+    moreCard: {
+      paddingVertical: 0,
+    },
+    moreHead: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      minHeight: 56,
+    },
+    moreSummary: {
+      fontFamily: fonts.body,
+      fontSize: 12,
+      color: c.textMuted,
+    },
+    moreBody: {
+      gap: spacing.md,
+      paddingBottom: spacing.md,
     },
   });

@@ -1,12 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState, type ComponentProps, type ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { LinkGoogleNudge } from '@/features/auth/components/LinkGoogleNudge';
 import { useSession } from '@/features/auth/hooks/use-session';
 import { BrandLogo } from '@/features/home/components/BrandLogo';
-import { BrandWordmark } from '@/features/home/components/BrandWordmark';
 import { GettingStartedCard } from '@/features/home/components/GettingStartedCard';
 import { Button } from '@/features/home/components/Button';
 import { HomeActivityList } from '@/features/home/components/HomeActivityList';
@@ -19,7 +17,6 @@ import {
   useLiveSessions,
 } from '@/features/home/hooks/use-live-sessions';
 import {
-  filterLiveForHome,
   homeActivityEmptyCopy,
   listHomeActivity,
   refreshHomeNetworkSources,
@@ -33,12 +30,12 @@ import { useFirstRunTour } from '@/features/tour/hooks/use-tour';
 import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import { getStore, loadStore } from '@/shared/storage/local-store';
 import type { Player } from '@/shared/types/domain';
-import { Card } from '@/shared/ui/Card';
-import { EmptyState } from '@/shared/ui/EmptyState';
-import { SectionTitle } from '@/shared/ui/SectionTitle';
 import { formatLastMatchDay } from '@/shared/utils/datetime';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
 import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
+
+/** Feed rows shown before "Show more", so the home screen fits without scrolling. */
+const FEED_PREVIEW = 4;
 
 export default function HomeScreen(): ReactNode {
   const { user, league } = useSession();
@@ -49,6 +46,7 @@ export default function HomeScreen(): ReactNode {
   const [activity, setActivity] = useState<HomeActivity[]>([]);
   const [lastMatchAt, setLastMatchAt] = useState<string | null>(null);
   const [filter, setFilter] = useState<HomeFilter>('all');
+  const [feedExpanded, setFeedExpanded] = useState(false);
   // First load finished: the first-run tour waits for it to know if this person already plays.
   const [loaded, setLoaded] = useState(false);
 
@@ -100,37 +98,33 @@ export default function HomeScreen(): ReactNode {
   const me = players.find((p) => p.authUid === user.uid);
   const hasRoster = players.length >= 2;
   const hasHistory = lastMatchAt != null;
-  const filteredLive = filterLiveForHome(filter, live.matches, live.races, me?.id ?? null);
-  const liveMatches = filteredLive.matches;
-  const liveRaces = filteredLive.races;
   const nameOf = live.nameOf;
   const teamTitle = league.reigningTeam
     ? league.reigningTeam.playerIds.map((id) => nameOf(id)).join(' & ')
     : null;
   const raceKing = league.raceKing ? nameOf(league.raceKing.playerId) : null;
   const lastMatchDay = formatLastMatchDay(lastMatchAt);
-
-  const hasLive = liveMatches.length > 0 || liveRaces.length > 0;
+  const firstName = user.displayName.trim().split(/\s+/)[0] || user.displayName;
+  const shownActivity = feedExpanded ? activity : activity.slice(0, FEED_PREVIEW);
+  const ctaHint = !hasRoster
+    ? 'Add at least 2 players to start scoring.'
+    : players.length < 4
+      ? 'Singles works with 2 · doubles needs 4.'
+      : null;
 
   return (
     <Screen>
-      <View style={styles.brandRow}>
-        <BrandLogo size={48} style={styles.homeLogo} />
-        <View style={styles.brandText}>
-          <Text style={typography.label} numberOfLines={1}>
-            {league.name}
+      <View style={styles.header}>
+        <BrandLogo size={40} style={styles.homeLogo} />
+        <View style={styles.headerText}>
+          <Text style={styles.greeting} numberOfLines={1}>
+            Hi, {firstName}
           </Text>
-          <BrandWordmark size="sm" />
+          <Text style={styles.headerMeta} numberOfLines={1}>
+            {league.name} · <Text style={styles.headerMetaValue}>{lastMatchDay}</Text>
+          </Text>
         </View>
       </View>
-      <Text style={styles.greeting} numberOfLines={2}>
-        Welcome back, {user.displayName}
-      </Text>
-      <Text style={styles.lastPlayed}>
-        Last match day · <Text style={styles.lastPlayedValue}>{lastMatchDay}</Text>
-      </Text>
-
-      <LinkGoogleNudge variant="strip" />
 
       <TourTarget id="home.getting-started">
         <GettingStartedCard
@@ -168,67 +162,10 @@ export default function HomeScreen(): ReactNode {
         />
       </TourTarget>
 
-      {!hasRoster ? (
-        <EmptyState
-          icon="people-outline"
-          title="First: add your table"
-          message="Add friends (or guests without the app) so you can pick teams and race entrants."
-          actionLabel="Add players"
-          onAction={() => router.push('/(main)/players')}
-        />
-      ) : null}
-
-      <View style={[styles.actions, !hasRoster && styles.actionsAfterGuide]}>
-        <TourTarget id="home.start-match">
-          <Button
-            label="Start a match"
-            icon="play"
-            onPress={() => router.push('/match/new')}
-            disabled={!hasRoster || players.length < 2}
-          />
-        </TourTarget>
-        <TourTarget id="home.log-race">
-          <Button
-            label="Log a race"
-            icon="flag-outline"
-            variant="secondary"
-            onPress={() => router.push('/race/new')}
-            disabled={!hasRoster}
-          />
-        </TourTarget>
-        {hasRoster && players.length >= 2 ? (
-          <Button
-            label="Head to head"
-            icon="git-compare-outline"
-            variant="ghost"
-            onPress={() => router.push('/(main)/compare')}
-          />
-        ) : null}
-        {hasRoster && players.length < 2 ? (
-          <Text style={styles.ctaHint}>Add at least one more player to log a match.</Text>
-        ) : hasRoster && players.length < 4 ? (
-          <Text style={styles.ctaHint}>Singles works with 2 · doubles needs 4.</Text>
-        ) : null}
-        {hasRoster && !hasHistory ? (
-          <Text style={styles.ctaHint}>
-            Ready to play: log a singles or doubles match, or an individual race. Winners show up
-            here.
-          </Text>
-        ) : null}
-      </View>
-
-      <TourTarget id="home.feed">
-        <SectionTitle title="Your feed" />
-        <HomeFilterChips value={filter} onChange={setFilter} />
-      </TourTarget>
-
-      {hasLive ? (
+      {/* Live games sit with the actions, not under the feed chips, so a filter never hides them. */}
+      {live.matches.length > 0 || live.races.length > 0 ? (
         <View style={styles.liveBlock}>
-          <View style={styles.liveHead}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveLabel}>Live now</Text>
-          </View>
-          {liveMatches.map((m) => {
+          {live.matches.map((m) => {
             const copy = matchResumeCopy(m, nameOf);
             return (
               <LiveResumeCard
@@ -240,7 +177,7 @@ export default function HomeScreen(): ReactNode {
               />
             );
           })}
-          {liveRaces.map((r) => {
+          {live.races.map((r) => {
             const copy = raceResumeCopy(r, nameOf);
             return (
               <LiveResumeCard
@@ -255,128 +192,127 @@ export default function HomeScreen(): ReactNode {
         </View>
       ) : null}
 
-      {/* Cold start: no champions card until there is something to show. */}
-      {hasHistory ? (
-        <Card tone="highlight" style={styles.champCard}>
-          <View style={styles.champHead}>
-            <Ionicons name="trophy" size={16} color={palette.primary} />
-            <Text style={typography.label}>Reigning champions</Text>
-          </View>
-          <Text style={styles.champNames}>{teamTitle ?? 'Waiting for a crowning match'}</Text>
-          {league.reigningTeam?.namedLabel ? (
-            <Text style={styles.meta}>{league.reigningTeam.namedLabel}</Text>
-          ) : (
-            <Text style={styles.meta}>Tip: turn on "Crowns champions" when you log a final</Text>
-          )}
-        </Card>
+      <View style={styles.actions}>
+        <TourTarget id="home.start-match" style={styles.actionMain}>
+          <Button
+            label="Start a match"
+            icon="play"
+            onPress={() => router.push('/match/new')}
+            disabled={!hasRoster}
+          />
+        </TourTarget>
+        <TourTarget id="home.log-race" style={styles.actionSide}>
+          <Button
+            label="Race"
+            icon="flag-outline"
+            variant="secondary"
+            accessibilityLabel="Log a race"
+            onPress={() => router.push('/race/new')}
+            disabled={!hasRoster}
+          />
+        </TourTarget>
+      </View>
+      {ctaHint ? (
+        <Text
+          style={styles.ctaHint}
+          accessibilityRole={!hasRoster ? 'link' : undefined}
+          onPress={!hasRoster ? () => router.push('/(main)/players') : undefined}
+        >
+          {ctaHint}
+        </Text>
       ) : null}
 
-      <View style={styles.statStrip}>
-        <StatCell label="Race king" value={raceKing ?? '-'} />
-        <StatCell label="Your doubles" value={me ? `${me.stats.standard.winPct}%` : '-'} />
-        <StatCell label="Race 1sts" value={me ? `${me.stats.race.firstPct}%` : '-'} />
-      </View>
+      {teamTitle || raceKing ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Champion history"
+          onPress={() => router.push('/(main)/champions')}
+          style={({ pressed }) => [styles.champRow, pressed && styles.pressed]}
+        >
+          <Ionicons name="trophy" size={16} color={palette.primary} />
+          <Text style={styles.champText} numberOfLines={1}>
+            {teamTitle ? <Text style={styles.champName}>{teamTitle}</Text> : null}
+            {teamTitle && raceKing ? '  ·  ' : null}
+            {raceKing ? (
+              <>
+                Race king <Text style={styles.champName}>{raceKing}</Text>
+              </>
+            ) : null}
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color={palette.textFaint} />
+        </Pressable>
+      ) : null}
 
-      <View style={styles.quickRow}>
-        <QuickLink
-          icon="stats-chart-outline"
-          title="Stats"
-          hint="Charts & form"
-          onPress={() => router.push('/(main)/stats')}
-        />
-        <QuickLink
-          icon="time-outline"
-          title="History"
-          hint="Past games"
-          onPress={() => router.push('/(main)/history')}
-        />
-      </View>
-
-      <SectionTitle title="Recent activity" />
-      <HomeActivityList items={activity} empty={homeActivityEmptyCopy(filter)} />
+      <TourTarget id="home.feed" style={styles.feedHead}>
+        <Text style={typography.label}>Feed</Text>
+        <HomeFilterChips value={filter} onChange={setFilter} />
+      </TourTarget>
+      <HomeActivityList items={shownActivity} empty={homeActivityEmptyCopy(filter)} />
+      {activity.length > FEED_PREVIEW ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: feedExpanded }}
+          hitSlop={8}
+          onPress={() => setFeedExpanded((v) => !v)}
+          style={styles.more}
+        >
+          <Text style={styles.moreText}>{feedExpanded ? 'Show less' : 'Show more'}</Text>
+          <Ionicons
+            name={feedExpanded ? 'chevron-up' : 'chevron-down'}
+            size={14}
+            color={palette.textMuted}
+          />
+        </Pressable>
+      ) : null}
     </Screen>
-  );
-}
-
-function StatCell({ label, value }: { label: string; value: string }): ReactNode {
-  const styles = useStyles(makeStyles);
-  const typography = useStyles(makeTypography);
-  return (
-    <View style={styles.statCol}>
-      <Text style={[typography.label, styles.statLabel]} numberOfLines={2}>
-        {label}
-      </Text>
-      <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>
-        {value}
-      </Text>
-    </View>
-  );
-}
-
-interface QuickLinkProps {
-  icon: ComponentProps<typeof Ionicons>['name'];
-  title: string;
-  hint: string;
-  onPress: () => void;
-}
-
-function QuickLink({ icon, title, hint, onPress }: QuickLinkProps): ReactNode {
-  const styles = useStyles(makeStyles);
-  const palette = usePalette();
-  return (
-    <Card onPress={onPress} accessibilityLabel={`${title}: ${hint}`} style={styles.quick}>
-      <View style={styles.quickHead}>
-        <Ionicons name={icon} size={18} color={palette.primary} />
-        <Text style={styles.quickTitle} numberOfLines={1}>
-          {title}
-        </Text>
-      </View>
-      <Text style={styles.quickHint} numberOfLines={1}>
-        {hint}
-      </Text>
-    </Card>
   );
 }
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
-    brandRow: {
+    header: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 12,
+      marginBottom: spacing.md,
     },
     homeLogo: {
       borderWidth: 1,
       borderColor: c.border,
     },
-    brandText: {
+    headerText: {
       flex: 1,
       minWidth: 0,
-      gap: 2,
     },
     greeting: {
-      fontFamily: fonts.bodyBold,
+      fontFamily: fonts.display,
       color: c.text,
-      marginTop: spacing.md,
-      fontSize: 20,
-      lineHeight: 26,
+      fontSize: 24,
+      lineHeight: 30,
     },
-    lastPlayed: {
+    headerMeta: {
       fontFamily: fonts.body,
       color: c.textMuted,
       fontSize: 13,
-      marginTop: 2,
-      marginBottom: spacing.lg,
     },
-    lastPlayedValue: {
+    headerMetaValue: {
       fontFamily: fonts.bodyMedium,
       color: c.text,
     },
+    liveBlock: {
+      marginBottom: spacing.sm,
+    },
     actions: {
+      flexDirection: 'row',
       gap: spacing.sm,
     },
-    actionsAfterGuide: {
-      marginTop: spacing.md,
+    actionMain: {
+      flex: 2,
+      minWidth: 0,
+    },
+    actionSide: {
+      flex: 1,
+      minWidth: 0,
     },
     ctaHint: {
       fontFamily: fonts.body,
@@ -384,94 +320,48 @@ const makeStyles = (c: Palette) =>
       lineHeight: 18,
       color: c.textMuted,
       textAlign: 'center',
+      marginTop: spacing.sm,
     },
-    liveBlock: {
-      marginBottom: spacing.sm,
-    },
-    liveHead: {
+    champRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
-      marginBottom: spacing.sm,
-    },
-    liveDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: c.live,
-    },
-    liveLabel: {
-      fontFamily: fonts.bodyBold,
-      fontSize: 13,
-      color: c.text,
-    },
-    champCard: {
-      marginBottom: spacing.sm,
-    },
-    champHead: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-    },
-    champNames: {
-      fontFamily: fonts.display,
-      fontSize: 22,
-      lineHeight: 28,
-      color: c.text,
-    },
-    meta: {
-      fontFamily: fonts.body,
-      color: c.textMuted,
-      fontSize: 13,
-      lineHeight: 18,
-    },
-    statStrip: {
-      flexDirection: 'row',
       gap: spacing.sm,
-      marginBottom: spacing.sm,
-    },
-    statCol: {
-      flex: 1,
-      minWidth: 0,
-      gap: spacing.xs,
-      paddingVertical: 12,
+      minHeight: 44,
+      marginTop: spacing.md,
       paddingHorizontal: 12,
       borderRadius: radii.md,
-      backgroundColor: c.card,
       borderWidth: 1,
-      borderColor: c.border,
+      borderColor: c.borderStrong,
+      backgroundColor: c.cardHighlight,
     },
-    statLabel: {
-      letterSpacing: 0.6,
-    },
-    statValue: {
-      fontFamily: fonts.bodyBold,
-      color: c.text,
-      fontSize: 18,
-    },
-    quickRow: {
-      flexDirection: 'row',
-      gap: spacing.sm,
-    },
-    quick: {
+    champText: {
       flex: 1,
       minWidth: 0,
-      gap: 2,
+      fontFamily: fonts.body,
+      fontSize: 13,
+      color: c.textMuted,
     },
-    quickHead: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-    },
-    quickTitle: {
-      flexShrink: 1,
+    champName: {
       fontFamily: fonts.bodyBold,
       color: c.text,
-      fontSize: 16,
     },
-    quickHint: {
-      fontFamily: fonts.body,
+    pressed: {
+      opacity: 0.8,
+    },
+    feedHead: {
+      marginTop: spacing.lg,
+      gap: spacing.sm,
+    },
+    more: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+      minHeight: 40,
+    },
+    moreText: {
+      fontFamily: fonts.bodyMedium,
+      fontSize: 13,
       color: c.textMuted,
-      fontSize: 12,
     },
   });

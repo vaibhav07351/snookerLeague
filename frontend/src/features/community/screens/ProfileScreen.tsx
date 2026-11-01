@@ -117,7 +117,8 @@ export function ProfileScreen(): ReactNode {
           </Pressable>
         </View>
 
-        {completeness.percent < 100 ? (
+        {/* One nudge at a time: backing up to Google matters most; the rest lives in the sheet. */}
+        {completeness.percent < 100 && !linkGoogle.available ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Profile ${completeness.percent} percent complete. Finish it`}

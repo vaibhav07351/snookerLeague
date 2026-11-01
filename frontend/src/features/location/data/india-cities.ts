@@ -177,5 +177,3 @@ export const INDIA_CITIES: City[] = [
   city('howrah-n', '24 Parganas (N)', 'West Bengal'),
   city('howrah-s', '24 Parganas (S)', 'West Bengal'),
 ].sort((a, b) => a.name.localeCompare(b.name));
-
-export const CITY_LETTERS: string[] = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')];

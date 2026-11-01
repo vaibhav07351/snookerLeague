@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useMemo, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { BrandWordmark } from '@/features/home/components/BrandWordmark';
@@ -9,10 +9,8 @@ import { Button } from '@/features/home/components/Button';
 import { SignOutLink } from '@/features/auth/components/SignOutLink';
 import { Screen } from '@/features/home/components/Screen';
 import { TextField } from '@/features/home/components/TextField';
-import { CITY_LETTERS } from '@/features/location/data/india-cities';
 import * as locationService from '@/features/location/services/location.service';
 import { toUserMessage } from '@/shared/errors/app-error';
-import { Card } from '@/shared/ui/Card';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { useSafeBack } from '@/shared/ui/HeaderBack';
 import { notify } from '@/shared/ui/notify';
@@ -26,7 +24,6 @@ export default function LocationScreen(): ReactNode {
   const palette = usePalette();
   const goBack = useSafeBack('/(main)/profile');
   const [query, setQuery] = useState('');
-  const [letter, setLetter] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   // A city (or a demo skip) is already on file: this screen was opened to change it.
@@ -34,13 +31,7 @@ export default function LocationScreen(): ReactNode {
   const currentCityId = user?.cityId ?? null;
   const currentCity = currentCityId ? locationService.getCityById(currentCityId) : null;
 
-  const cities = useMemo(() => {
-    const searched = locationService.searchCities(query);
-    if (!letter) {
-      return searched;
-    }
-    return searched.filter((c) => c.name.toUpperCase().startsWith(letter));
-  }, [query, letter]);
+  const cities = useMemo(() => locationService.searchCities(query), [query]);
 
   async function pick(cityId: string): Promise<void> {
     setBusy(true);
@@ -88,13 +79,26 @@ export default function LocationScreen(): ReactNode {
     }
   }
 
-  function clearFilters(): void {
-    setQuery('');
-    setLetter(null);
-  }
-
   return (
-    <Screen>
+    <Screen
+      scroll={false}
+      footer={
+        !isEditing ? (
+          <View style={styles.footer}>
+            {user?.isDemo ? (
+              <Button
+                label="Skip for now"
+                variant="ghost"
+                size="sm"
+                onPress={() => void skip()}
+                disabled={busy}
+              />
+            ) : null}
+            <SignOutLink />
+          </View>
+        ) : undefined
+      }
+    >
       {isEditing ? (
         <Pressable
           accessibilityRole="button"
@@ -114,20 +118,10 @@ export default function LocationScreen(): ReactNode {
         {isEditing ? 'Change your city' : 'Where do you play?'}
       </Text>
       <Text style={[typography.subtitle, styles.sub]}>
-        We use your city for local players, live matches, and city rankings. We store the city, not
-        a live GPS trail.
+        {currentCity
+          ? `Now: ${currentCity.name}, ${currentCity.state}`
+          : 'For local players and city rankings. We save the city, never your GPS.'}
       </Text>
-      {currentCity ? (
-        <Card tone="highlight" style={styles.current}>
-          <Ionicons name="location" size={18} color={palette.primary} />
-          <View style={styles.currentCopy}>
-            <Text style={typography.label}>Current city</Text>
-            <Text style={styles.currentName} numberOfLines={1}>
-              {currentCity.name}, {currentCity.state}
-            </Text>
-          </View>
-        </Card>
-      ) : null}
       <Button
         label={suggesting ? 'Finding city…' : 'Use my location'}
         icon="navigate"
@@ -137,45 +131,32 @@ export default function LocationScreen(): ReactNode {
         style={styles.locate}
       />
       <TextField
-        label="Or search for a city"
+        label="Or search"
         value={query}
         onChangeText={setQuery}
         placeholder="Meerut, Mumbai…"
         autoCorrect={false}
       />
-      <View style={styles.letters}>
-        {CITY_LETTERS.map((ch) => {
-          const on = letter === ch;
-          return (
-            <Pressable
-              key={ch}
-              accessibilityRole="button"
-              accessibilityLabel={`Cities starting with ${ch}`}
-              accessibilityState={{ selected: on }}
-              hitSlop={3}
-              onPress={() => setLetter((prev) => (prev === ch ? null : ch))}
-              style={[styles.letter, on && styles.letterOn]}
-            >
-              <Text style={[styles.letterText, on && styles.letterTextOn]}>{ch}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
       {cities.length === 0 ? (
         <EmptyState
           icon="search-outline"
           title="No cities match"
-          message="Try a different spelling or clear the letter filter."
+          message="Try a different spelling."
           actionLabel="Clear search"
-          onAction={clearFilters}
+          onAction={() => setQuery('')}
         />
       ) : (
-        <Card style={styles.list}>
-          {cities.map((c, index) => {
+        <FlatList
+          data={cities}
+          keyExtractor={(c) => c.id}
+          style={styles.list}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          initialNumToRender={15}
+          renderItem={({ item: c, index }) => {
             const isCurrent = c.id === currentCityId;
             return (
               <Pressable
-                key={c.id}
                 accessibilityRole="button"
                 accessibilityLabel={`${c.name}, ${c.state}`}
                 disabled={busy}
@@ -201,19 +182,9 @@ export default function LocationScreen(): ReactNode {
                 )}
               </Pressable>
             );
-          })}
-        </Card>
-      )}
-      {user?.isDemo && !isEditing ? (
-        <Button
-          label="Skip for now"
-          variant="ghost"
-          onPress={() => void skip()}
-          disabled={busy}
-          style={styles.skip}
+          }}
         />
-      ) : null}
-      {!isEditing ? <SignOutLink /> : null}
+      )}
     </Screen>
   );
 }
@@ -242,57 +213,23 @@ const makeStyles = (c: Palette) =>
     },
     sub: {
       marginTop: spacing.xs,
-      marginBottom: spacing.lg,
-    },
-    current: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
       marginBottom: spacing.md,
-    },
-    currentCopy: {
-      flex: 1,
-      minWidth: 0,
-      gap: 2,
-    },
-    currentName: {
-      fontFamily: fonts.bodyBold,
-      color: c.text,
-      fontSize: 16,
     },
     locate: {
-      marginBottom: spacing.lg,
-    },
-    letters: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 4,
       marginBottom: spacing.md,
     },
-    letter: {
-      width: 32,
-      height: 32,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: radii.xs,
+    list: {
+      flex: 1,
+      borderRadius: radii.md,
+      borderWidth: 1,
+      borderColor: c.border,
       backgroundColor: c.card,
     },
-    letterOn: {
-      backgroundColor: c.primary,
-    },
-    letterText: {
-      fontFamily: fonts.bodyBold,
-      color: c.textMuted,
-      fontSize: 12,
-    },
-    letterTextOn: {
-      color: c.onPrimary,
-    },
-    list: {
-      paddingVertical: 0,
-      paddingHorizontal: 0,
-      gap: 0,
-      overflow: 'hidden',
+    footer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
     },
     row: {
       flexDirection: 'row',
@@ -326,8 +263,5 @@ const makeStyles = (c: Palette) =>
       color: c.textMuted,
       fontSize: 12,
       marginTop: 2,
-    },
-    skip: {
-      marginTop: spacing.lg,
     },
   });

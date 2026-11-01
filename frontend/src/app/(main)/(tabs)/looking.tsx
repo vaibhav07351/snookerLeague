@@ -2,7 +2,7 @@ import { SafetyActions } from '@/features/community/components/SafetyActions';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import {
@@ -21,7 +21,6 @@ import { Card } from '@/shared/ui/Card';
 import { Chip } from '@/shared/ui/Chip';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { notify } from '@/shared/ui/notify';
-import { SectionTitle } from '@/shared/ui/SectionTitle';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
 import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
 
@@ -100,25 +99,26 @@ export default function LookingScreen(): ReactNode {
 
   return (
     <Screen>
-      <Text style={typography.label}>Looking in</Text>
-      <Text style={typography.title} numberOfLines={2}>
-        {user.cityName}
-      </Text>
-      <Text style={[typography.subtitle, styles.lead]}>
-        Post what you need. Closed posts stay visible with a stamp.
-      </Text>
-
-      <Button
-        label={compose ? 'Cancel post' : 'New Looking post'}
-        icon={compose ? 'close' : 'add'}
-        variant={compose ? 'secondary' : 'primary'}
-        onPress={() => setCompose((v) => !v)}
-      />
+      <View style={styles.topRow}>
+        <View style={styles.cityRow}>
+          <Ionicons name="location" size={18} color={palette.primary} />
+          <Text style={styles.city} numberOfLines={1}>
+            {user.cityName}
+          </Text>
+        </View>
+        <Button
+          label={compose ? 'Cancel' : 'New post'}
+          icon={compose ? 'close' : 'add'}
+          size="sm"
+          variant={compose ? 'secondary' : 'primary'}
+          onPress={() => setCompose((v) => !v)}
+        />
+      </View>
 
       {compose ? (
         <Card tone="raised" style={styles.compose}>
           <Text style={typography.label}>What are you looking for?</Text>
-          <View style={styles.chipRow}>
+          <View style={styles.chipWrap}>
             {(Object.keys(LOOKING_KIND_LABEL) as LookingKind[]).map((k) => (
               <Chip
                 key={k}
@@ -144,8 +144,12 @@ export default function LookingScreen(): ReactNode {
         </Card>
       ) : null}
 
-      <SectionTitle title="Posts" />
-      <View style={styles.chipRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filterScroll}
+        contentContainerStyle={styles.filterRow}
+      >
         {KINDS.map((k) => (
           <Chip
             key={k}
@@ -154,21 +158,19 @@ export default function LookingScreen(): ReactNode {
             onPress={() => setKind(k)}
           />
         ))}
-      </View>
-      <View style={styles.closedRow}>
         <Chip
-          label={includeClosed ? 'Showing closed' : 'Open only'}
+          label={includeClosed ? 'With closed' : 'Open only'}
           selected={includeClosed}
           onPress={() => setIncludeClosed((v) => !v)}
         />
-      </View>
+      </ScrollView>
 
       {posts.length === 0 ? (
         <EmptyState
           icon="search-outline"
-          title="No Looking posts in this city yet"
+          title="No posts here yet"
           message="Be the first: tell local players what you need."
-          actionLabel={compose ? undefined : 'New Looking post'}
+          actionLabel={compose ? undefined : 'New post'}
           onAction={compose ? undefined : () => setCompose(true)}
         />
       ) : (
@@ -183,40 +185,47 @@ export default function LookingScreen(): ReactNode {
                     {LOOKING_KIND_LABEL[p.kind]}
                   </Text>
                   {closed ? <Text style={styles.stamp}>CLOSED</Text> : null}
+                  {!mine ? (
+                    <SafetyActions
+                      compact
+                      targetKind="looking"
+                      targetId={p.id}
+                      targetUid={p.createdByUid}
+                      name={p.authorName}
+                    />
+                  ) : null}
                 </View>
                 <Text style={styles.title}>{p.title}</Text>
-                {p.body ? <Text style={styles.body}>{p.body}</Text> : null}
-                <Pressable
-                  accessibilityRole="link"
-                  hitSlop={8}
-                  style={styles.authorRow}
-                  onPress={() => router.push(`/(main)/city-player?uid=${p.createdByUid}`)}
-                >
-                  <Ionicons name="person-circle-outline" size={18} color={palette.info} />
-                  <Text style={styles.author} numberOfLines={1}>
-                    {p.authorName}
+                {p.body ? (
+                  <Text style={styles.body} numberOfLines={3}>
+                    {p.body}
                   </Text>
-                </Pressable>
-                {!mine ? (
-                  <SafetyActions
-                    targetKind="looking"
-                    targetId={p.id}
-                    targetUid={p.createdByUid}
-                    name={p.authorName}
-                  />
                 ) : null}
-                {mine && p.status === 'open' ? (
-                  <Button
-                    label="Mark closed"
-                    size="sm"
-                    variant="secondary"
-                    onPress={() => {
-                      void closeLookingPost(p.id).catch((error: unknown) => {
-                        notify.error('Could not close', toUserMessage(error));
-                      });
-                    }}
-                  />
-                ) : null}
+                <View style={styles.footRow}>
+                  <Pressable
+                    accessibilityRole="link"
+                    hitSlop={8}
+                    style={styles.authorRow}
+                    onPress={() => router.push(`/(main)/city-player?uid=${p.createdByUid}`)}
+                  >
+                    <Ionicons name="person-circle-outline" size={18} color={palette.info} />
+                    <Text style={styles.author} numberOfLines={1}>
+                      {p.authorName}
+                    </Text>
+                  </Pressable>
+                  {mine && p.status === 'open' ? (
+                    <Button
+                      label="Mark closed"
+                      size="sm"
+                      variant="ghost"
+                      onPress={() => {
+                        void closeLookingPost(p.id).catch((error: unknown) => {
+                          notify.error('Could not close', toUserMessage(error));
+                        });
+                      }}
+                    />
+                  ) : null}
+                </View>
               </Card>
             );
           })}
@@ -232,15 +241,39 @@ const makeStyles = (c: Palette) =>
       marginTop: spacing.xs,
       marginBottom: spacing.md,
     },
-    chipRow: {
+    topRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    cityRow: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    city: {
+      flexShrink: 1,
+      fontFamily: fonts.display,
+      fontSize: 24,
+      lineHeight: 30,
+      color: c.text,
+    },
+    chipWrap: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: spacing.sm,
     },
-    closedRow: {
-      flexDirection: 'row',
-      marginTop: spacing.sm,
+    filterScroll: {
+      flexGrow: 0,
+      marginTop: spacing.md,
       marginBottom: spacing.md,
+      marginHorizontal: -spacing.md,
+    },
+    filterRow: {
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
     },
     compose: {
       marginTop: spacing.md,
@@ -254,12 +287,12 @@ const makeStyles = (c: Palette) =>
     },
     cardHead: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
       alignItems: 'center',
       gap: spacing.sm,
     },
     kind: {
-      flexShrink: 1,
+      flex: 1,
+      minWidth: 0,
       fontFamily: fonts.bodyBold,
       color: c.primary,
       fontSize: 11,
@@ -290,13 +323,18 @@ const makeStyles = (c: Palette) =>
       fontSize: 14,
       lineHeight: 20,
     },
+    footRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
+    },
     authorRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      alignSelf: 'flex-start',
+      flexShrink: 1,
       gap: 4,
       minHeight: 32,
-      maxWidth: '100%',
     },
     author: {
       flexShrink: 1,

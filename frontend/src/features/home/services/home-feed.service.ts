@@ -157,21 +157,3 @@ export function homeActivityEmptyCopy(filter: HomeFilter): string {
   }
   return 'Nothing yet — your first result lands here.';
 }
-
-export function filterLiveForHome(
-  filter: HomeFilter,
-  matches: Match[],
-  races: Race[],
-  myPlayerId: string | null,
-): { matches: Match[]; races: Race[] } {
-  if (filter === 'all' || filter === 'network') {
-    return { matches, races };
-  }
-  if (filter === 'played') {
-    return { matches: [], races: [] };
-  }
-  return {
-    matches: matches.filter((m) => playerInMatch(m, myPlayerId)),
-    races: races.filter((r) => playerInRace(r, myPlayerId)),
-  };
-}

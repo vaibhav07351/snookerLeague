@@ -1,10 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ComponentProps, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
-import * as authService from '@/features/auth/services/auth.service';
 import { Button } from '@/features/home/components/Button';
 import { Screen } from '@/features/home/components/Screen';
 import { TextField } from '@/features/home/components/TextField';
@@ -18,7 +17,6 @@ import { Card } from '@/shared/ui/Card';
 import { Chip } from '@/shared/ui/Chip';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { notify } from '@/shared/ui/notify';
-import { SectionTitle } from '@/shared/ui/SectionTitle';
 import type { League } from '@/shared/types/domain';
 import { confirmAction } from '@/shared/utils/confirm';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
@@ -39,6 +37,7 @@ export default function LeagueScreen(): ReactNode {
   const [joinCode, setJoinCode] = useState('');
   const [joinError, setJoinError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     setSelectedId((prev) => {
@@ -166,23 +165,8 @@ export default function LeagueScreen(): ReactNode {
     }
   }
 
-  async function onSignOut(): Promise<void> {
-    const ok = await confirmAction('Log out?', 'You can sign back in anytime.', 'Log out');
-    if (!ok) {
-      return;
-    }
-    try {
-      await authService.signOut();
-      await refresh();
-      router.replace('/login');
-    } catch (error) {
-      notify.error('Could not log out', toUserMessage(error));
-    }
-  }
-
   return (
     <Screen>
-      <SectionTitle title="Your leagues" />
       {leagues.length === 0 ? (
         <EmptyState
           icon="trophy-outline"
@@ -237,13 +221,17 @@ export default function LeagueScreen(): ReactNode {
             />
           ) : null}
 
-          <TourTarget id="league.invite">
-            <SectionTitle title="Invite" />
+          <TourTarget id="league.invite" style={styles.section}>
             <InviteCard league={selected} uid={sessionUser.uid} />
           </TourTarget>
 
-          <SectionTitle title="Settings" />
-          <Card>
+          <Expander
+            icon="settings-outline"
+            title="League settings"
+            summary={`Race to ${selected.defaultRaceTarget} · best of ${selected.defaultBestOf}`}
+            open={settingsOpen}
+            onToggle={() => setSettingsOpen((v) => !v)}
+          >
             <TextField label="League name" value={name} onChangeText={setName} maxLength={40} />
             <TextField
               label="Default race target"
@@ -260,66 +248,99 @@ export default function LeagueScreen(): ReactNode {
               hint="Frames in a match. Odd numbers work best (3, 5, 7)."
             />
             <Button label="Save settings" onPress={() => void save()} />
-          </Card>
-
-          {isCreator ? (
-            <DeleteLeaguePanel league={selected} busy={busy} onDelete={onDelete} />
-          ) : (
-            <Text style={styles.note}>Only the league owner can delete this league.</Text>
-          )}
+            {isCreator ? (
+              <DeleteLeaguePanel league={selected} busy={busy} onDelete={onDelete} />
+            ) : (
+              <Text style={styles.note}>Only the league owner can delete this league.</Text>
+            )}
+          </Expander>
         </>
       ) : null}
 
-      <SectionTitle title="Add another league" />
-      <View style={styles.chips}>
-        <Chip
-          label="Create a league"
-          selected={addMode === 'create'}
-          onPress={() => setAddMode(addMode === 'create' ? 'hidden' : 'create')}
-        />
-        <Chip
-          label="Join with a code"
-          selected={addMode === 'join'}
-          onPress={() => setAddMode(addMode === 'join' ? 'hidden' : 'join')}
-        />
-      </View>
-      {addMode === 'create' ? (
-        <Card style={styles.gapTop}>
-          <TextField
-            label="New league name"
-            value={newLeagueName}
-            onChangeText={setNewLeagueName}
-            placeholder={`${sessionUser.displayName}'s League`}
-            maxLength={40}
+      <Expander
+        icon="add-circle-outline"
+        title="Add another league"
+        summary="Create one, or join with a code"
+        open={addMode !== 'hidden'}
+        onToggle={() => setAddMode(addMode === 'hidden' ? 'create' : 'hidden')}
+      >
+        <View style={styles.chips}>
+          <Chip
+            label="Create a league"
+            selected={addMode === 'create'}
+            onPress={() => setAddMode('create')}
           />
-          <Button label="Create league" loading={busy} onPress={() => void onCreateAnother()} />
-        </Card>
-      ) : null}
-      {addMode === 'join' ? (
-        <Card style={styles.gapTop}>
-          <TextField
-            label="Invite code"
-            value={joinCode}
-            onChangeText={(t) => setJoinCode(t.toUpperCase())}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            placeholder="e.g. K7Q2MX"
-            maxLength={8}
-            error={joinError}
-            onSubmitEditing={onJoinAnother}
+          <Chip
+            label="Join with a code"
+            selected={addMode === 'join'}
+            onPress={() => setAddMode('join')}
           />
-          <Button label="Continue" icon="arrow-forward" onPress={onJoinAnother} />
-        </Card>
-      ) : null}
-
-      <Button
-        label="Log out"
-        variant="ghost"
-        icon="log-out-outline"
-        onPress={() => void onSignOut()}
-        style={styles.logout}
-      />
+        </View>
+        {addMode === 'create' ? (
+          <>
+            <TextField
+              label="New league name"
+              value={newLeagueName}
+              onChangeText={setNewLeagueName}
+              placeholder={`${sessionUser.displayName}'s League`}
+              maxLength={40}
+            />
+            <Button label="Create league" loading={busy} onPress={() => void onCreateAnother()} />
+          </>
+        ) : null}
+        {addMode === 'join' ? (
+          <>
+            <TextField
+              label="Invite code"
+              value={joinCode}
+              onChangeText={(t) => setJoinCode(t.toUpperCase())}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              placeholder="e.g. K7Q2MX"
+              maxLength={8}
+              error={joinError}
+              onSubmitEditing={onJoinAnother}
+            />
+            <Button label="Continue" icon="arrow-forward" onPress={onJoinAnother} />
+          </>
+        ) : null}
+      </Expander>
     </Screen>
+  );
+}
+
+interface ExpanderProps {
+  icon: ComponentProps<typeof Ionicons>['name'];
+  title: string;
+  summary: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}
+
+/** A one-line row that unfolds a rarely used form in place (keeps keyboard handling simple). */
+function Expander({ icon, title, summary, open, onToggle, children }: ExpanderProps): ReactNode {
+  const styles = useStyles(makeStyles);
+  const palette = usePalette();
+  return (
+    <Card style={styles.expander}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        onPress={onToggle}
+        style={styles.expanderHead}
+      >
+        <Ionicons name={icon} size={18} color={palette.textMuted} />
+        <View style={styles.rowText}>
+          <Text style={styles.expanderTitle}>{title}</Text>
+          <Text style={styles.rowMeta} numberOfLines={1}>
+            {summary}
+          </Text>
+        </View>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={palette.textMuted} />
+      </Pressable>
+      {open ? <View style={styles.expanderBody}>{children}</View> : null}
+    </Card>
   );
 }
 
@@ -372,18 +393,36 @@ const makeStyles = (c: Palette) =>
     gapTop: {
       marginTop: spacing.sm,
     },
+    section: {
+      marginTop: spacing.lg,
+    },
     chips: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: spacing.sm,
     },
     note: {
-      marginTop: spacing.lg,
       fontFamily: fonts.body,
       fontSize: 13,
       color: c.textMuted,
     },
-    logout: {
-      marginTop: spacing.xl,
+    expander: {
+      marginTop: spacing.md,
+      paddingVertical: 0,
+    },
+    expanderHead: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      minHeight: 56,
+    },
+    expanderTitle: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 15,
+      color: c.text,
+    },
+    expanderBody: {
+      gap: spacing.sm,
+      paddingBottom: spacing.md,
     },
   });

@@ -23,7 +23,7 @@ export const TOUR_SCRIPTS: Record<TourId, TourScript> = {
         targetId: 'home.getting-started',
         icon: 'checkmark-done-outline',
         title: 'Your first steps',
-        body: 'This checklist ticks itself off as you go. Tap any step to jump straight to it.',
+        body: 'Tap to jump to your next step. It ticks itself off as you go; the list icon shows them all.',
       },
       {
         targetId: 'home.start-match',
@@ -35,13 +35,13 @@ export const TOUR_SCRIPTS: Record<TourId, TourScript> = {
         targetId: 'home.log-race',
         icon: 'flag-outline',
         title: 'Log a race',
-        body: 'Everyone races to a target score. Great for a group night with more than four players.',
+        body: 'Race: everyone plays to a target score. Great for a group night with more than four players.',
       },
       {
         targetId: 'home.feed',
         icon: 'pulse-outline',
         title: 'Your feed',
-        body: 'Live games and fresh results from your league and friends. Use the chips to narrow it down.',
+        body: 'Fresh results from your league and friends. Use the chips to narrow it down.',
       },
       {
         targetId: 'nav.tabs',
@@ -76,8 +76,8 @@ export const TOUR_SCRIPTS: Record<TourId, TourScript> = {
       {
         targetId: 'match-new.extras',
         icon: 'options-outline',
-        title: 'Title match or mid-match',
-        body: 'Make the winner league champion, or say you are already playing to enter the score so far.',
+        title: 'More options',
+        body: 'Make it a title match, say you are already mid-match, or give it a name. All optional.',
       },
       {
         targetId: 'match-new.start',

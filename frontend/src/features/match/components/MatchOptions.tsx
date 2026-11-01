@@ -23,6 +23,8 @@ interface MatchOptionsProps {
   onPolicy: (policy: ScoringPolicy, allowedUids: string[]) => void;
   onForfeit: (side: 'a' | 'b') => void;
   onDelete: () => void;
+  /** Render the options directly (e.g. inside a sheet) instead of behind an expander. */
+  embedded?: boolean;
 }
 
 /** Less frequent match controls, folded away so the scoring pad stays uncluttered. */
@@ -40,6 +42,7 @@ export function MatchOptions({
   onPolicy,
   onForfeit,
   onDelete,
+  embedded = false,
 }: MatchOptionsProps): ReactNode {
   const styles = useStyles(makeStyles);
   const palette = usePalette();
@@ -53,6 +56,110 @@ export function MatchOptions({
   const allowed = match.allowedScorerUids ?? [];
   const pickable = members.filter((p) => p.authUid && p.authUid !== creatorUid);
 
+  const body = (
+    <View style={[styles.body, embedded && styles.bodyEmbedded]}>
+      {canManage && inProgress ? (
+        <View style={styles.optionRow}>
+          <View style={styles.optionText}>
+            <Text style={styles.optionTitle}>Title match</Text>
+            <Text style={styles.optionHint}>The winner becomes the league champion.</Text>
+          </View>
+          <Switch
+            value={match.crownsChampion}
+            disabled={busy}
+            onValueChange={onTitleMatch}
+            trackColor={{ false: palette.cardRaised, true: palette.primary }}
+            thumbColor={palette.text}
+            accessibilityLabel="Title match"
+          />
+        </View>
+      ) : null}
+
+      {canManage && inProgress ? (
+        <View style={styles.block}>
+          <Text style={styles.optionTitle}>Who can take over scoring</Text>
+          <View style={styles.chips}>
+            <Chip
+              label="Anyone in the league"
+              selected={policy === 'anyone'}
+              onPress={() => onPolicy('anyone', allowed)}
+            />
+            <Chip
+              label="Only people I pick"
+              selected={policy === 'chosen'}
+              onPress={() => onPolicy('chosen', allowed)}
+            />
+          </View>
+          {policy === 'chosen' ? (
+            pickable.length > 0 ? (
+              <View style={styles.chips}>
+                {pickable.map((p) => {
+                  const uid = p.authUid!;
+                  const on = allowed.includes(uid);
+                  return (
+                    <Chip
+                      key={p.id}
+                      label={p.displayName}
+                      selected={on}
+                      onPress={() =>
+                        onPolicy(
+                          'chosen',
+                          on ? allowed.filter((u) => u !== uid) : [...allowed, uid],
+                        )
+                      }
+                    />
+                  );
+                })}
+              </View>
+            ) : (
+              <Text style={styles.optionHint}>
+                Nobody else in this league has an account yet. Invite friends from the League
+                screen.
+              </Text>
+            )
+          ) : null}
+        </View>
+      ) : null}
+
+      {canScore && inProgress ? (
+        <View style={styles.block}>
+          <Text style={styles.optionTitle}>Concede this frame</Text>
+          <View style={styles.row}>
+            <Button
+              size="sm"
+              variant="secondary"
+              label={`${teamALabel} concede`}
+              onPress={() => onForfeit('a')}
+              style={styles.flex}
+            />
+            <Button
+              size="sm"
+              variant="secondary"
+              label={`${teamBLabel} concede`}
+              onPress={() => onForfeit('b')}
+              style={styles.flex}
+            />
+          </View>
+        </View>
+      ) : null}
+
+      {canManage ? (
+        <Button
+          variant="danger"
+          size="sm"
+          icon="trash-outline"
+          label={inProgress ? 'Abandon and delete match' : 'Delete match'}
+          onPress={onDelete}
+          disabled={busy}
+        />
+      ) : null}
+    </View>
+  );
+
+  if (embedded) {
+    return body;
+  }
+
   return (
     <View style={styles.wrap}>
       <Pressable
@@ -65,106 +172,7 @@ export function MatchOptions({
         <Text style={styles.headerText}>Match options</Text>
         <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={palette.textMuted} />
       </Pressable>
-
-      {open ? (
-        <View style={styles.body}>
-          {canManage && inProgress ? (
-            <View style={styles.optionRow}>
-              <View style={styles.optionText}>
-                <Text style={styles.optionTitle}>Title match</Text>
-                <Text style={styles.optionHint}>The winner becomes the league champion.</Text>
-              </View>
-              <Switch
-                value={match.crownsChampion}
-                disabled={busy}
-                onValueChange={onTitleMatch}
-                trackColor={{ false: palette.cardRaised, true: palette.primary }}
-                thumbColor={palette.text}
-                accessibilityLabel="Title match"
-              />
-            </View>
-          ) : null}
-
-          {canManage && inProgress ? (
-            <View style={styles.block}>
-              <Text style={styles.optionTitle}>Who can take over scoring</Text>
-              <View style={styles.chips}>
-                <Chip
-                  label="Anyone in the league"
-                  selected={policy === 'anyone'}
-                  onPress={() => onPolicy('anyone', allowed)}
-                />
-                <Chip
-                  label="Only people I pick"
-                  selected={policy === 'chosen'}
-                  onPress={() => onPolicy('chosen', allowed)}
-                />
-              </View>
-              {policy === 'chosen' ? (
-                pickable.length > 0 ? (
-                  <View style={styles.chips}>
-                    {pickable.map((p) => {
-                      const uid = p.authUid!;
-                      const on = allowed.includes(uid);
-                      return (
-                        <Chip
-                          key={p.id}
-                          label={p.displayName}
-                          selected={on}
-                          onPress={() =>
-                            onPolicy(
-                              'chosen',
-                              on ? allowed.filter((u) => u !== uid) : [...allowed, uid],
-                            )
-                          }
-                        />
-                      );
-                    })}
-                  </View>
-                ) : (
-                  <Text style={styles.optionHint}>
-                    Nobody else in this league has an account yet. Invite friends from the League
-                    screen.
-                  </Text>
-                )
-              ) : null}
-            </View>
-          ) : null}
-
-          {canScore && inProgress ? (
-            <View style={styles.block}>
-              <Text style={styles.optionTitle}>Concede this frame</Text>
-              <View style={styles.row}>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  label={`${teamALabel} concede`}
-                  onPress={() => onForfeit('a')}
-                  style={styles.flex}
-                />
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  label={`${teamBLabel} concede`}
-                  onPress={() => onForfeit('b')}
-                  style={styles.flex}
-                />
-              </View>
-            </View>
-          ) : null}
-
-          {canManage ? (
-            <Button
-              variant="danger"
-              size="sm"
-              icon="trash-outline"
-              label={inProgress ? 'Abandon and delete match' : 'Delete match'}
-              onPress={onDelete}
-              disabled={busy}
-            />
-          ) : null}
-        </View>
-      ) : null}
+      {open ? body : null}
     </View>
   );
 }
@@ -195,6 +203,9 @@ const makeStyles = (c: Palette) =>
       gap: spacing.md,
       padding: spacing.md,
       paddingTop: 0,
+    },
+    bodyEmbedded: {
+      padding: 0,
     },
     optionRow: {
       flexDirection: 'row',
