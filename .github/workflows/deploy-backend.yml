@@ -5,7 +5,7 @@
 # Needs two repository secrets (Settings > Secrets and variables > Actions):
 #   VM_SSH_KEY  - the private key that can SSH to the VM as ubuntu
 #   VM_HOST     - the VM address, e.g. 140.245.8.153
-# Without them the job stops at the first step with a clear message.
+# Without them the deploy is skipped with a warning (the run stays green).
 name: Deploy backend
 
 on:
@@ -23,20 +23,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  check:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    outputs:
+      ready: ${{ steps.secrets.outputs.ready }}
     steps:
       - name: Check secrets
+        id: secrets
         env:
           VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
           VM_HOST: ${{ secrets.VM_HOST }}
         run: |
           if [ -z "$VM_SSH_KEY" ] || [ -z "$VM_HOST" ]; then
-            echo "Add the VM_SSH_KEY and VM_HOST repository secrets to enable deploys."
-            exit 1
+            echo "::warning::Deploy skipped: add the VM_SSH_KEY and VM_HOST repository secrets to enable automatic deploys."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
+
+  deploy:
+    needs: check
+    if: needs.check.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
