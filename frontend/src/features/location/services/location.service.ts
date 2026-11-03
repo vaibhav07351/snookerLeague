@@ -3,134 +3,32 @@ import * as Location from 'expo-location';
 import { Platform } from 'react-native';
 
 import * as cityHubService from '@/features/league/services/city-hub.service';
-import { INDIA_CITIES, type City } from '@/features/location/data/india-cities';
+import { findIndiaCity, type City } from '@/features/location/data/india-cities';
+import * as citySearch from '@/features/location/services/city-search';
 import * as profileService from '@/features/community/services/profile.service';
 import { AppError } from '@/shared/errors/app-error';
 import { logger } from '@/shared/logging/logger';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { scheduleUserProfileSync } from '@/shared/sync';
 
+export type { City };
+
 const cityIdSchema = z.string().trim().min(2).max(48);
 const POSITION_TIMEOUT_MS = 15_000;
-const GEOCODE_TIMEOUT_MS = 10_000;
+const NEARBY_COUNT = 8;
 
-/** Common geocoder spellings → our city list names. */
-const CITY_ALIASES: Record<string, string> = {
-  bangalore: 'bengaluru',
-  bengalooru: 'bengaluru',
-  bombay: 'mumbai',
-  calcutta: 'kolkata',
-  madras: 'chennai',
-  poona: 'pune',
-  baroda: 'vadodara',
-  trivandrum: 'thiruvananthapuram',
-  tvm: 'thiruvananthapuram',
-  cochin: 'kochi',
-  calicut: 'kozhikode',
-  trichy: 'tiruchirappalli',
-  tiruchi: 'tiruchirappalli',
-  gurgaon: 'gurugram',
-  allahabad: 'prayagraj',
-  benares: 'varanasi',
-  kashi: 'varanasi',
-  mysore: 'mysuru',
-  mangalore: 'mangaluru',
-  hubli: 'hubballi',
-  belgaum: 'belagavi',
-  belgaom: 'belagavi',
-  gulbarga: 'kalaburagi',
-  bellary: 'ballari',
-  trichur: 'thrissur',
-  quilon: 'kollam',
-  alleppey: 'alappuzha',
-  pondicherry: 'puducherry',
-  pondichéry: 'puducherry',
-  aurangabad: 'chhatrapati sambhajinagar',
-  sambhajinagar: 'chhatrapati sambhajinagar',
-  cstm: 'mumbai',
-  'new delhi': 'new delhi',
-  'delhi ncr': 'delhi',
-  'navi mumbai': 'navi mumbai',
-  'pimpri chinchwad': 'pimpri-chinchwad',
-  pimpri: 'pimpri-chinchwad',
-  secunderabad: 'secunderabad',
-  howrah: 'howrah',
-};
-
-type PlaceParts = {
-  city?: string | null;
-  subregion?: string | null;
-  district?: string | null;
-  region?: string | null;
-  name?: string | null;
-  locality?: string | null;
-};
-
-export function listCities(): City[] {
-  return INDIA_CITIES;
+export interface DetectedCity {
+  city: City;
+  /** Other towns close by, nearest first, for a "Near you" list. */
+  nearby: City[];
 }
 
 export function searchCities(query: string): City[] {
-  const q = query.trim().toLowerCase();
-  if (q.length === 0) {
-    return INDIA_CITIES;
-  }
-  return INDIA_CITIES.filter(
-    (c) =>
-      c.name.toLowerCase().includes(q) || c.state.toLowerCase().includes(q) || c.id.includes(q),
-  );
-}
-
-export function citiesByLetter(letter: string): City[] {
-  const ch = letter.trim().toUpperCase().charAt(0);
-  return INDIA_CITIES.filter((c) => c.name.toUpperCase().startsWith(ch));
+  return citySearch.searchCities(query);
 }
 
 export function getCityById(cityId: string): City | null {
-  return INDIA_CITIES.find((c) => c.id === cityId) ?? null;
-}
-
-function normalizePlaceToken(raw: string): string {
-  return raw.trim().toLowerCase().replace(/[.,]/g, ' ').replace(/\s+/g, ' ');
-}
-
-function matchCityFromPlace(place: PlaceParts): City | null {
-  const parts = [
-    place.city,
-    place.locality,
-    place.name,
-    place.subregion,
-    place.district,
-    place.region,
-  ]
-    .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
-    .map(normalizePlaceToken);
-
-  for (const part of parts) {
-    const aliased = CITY_ALIASES[part] ?? part;
-    const exact = INDIA_CITIES.find(
-      (c) => c.name.toLowerCase() === aliased || c.id === aliased.replace(/\s+/g, '-'),
-    );
-    if (exact) {
-      return exact;
-    }
-  }
-
-  for (const part of parts) {
-    const aliased = CITY_ALIASES[part] ?? part;
-    const fuzzy = INDIA_CITIES.find((c) => {
-      const name = c.name.toLowerCase();
-      return (
-        aliased.includes(name) ||
-        name.includes(aliased) ||
-        c.id.includes(aliased.replace(/\s+/g, '-'))
-      );
-    });
-    if (fuzzy) {
-      return fuzzy;
-    }
-  }
-  return null;
+  return findIndiaCity(cityId);
 }
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -149,82 +47,42 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
   }
 }
 
-/**
- * Expo removed reverse geocoding on web (SDK 49+). Use a CORS-friendly client
- * reverse-geocode endpoint — no API key, never logs coordinates.
- */
-async function reverseGeocodeWeb(latitude: number, longitude: number): Promise<PlaceParts[]> {
-  const url =
-    `https://api.bigdatacloud.net/data/reverse-geocode-client` +
-    `?latitude=${encodeURIComponent(String(latitude))}` +
-    `&longitude=${encodeURIComponent(String(longitude))}` +
-    `&localityLanguage=en`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), GEOCODE_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, { signal: controller.signal });
-    if (!res.ok) {
-      throw new AppError('NETWORK', 'Could not look up your city from coordinates');
-    }
-    const data = (await res.json()) as {
-      city?: string;
-      locality?: string;
-      principalSubdivision?: string;
-      countryName?: string;
-      localityInfo?: {
-        administrative?: Array<{ name?: string; description?: string; order?: number }>;
-      };
-    };
-    const adminNames =
-      data.localityInfo?.administrative
-        ?.map((a) => a.name)
-        .filter((n): n is string => typeof n === 'string' && n.trim().length > 0) ?? [];
-    return [
-      {
-        city: data.city ?? null,
-        locality: data.locality ?? null,
-        name: adminNames[0] ?? null,
-        district: adminNames[1] ?? null,
-        subregion: data.locality ?? adminNames[0] ?? null,
-        region: data.principalSubdivision ?? null,
-      },
-    ];
-  } catch (error) {
-    if (error instanceof AppError) {
-      throw error;
-    }
-    throw new AppError(
-      'NETWORK',
-      'Could not look up your city. Check your connection, or search the list.',
+/** Device position → nearest known town, entirely on device. Never logs or stores coordinates. */
+async function detectFromPosition(): Promise<DetectedCity> {
+  let pos = await Location.getLastKnownPositionAsync({
+    maxAge: 5 * 60_000,
+    requiredAccuracy: 5_000,
+  });
+  if (!pos) {
+    pos = await withTimeout(
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+      POSITION_TIMEOUT_MS,
+      'Getting your location',
     );
-  } finally {
-    clearTimeout(timer);
   }
+  const at = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+  const city = citySearch.cityForCoordinates(at);
+  if (!city) {
+    logger.info('location.service', 'No town within reach of device position');
+    throw new AppError(
+      'LOCATION_UNMATCHED',
+      'No town in India found near you. Search for your city instead.',
+    );
+  }
+  logger.info('location.service', 'Detected city from device', { cityId: city.id });
+  const nearby = citySearch.nearestCities(at, NEARBY_COUNT + 1).filter((c) => c.id !== city.id);
+  return { city, nearby: nearby.slice(0, NEARBY_COUNT) };
 }
 
-async function reverseGeocode(latitude: number, longitude: number): Promise<PlaceParts[]> {
-  if (Platform.OS === 'web') {
-    return reverseGeocodeWeb(latitude, longitude);
-  }
-  const places = await Location.reverseGeocodeAsync({ latitude, longitude });
-  return places.map((p) => ({
-    city: p.city,
-    subregion: p.subregion,
-    district: p.district,
-    region: p.region,
-    name: p.name,
-  }));
-}
-
-/** Reverse-geocode to a known city. Never logs coordinates. */
-export async function suggestCityFromDevice(): Promise<City> {
+/** Asks for location permission if needed, then detects the town. */
+export async function detectCity(): Promise<DetectedCity> {
   const services = await Location.getProviderStatusAsync();
   if (!services.locationServicesEnabled) {
     throw new AppError(
       'LOCATION_DISABLED',
       Platform.OS === 'web'
-        ? 'Location is blocked in this browser. Allow location access for this site, or search the list.'
-        : 'Turn on location services, then try again — or search the list.',
+        ? 'Location is blocked in this browser. Allow it for this site, or search instead.'
+        : 'Turn on location services and try again, or search instead.',
     );
   }
 
@@ -233,49 +91,34 @@ export async function suggestCityFromDevice(): Promise<City> {
     throw new AppError(
       'LOCATION_DENIED',
       Platform.OS === 'web'
-        ? 'Location permission was denied. Allow it in the browser address bar, or search the list.'
-        : 'Location permission was denied. Enable it in Settings, or search the list.',
+        ? 'Location permission was denied. Allow it in the address bar, or search instead.'
+        : 'Location permission was denied. Enable it in Settings, or search instead.',
     );
   }
+  return detectFromPosition();
+}
 
-  let pos = await Location.getLastKnownPositionAsync({
-    maxAge: 5 * 60_000,
-    requiredAccuracy: 5_000,
-  });
-  if (!pos) {
-    pos = await withTimeout(
-      Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      }),
-      POSITION_TIMEOUT_MS,
-      'Getting your location',
-    );
-  }
-
-  const places = await withTimeout(
-    reverseGeocode(pos.coords.latitude, pos.coords.longitude),
-    GEOCODE_TIMEOUT_MS,
-    'Looking up your city',
-  );
-  const first = places[0];
-  if (!first) {
-    throw new AppError('LOCATION_UNMATCHED', 'We could not read an address for your location.');
-  }
-
-  const city = matchCityFromPlace(first);
-  if (!city) {
-    logger.info('location.service', 'Suggested city unmatched', {
-      hasCity: Boolean(first.city ?? first.locality),
-      hasRegion: Boolean(first.region),
+/**
+ * Detects the town only when permission was already granted, never prompting.
+ * Returns null when it can't (no permission, location off, nothing nearby).
+ */
+export async function detectCityIfAllowed(): Promise<DetectedCity | null> {
+  try {
+    const perm = await Location.getForegroundPermissionsAsync();
+    if (perm.status !== 'granted') {
+      return null;
+    }
+    const services = await Location.getProviderStatusAsync();
+    if (!services.locationServicesEnabled) {
+      return null;
+    }
+    return await detectFromPosition();
+  } catch (error) {
+    logger.info('location.service', 'Silent city detection skipped', {
+      code: error instanceof AppError ? error.code : 'UNKNOWN',
     });
-    throw new AppError(
-      'LOCATION_UNMATCHED',
-      'We could not match your location to a city in our list. Search and pick one instead.',
-    );
+    return null;
   }
-
-  logger.info('location.service', 'Suggested city from device', { cityId: city.id });
-  return city;
 }
 
 export async function skipCityForDemo(): Promise<void> {

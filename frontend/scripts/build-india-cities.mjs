@@ -1,0 +1,166 @@
+// Builds src/features/location/data/india-places.generated.ts from the GeoNames dump.
+//
+// Download (CC BY 4.0, https://www.geonames.org):
+//   https://download.geonames.org/export/dump/cities5000.zip  (unzip to cities5000.txt)
+//   https://download.geonames.org/export/dump/admin1CodesASCII.txt
+// Run from frontend/:
+//   node scripts/build-india-cities.mjs <cities5000.txt> <admin1CodesASCII.txt>
+//
+// Ids are stable across rebuilds: the original 166 cities keep their ids from
+// scripts/data/legacy-cities.json (city hubs and profiles reference them), every other
+// place gets `<slug>-<geonameid>`.
+
+import console from 'node:console';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import process from 'node:process';
+import { fileURLToPath } from 'node:url';
+
+const MIN_POPULATION = 5000;
+/** Feature codes that are not towns people live in (sections, abandoned, historical...). */
+const EXCLUDED_CODES = new Set(['PPLX', 'PPLQ', 'PPLR', 'PPLF', 'PPLH', 'PPLW', 'PPLCH']);
+const MAX_ID_LENGTH = 48;
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const outPath = join(root, 'src/features/location/data/india-places.generated.ts');
+const legacyPath = join(root, 'scripts/data/legacy-cities.json');
+
+const [citiesPath, admin1Path] = process.argv.slice(2);
+if (!citiesPath || !admin1Path) {
+  console.error(
+    'Usage: node scripts/build-india-cities.mjs <cities5000.txt> <admin1CodesASCII.txt>',
+  );
+  process.exit(1);
+}
+
+function slugify(name) {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function readStates(path) {
+  const states = new Map();
+  for (const line of readFileSync(path, 'utf8').split('\n')) {
+    const [code, name] = line.split('\t');
+    if (code?.startsWith('IN.') && name) {
+      states.set(code.slice(3), name.trim());
+    }
+  }
+  return states;
+}
+
+function readPlaces(path, states) {
+  const places = [];
+  for (const line of readFileSync(path, 'utf8').split('\n')) {
+    const f = line.split('\t');
+    if (f[8] !== 'IN') {
+      continue;
+    }
+    const state = states.get(f[10]);
+    if (!state) {
+      continue;
+    }
+    places.push({
+      geonameId: f[0],
+      name: f[2].trim(),
+      altNames: f[3] ? f[3].split(',').map((n) => n.trim().toLowerCase()) : [],
+      lat: Number(f[4]),
+      lon: Number(f[5]),
+      code: f[7],
+      state,
+      population: Number(f[14]) || 0,
+    });
+  }
+  return places;
+}
+
+function byPopulation(a, b) {
+  return b.population - a.population;
+}
+
+/** Exact ASCII name in the same state first, then alternate names; biggest town wins. */
+function matchLegacy(legacy, places, used) {
+  const name = legacy.name.toLowerCase();
+  const inState = places.filter((p) => p.state === legacy.state && !used.has(p.geonameId));
+  const exact = inState.filter((p) => p.name.toLowerCase() === name).sort(byPopulation);
+  if (exact[0]) {
+    return exact[0];
+  }
+  return inState.filter((p) => p.altNames.includes(name)).sort(byPopulation)[0] ?? null;
+}
+
+function round(n) {
+  return Math.round(n * 1000) / 1000;
+}
+
+function build() {
+  const states = readStates(admin1Path);
+  const places = readPlaces(citiesPath, states);
+  const legacy = JSON.parse(readFileSync(legacyPath, 'utf8'));
+  const used = new Set();
+  const cities = [];
+
+  for (const city of legacy) {
+    const match = matchLegacy(city, places, used);
+    if (match) {
+      used.add(match.geonameId);
+      cities.push({ ...city, lat: match.lat, lon: match.lon, population: match.population });
+    } else if (typeof city.lat === 'number' && typeof city.lon === 'number') {
+      cities.push({ ...city, population: city.population ?? 0 });
+    } else {
+      throw new Error(`Legacy city ${city.id} has no GeoNames match and no manual coordinates`);
+    }
+  }
+
+  for (const p of places) {
+    if (used.has(p.geonameId) || EXCLUDED_CODES.has(p.code) || p.population < MIN_POPULATION) {
+      continue;
+    }
+    const slug = slugify(p.name).slice(0, MAX_ID_LENGTH - p.geonameId.length - 1);
+    if (!slug) {
+      continue;
+    }
+    cities.push({
+      id: `${slug}-${p.geonameId}`,
+      name: p.name,
+      state: p.state,
+      lat: p.lat,
+      lon: p.lon,
+      population: p.population,
+    });
+  }
+
+  const ids = new Set();
+  for (const c of cities) {
+    if (ids.has(c.id)) {
+      throw new Error(`Duplicate city id ${c.id}`);
+    }
+    if (c.name.includes('|') || c.name.includes('\n') || c.name.includes('`')) {
+      throw new Error(`City name ${c.name} has a reserved character`);
+    }
+    ids.add(c.id);
+  }
+
+  cities.sort(byPopulation);
+  const stateNames = [...new Set(cities.map((c) => c.state))].sort();
+  const stateIndex = new Map(stateNames.map((s, i) => [s, i]));
+  const rows = cities.map((c) =>
+    [c.id, c.name, stateIndex.get(c.state), round(c.lat), round(c.lon), c.population].join('|'),
+  );
+
+  const out = [
+    '// Generated by scripts/build-india-cities.mjs from GeoNames (CC BY 4.0). Do not edit.',
+    '',
+    `export const INDIA_STATES: readonly string[] = ${JSON.stringify(stateNames)};`,
+    '',
+    '/** One place per line: id|name|stateIndex|lat|lon|population, biggest first. */',
+    `export const INDIA_PLACES_DATA = \`${rows.join('\n')}\`;`,
+    '',
+  ].join('\n');
+  writeFileSync(outPath, out);
+  console.log(`Wrote ${cities.length} places (${legacy.length} legacy ids) to ${outPath}`);
+}
+
+build();

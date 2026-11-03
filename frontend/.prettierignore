@@ -5,3 +5,4 @@ dist-web
 coverage
 *.tsbuildinfo
 firestore.rules
+src/features/location/data/india-places.generated.ts
