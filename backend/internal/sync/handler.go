@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -104,17 +105,34 @@ func (h *Handler) pull(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, err)
 		return
 	}
+	optIn := kindsParam(r)
 	var page PullPage
 	if league := r.URL.Query().Get("league"); league != "" {
-		page, err = h.svc.PullLeague(r.Context(), claims.Subject, league, int64(since), limit)
+		page, err = h.svc.PullLeague(r.Context(), claims.Subject, league, int64(since), limit, optIn...)
 	} else {
-		page, err = h.svc.Pull(r.Context(), claims.Subject, int64(since), limit)
+		page, err = h.svc.Pull(r.Context(), claims.Subject, int64(since), limit, optIn...)
 	}
 	if err != nil {
 		httpx.WriteError(w, r, asAPIError(err))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, page)
+}
+
+// kindsParam reads the opt-in document kinds a client can handle (`kinds=group_match,...`).
+// Unknown names are ignored, so newer clients can talk to an older server.
+func kindsParam(r *http.Request) []Entity {
+	raw := r.URL.Query().Get("kinds")
+	if raw == "" {
+		return nil
+	}
+	var out []Entity
+	for _, name := range strings.Split(raw, ",") {
+		if e := Entity(strings.TrimSpace(name)); e.valid() {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 func intParam(r *http.Request, name string, fallback int) (int, error) {

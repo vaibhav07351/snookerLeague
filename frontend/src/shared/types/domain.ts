@@ -49,6 +49,31 @@ export interface RaceStats {
   titles: number;
 }
 
+/** Free-for-all matches (each player for themselves). */
+export interface GroupStats {
+  played: number;
+  wins: number;
+  winPct: number;
+  framesPlayed: number;
+  framesWon: number;
+  pointsScored: number;
+  highestBreak: number;
+  lastPlayedAt: string | null;
+}
+
+export function emptyGroupStats(): GroupStats {
+  return {
+    played: 0,
+    wins: 0,
+    winPct: 0,
+    framesPlayed: 0,
+    framesWon: 0,
+    pointsScored: 0,
+    highestBreak: 0,
+    lastPlayedAt: null,
+  };
+}
+
 export function emptyStandardStats(): StandardStats {
   return {
     played: 0,
@@ -106,6 +131,8 @@ export interface Player {
   stats: {
     standard: StandardStats;
     race: RaceStats;
+    /** Missing on players saved before free-for-all matches existed. */
+    group?: GroupStats;
   };
 }
 
@@ -273,7 +300,8 @@ export type MatchOutcome =
       framesB: number;
     };
 
-export type MatchFormat = 'singles' | 'doubles';
+/** Singles 1v1, doubles 2v2, or one player against a pair (`one_vs_two`). */
+export type MatchFormat = 'singles' | 'doubles' | 'one_vs_two';
 
 export interface Match {
   id: string;
@@ -283,7 +311,7 @@ export interface Match {
   createdByUid: string;
   /** Defaults to doubles when missing (legacy matches). */
   format?: MatchFormat;
-  /** One player (singles) or two (doubles). */
+  /** One player (singles, the solo side of 1v2) or two (doubles, the pair of 1v2). */
   teamA: string[];
   teamB: string[];
   bestOf: number;
@@ -371,11 +399,77 @@ export interface Race {
   status: RaceStatus;
   /** Player whose next pot / foul is logged. */
   atTablePlayerId?: string | null;
+  /**
+   * Playing order at the table (player ids). Learned from manual picks, so it can differ from
+   * the entrant list. Missing on older races: the entrant list order is used.
+   */
+  turnOrder?: string[];
   liveShots?: RaceLiveShot[];
 }
 
+/**
+ * Free-for-all ("group") match: 3 to 8 players, each for themselves, best of N frames.
+ * Every player has their own frame score; the highest score wins the frame.
+ */
+export interface GroupShot {
+  id: string;
+  at: string;
+  /** Player whose visit this shot belongs to. */
+  playerId: string;
+  kind: ShotKind;
+  points: number;
+  ball?: BallValue;
+}
+
+export interface GroupOpenFrame {
+  shots: GroupShot[];
+  /** Player who broke off this frame. */
+  breakerId: string;
+  /** Player whose next shot is logged. */
+  atTablePlayerId: string;
+  /** ISO time of the first shot, for the frame duration. */
+  startedAt?: string | null;
+}
+
+export interface GroupFrame {
+  /** Final points per player id. Never negative. */
+  points: Record<string, number>;
+  winnerId: string;
+  breakerId: string | null;
+  shots?: GroupShot[];
+  durationSeconds?: number;
+}
+
+export type GroupMatchStatus = 'in_progress' | 'completed';
+
+export interface GroupMatch {
+  id: string;
+  leagueId: string;
+  createdAt: string;
+  updatedAt: string;
+  createdByUid: string;
+  /** Players in the order they were picked. */
+  playerIds: string[];
+  /** Playing order at the table, learned from manual picks (see shared/utils/turn-order). */
+  turnOrder: string[];
+  bestOf: number;
+  namedLabel: string | null;
+  frames: GroupFrame[];
+  /** Frame being scored; null once the match is over. */
+  openFrame: GroupOpenFrame | null;
+  status: GroupMatchStatus;
+  winnerId: string | null;
+  finishedAt: string | null;
+}
+
 export type FeedEventType =
-  'team_crowned' | 'team_dethroned' | 'race_king' | 'match_won' | 'race_won' | 'streak';
+  | 'team_crowned'
+  | 'team_dethroned'
+  | 'race_king'
+  | 'match_won'
+  | 'race_won'
+  | 'group_won'
+  | 'streak';
 
 export interface FeedEvent {
   id: string;
@@ -410,6 +504,7 @@ export type SyncEntity =
   | 'player'
   | 'match'
   | 'race'
+  | 'group_match'
   | 'event'
   | 'profile'
   | 'challenge'
@@ -586,6 +681,7 @@ export interface AppDataStore {
   players: Player[];
   matches: Match[];
   races: Race[];
+  groupMatches: GroupMatch[];
   events: FeedEvent[];
   pendingOps: PendingOp[];
   playerProfiles: PlayerProfile[];
@@ -602,4 +698,10 @@ export interface AppDataStore {
   serverVersions: Record<string, number>;
   /** Highest server version pulled so far (the next pull asks for changes after it). */
   syncCursor: number;
+  /**
+   * Which set of opt-in document kinds this phone has pulled with (see sync/pull.ts). When the
+   * app learns a new kind, older documents of that kind sit behind the cursor, so a lower
+   * value triggers one full re-pull.
+   */
+  pullKindsVersion: number;
 }

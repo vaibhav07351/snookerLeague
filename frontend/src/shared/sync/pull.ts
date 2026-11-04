@@ -11,6 +11,13 @@ import { leagueKindOf, type CloudUserProfile, type LeagueInvite } from '@/shared
 /** Stop after this many pages in one go; the next pull continues from the saved cursor. */
 const MAX_PAGES_PER_PULL = 40;
 
+/**
+ * Bump when OPT_IN_KINDS gains a kind. Documents of that kind written while this phone ran an
+ * older build were hidden from it but already sit behind its cursor, so the first pull on the
+ * new build starts again from 0 (merging is idempotent, so this is only extra traffic).
+ */
+const PULL_KINDS_VERSION = 1;
+
 let pulling: Promise<void> | null = null;
 
 /**
@@ -25,6 +32,13 @@ export function pullChanges(): Promise<void> {
 }
 
 async function pullAll(): Promise<void> {
+  if (getStore().pullKindsVersion < PULL_KINDS_VERSION) {
+    logger.info('sync.pull', 'New document kinds: pulling full history once', {
+      from: getStore().pullKindsVersion,
+      to: PULL_KINDS_VERSION,
+    });
+    await updateStore((s) => ({ ...s, syncCursor: 0, pullKindsVersion: PULL_KINDS_VERSION }));
+  }
   for (let pages = 0; pages < MAX_PAGES_PER_PULL; pages += 1) {
     const since = getStore().syncCursor;
     const page = await pullPage(since);

@@ -1,5 +1,5 @@
 import { getStore, loadStore } from '@/shared/storage/local-store';
-import type { Match, Race } from '@/shared/types/domain';
+import type { Match, MatchFormat, Race } from '@/shared/types/domain';
 import { matchFormatOf } from '@/features/match/services/match.service';
 
 export interface TeamChampionRecord {
@@ -11,7 +11,7 @@ export interface TeamChampionRecord {
   scoreLine: string;
   viaForfeit: boolean;
   isCurrent: boolean;
-  format: 'singles' | 'doubles';
+  format: MatchFormat;
 }
 
 export interface RaceChampionRecord {

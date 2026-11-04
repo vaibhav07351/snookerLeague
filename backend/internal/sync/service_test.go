@@ -110,11 +110,11 @@ func (m *memStore) SaveResult(_ context.Context, op, user string, r OpResult) er
 	return nil
 }
 
-func (m *memStore) Pull(_ context.Context, user string, since int64, limit int) ([]Doc, error) {
+func (m *memStore) Pull(_ context.Context, user string, since int64, limit int, hidden []Entity) ([]Doc, error) {
 	var out []Doc
 	for v := since + 1; v <= m.version && len(out) < limit; v++ {
 		for _, d := range m.docs {
-			if d.Version == v && m.members[d.LeagueID+"|"+user] != RoleNone {
+			if d.Version == v && m.members[d.LeagueID+"|"+user] != RoleNone && !slices.Contains(hidden, d.Entity) {
 				out = append(out, d)
 			}
 		}
@@ -177,8 +177,8 @@ func (m *memStore) PlayerCardsOf(_ context.Context, user string) ([]Doc, error) 
 	return out, nil
 }
 
-func (m *memStore) PullLeague(ctx context.Context, user, league string, since int64, limit int) ([]Doc, error) {
-	all, err := m.Pull(ctx, user, since, 1<<30)
+func (m *memStore) PullLeague(ctx context.Context, user, league string, since int64, limit int, hidden []Entity) ([]Doc, error) {
+	all, err := m.Pull(ctx, user, since, 1<<30, hidden)
 	if err != nil {
 		return nil, err
 	}

@@ -28,6 +28,7 @@ import {
   type Match,
   type PendingOp,
   type Player,
+  type GroupMatch,
   type Race,
   type Tournament,
 } from '@/shared/types/domain';
@@ -47,6 +48,7 @@ const DOC_ENTITIES: readonly string[] = [
   'player',
   'match',
   'race',
+  'group_match',
   'event',
   'tournament',
 ];
@@ -56,7 +58,7 @@ export function isBatchable(op: PendingOp): boolean {
   return DOC_ENTITIES.includes(op.entity) && !op.membership;
 }
 
-type Row = League | Player | Match | Race | FeedEvent | Tournament;
+type Row = League | Player | Match | Race | GroupMatch | FeedEvent | Tournament;
 
 function pick(data: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -79,6 +81,8 @@ function localRow(entity: DocEntity, id: string): Row | undefined {
       return s.matches.find((r) => r.id === id);
     case 'race':
       return s.races.find((r) => r.id === id);
+    case 'group_match':
+      return s.groupMatches.find((r) => r.id === id);
     case 'event':
       return s.events.find((r) => r.id === id);
     case 'tournament':

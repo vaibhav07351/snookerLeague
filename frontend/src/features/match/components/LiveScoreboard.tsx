@@ -16,35 +16,42 @@ const FOUL_VALUES = [4, 5, 6, 7] as const;
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
-interface LiveScoreboardProps {
+interface LiveScoreboardBaseProps {
   table: TableState;
-  /** Points behind the side at the table (0 when level or ahead). */
+  /** Points behind the leader for whoever is at the table (0 when level or ahead). */
   deficit: number;
-  teamALabel: string;
-  teamBLabel: string;
   canUndo: boolean;
   onPot: (ball: BallValue) => void;
   onFoul: (points: number) => void;
   onEndVisit: (kind: 'miss' | 'safety') => void;
   onFreeBall: () => void;
   onUndo: () => void;
-  onFrameWon: (winner: 'a' | 'b') => void;
+  /** Screen-reader label for a foul button (who the points go to differs by format). */
+  foulLabel?: (points: number) => string;
 }
 
+/** A two-sided match ends a frame with one button per side; other formats bring their own row. */
+type LiveScoreboardProps = LiveScoreboardBaseProps &
+  (
+    | { teamALabel: string; teamBLabel: string; onFrameWon: (winner: 'a' | 'b') => void }
+    | { frameRow: ReactNode }
+  );
+
+const defaultFoulLabel = (pts: number): string => `Foul, ${pts} points to the opponent`;
+
 /** Ball pad for the scorer. Balls that are "on" are raised; the rest stay tappable but dimmed. */
-export function LiveScoreboard({
-  table,
-  deficit,
-  teamALabel,
-  teamBLabel,
-  canUndo,
-  onPot,
-  onFoul,
-  onEndVisit,
-  onFreeBall,
-  onUndo,
-  onFrameWon,
-}: LiveScoreboardProps): ReactNode {
+export function LiveScoreboard(props: LiveScoreboardProps): ReactNode {
+  const {
+    table,
+    deficit,
+    canUndo,
+    onPot,
+    onFoul,
+    onEndVisit,
+    onFreeBall,
+    onUndo,
+    foulLabel = defaultFoulLabel,
+  } = props;
   const styles = useStyles(makeStyles);
   const palette = usePalette();
   const { width } = useLayout();
@@ -110,7 +117,7 @@ export function LiveScoreboard({
             key={pts}
             onPress={() => onFoul(pts)}
             accessibilityRole="button"
-            accessibilityLabel={`Foul, ${pts} points to the opponent`}
+            accessibilityLabel={foulLabel(pts)}
             style={({ pressed }) => [styles.foul, pressed && styles.pressed]}
           >
             <Text style={styles.foulText}>Foul {pts}</Text>
@@ -118,10 +125,14 @@ export function LiveScoreboard({
         ))}
       </TourTarget>
 
-      <TourTarget id="live.frame" style={styles.row}>
-        <FrameButton side="a" label={teamALabel} onPress={() => onFrameWon('a')} />
-        <FrameButton side="b" label={teamBLabel} onPress={() => onFrameWon('b')} />
-      </TourTarget>
+      {'frameRow' in props ? (
+        props.frameRow
+      ) : (
+        <TourTarget id="live.frame" style={styles.row}>
+          <FrameButton side="a" label={props.teamALabel} onPress={() => props.onFrameWon('a')} />
+          <FrameButton side="b" label={props.teamBLabel} onPress={() => props.onFrameWon('b')} />
+        </TourTarget>
+      )}
     </View>
   );
 }

@@ -1,5 +1,13 @@
 import type { DocEntity } from '@/shared/api/sync-api';
-import type { FeedEvent, League, Match, Player, Race, Tournament } from '@/shared/types/domain';
+import type {
+  FeedEvent,
+  GroupMatch,
+  League,
+  Match,
+  Player,
+  Race,
+  Tournament,
+} from '@/shared/types/domain';
 import { emptyRaceStats, emptyStandardStats } from '@/shared/types/domain';
 
 /** Stable fallback - never use nowIso() in mappers or every read looks like a change. */
@@ -61,6 +69,14 @@ export function asMatch(data: Data, id: string, leagueId: string): Match {
 export function asRace(data: Data, id: string, leagueId: string): Race {
   return {
     ...(data as unknown as Race),
+    id,
+    leagueId: String(data.leagueId ?? leagueId),
+  };
+}
+
+export function asGroupMatch(data: Data, id: string, leagueId: string): GroupMatch {
+  return {
+    ...(data as unknown as GroupMatch),
     id,
     leagueId: String(data.leagueId ?? leagueId),
   };

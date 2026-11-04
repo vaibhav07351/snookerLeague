@@ -386,6 +386,7 @@ export async function deleteLeague(input: {
   const playerIds = inLeague(store.players);
   const matchIds = inLeague(store.matches);
   const raceIds = inLeague(store.races);
+  const groupMatchIds = inLeague(store.groupMatches);
   const eventIds = inLeague(store.events);
   const tournamentIds = inLeague(store.tournaments);
 
@@ -401,6 +402,7 @@ export async function deleteLeague(input: {
       players: s.players.filter((p) => p.leagueId !== input.leagueId),
       matches: s.matches.filter((m) => m.leagueId !== input.leagueId),
       races: s.races.filter((r) => r.leagueId !== input.leagueId),
+      groupMatches: s.groupMatches.filter((g) => g.leagueId !== input.leagueId),
       events: s.events.filter((e) => e.leagueId !== input.leagueId),
       tournaments: s.tournaments.filter((t) => t.leagueId !== input.leagueId),
       activeLeagueId,
@@ -409,7 +411,7 @@ export async function deleteLeague(input: {
 
   const now = nowIso();
   const deletes = (
-    entity: 'player' | 'match' | 'race' | 'event' | 'tournament',
+    entity: 'player' | 'match' | 'race' | 'group_match' | 'event' | 'tournament',
     ids: string[],
   ): ScheduleItem[] =>
     ids.map((docId) => ({
@@ -424,6 +426,7 @@ export async function deleteLeague(input: {
     ...deletes('player', playerIds),
     ...deletes('match', matchIds),
     ...deletes('race', raceIds),
+    ...deletes('group_match', groupMatchIds),
     ...deletes('event', eventIds),
     ...deletes('tournament', tournamentIds),
     {

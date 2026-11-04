@@ -10,7 +10,9 @@ import {
   serializeMatchWrite,
 } from '@/features/match/services/match-guards';
 import {
+  formatCanCrown,
   framesToWin,
+  matchFormatOf,
   persistMatchResult,
   tallyFromFrames,
 } from '@/features/match/services/match.service';
@@ -111,6 +113,9 @@ export function setTitleMatch(matchId: string, crownsChampion: boolean): Promise
     const ctx = await loadMatchContext(matchId);
     requireInProgress(ctx.match);
     requireManager(ctx);
+    if (crownsChampion && !formatCanCrown(matchFormatOf(ctx.match))) {
+      throw new AppError('VALIDATION', 'A 1 vs 2 match cannot be a title match');
+    }
     const updated = await saveSettings(ctx.match, { crownsChampion });
     logger.info('match-admin', 'Title match toggled', { matchId, crownsChampion });
     return updated;

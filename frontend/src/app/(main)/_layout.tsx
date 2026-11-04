@@ -13,6 +13,7 @@ import { BrandLogo } from '@/features/home/components/BrandLogo';
 import { BrandWordmark } from '@/features/home/components/BrandWordmark';
 import { LiveResumeCard } from '@/features/home/components/LiveResumeCard';
 import {
+  groupResumeCopy,
   matchResumeCopy,
   raceResumeCopy,
   useLiveSessions,
@@ -43,7 +44,12 @@ function CustomDrawer(props: DrawerContentComponentProps): ReactNode {
   const palette = usePalette();
   const { league, user } = useSession();
   const active = props.state.routes[props.state.index]?.name;
-  const { matches: liveMatches, races: liveRaces, nameOf } = useLiveSessions(league?.id);
+  const {
+    matches: liveMatches,
+    races: liveRaces,
+    groups: liveGroups,
+    nameOf,
+  } = useLiveSessions(league?.id);
 
   const items: Array<{ label: string; route: string; hint: string }> = [
     { label: 'Home', route: '(tabs)', hint: 'Tabs · city & club' },
@@ -96,6 +102,22 @@ function CustomDrawer(props: DrawerContentComponentProps): ReactNode {
               onPress={() => {
                 props.navigation.closeDrawer();
                 router.push(`/race/${r.id}`);
+              }}
+            />
+          </View>
+        );
+      })}
+      {liveGroups.map((g) => {
+        const copy = groupResumeCopy(g, nameOf);
+        return (
+          <View key={g.id} style={styles.resumeWrap}>
+            <LiveResumeCard
+              eyebrow="Live free-for-all"
+              title={copy.title}
+              meta={copy.meta}
+              onPress={() => {
+                props.navigation.closeDrawer();
+                router.push(`/group/${g.id}`);
               }}
             />
           </View>

@@ -11,6 +11,7 @@ import type {
   DirectoryListing,
   FeedEvent,
   FollowEdge,
+  GroupMatch,
   League,
   LookingPost,
   Match,
@@ -28,6 +29,7 @@ export function emptyStore(): AppDataStore {
     players: [],
     matches: [],
     races: [],
+    groupMatches: [],
     events: [],
     pendingOps: [],
     playerProfiles: [],
@@ -38,6 +40,7 @@ export function emptyStore(): AppDataStore {
     tournaments: [],
     serverVersions: {},
     syncCursor: 0,
+    pullKindsVersion: 0,
   };
 }
 
@@ -87,6 +90,7 @@ export function normalizeStore(raw: Partial<AppDataStore>): AppDataStore {
     ),
     matches: uniqueBy((raw.matches ?? []) as Match[], byId),
     races: uniqueBy((raw.races ?? []) as Race[], byId),
+    groupMatches: uniqueBy((raw.groupMatches ?? []) as GroupMatch[], byId),
     events: uniqueBy(
       (raw.events ?? []).map((e) => {
         const event = e as FeedEvent;
@@ -122,6 +126,10 @@ export function normalizeStore(raw: Partial<AppDataStore>): AppDataStore {
         ? raw.serverVersions
         : {},
     syncCursor: typeof raw.syncCursor === 'number' && raw.syncCursor >= 0 ? raw.syncCursor : 0,
+    pullKindsVersion:
+      typeof raw.pullKindsVersion === 'number' && raw.pullKindsVersion >= 0
+        ? raw.pullKindsVersion
+        : 0,
   };
 }
 
@@ -232,7 +240,7 @@ function hasChanged(prev: AppDataStore, next: AppDataStore): boolean {
     if (a === b) {
       continue;
     }
-    if (key === 'matches' && Array.isArray(a) && Array.isArray(b)) {
+    if ((key === 'matches' || key === 'groupMatches') && Array.isArray(a) && Array.isArray(b)) {
       if (a.length !== b.length) {
         return true;
       }

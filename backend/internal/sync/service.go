@@ -223,7 +223,8 @@ func validateOp(op Op) string {
 }
 
 // Pull returns the next page of changes after `since` for the leagues the user belongs to.
-func (s *Service) Pull(ctx context.Context, userID string, since int64, limit int) (PullPage, error) {
+// Opt-in kinds (see optInEntities) are only included when listed in `optIn`.
+func (s *Service) Pull(ctx context.Context, userID string, since int64, limit int, optIn ...Entity) (PullPage, error) {
 	if since < 0 {
 		return PullPage{}, fmt.Errorf("%w: since can't be negative", ErrBadRequest)
 	}
@@ -231,7 +232,7 @@ func (s *Service) Pull(ctx context.Context, userID string, since int64, limit in
 		limit = defaultPull
 	}
 	limit = min(limit, maxPullLimit)
-	docs, err := s.store.Pull(ctx, userID, since, limit+1)
+	docs, err := s.store.Pull(ctx, userID, since, limit+1, hiddenEntities(optIn))
 	if err != nil {
 		return PullPage{}, fmt.Errorf("pull: %w", err)
 	}

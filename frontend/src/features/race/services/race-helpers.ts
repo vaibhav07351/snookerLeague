@@ -1,3 +1,4 @@
+import { nextInTurn, resolveTurnOrder } from '@/shared/utils/turn-order';
 import type { Race, RaceEntrant, RaceLiveShot } from '@/shared/types/domain';
 
 export function foulPointsOf(entrant: RaceEntrant): number {
@@ -12,14 +13,22 @@ export function activePlayerIds(entrants: RaceEntrant[]): string[] {
   return entrants.filter((e) => e.place === null).map((e) => e.playerId);
 }
 
-export function nextActivePlayerId(entrants: RaceEntrant[], fromId: string): string | null {
-  const active = activePlayerIds(entrants);
-  if (active.length === 0) {
-    return null;
-  }
-  const idx = active.indexOf(fromId);
-  const from = idx === -1 ? 0 : idx;
-  return active[(from + 1) % active.length] ?? null;
+/** Playing order of a race: the saved order, or the entrant list for older races. */
+export function raceTurnOrder(race: Pick<Race, 'entrants' | 'turnOrder'>): string[] {
+  return resolveTurnOrder(
+    race.turnOrder,
+    race.entrants.map((e) => e.playerId),
+  );
+}
+
+/** Next player still in the race after `fromId`, following the playing order. */
+export function nextActivePlayerId(
+  entrants: RaceEntrant[],
+  fromId: string,
+  turnOrder?: readonly string[],
+): string | null {
+  const order = turnOrder ?? entrants.map((e) => e.playerId);
+  return nextInTurn(order, activePlayerIds(entrants), fromId);
 }
 
 export function withRaceDefaults(race: Race): Race {
@@ -32,6 +41,7 @@ export function withRaceDefaults(race: Race): Race {
     ...race,
     liveShots: race.liveShots ?? [],
     atTablePlayerId: atTable,
+    turnOrder: raceTurnOrder(race),
     entrants: race.entrants.map((e) => ({
       ...e,
       foulPoints: e.foulPoints ?? 0,

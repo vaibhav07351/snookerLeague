@@ -1,3 +1,4 @@
+import type { DocEntity } from '@/shared/api/sync-api';
 import { loadTokens } from '@/shared/api/tokens';
 import { logger } from '@/shared/logging/logger';
 import { getStore, loadStore } from '@/shared/storage/local-store';
@@ -59,10 +60,8 @@ async function uploadLocalOnlyLeagues(user: SessionUser): Promise<void> {
   const store = getStore();
   const known = store.serverVersions;
   const queued = new Set(store.pendingOps.map((op) => `${op.entity}:${op.docId}`));
-  const unsent = (
-    entity: 'league' | 'player' | 'match' | 'race' | 'event' | 'tournament',
-    id: string,
-  ) => known[versionKey(entity, id)] === undefined && !queued.has(`${entity}:${id}`);
+  const unsent = (entity: DocEntity, id: string) =>
+    known[versionKey(entity, id)] === undefined && !queued.has(`${entity}:${id}`);
 
   const items: Parameters<typeof scheduleSync>[0] = [];
   const owned = store.leagues.filter(
@@ -73,6 +72,7 @@ async function uploadLocalOnlyLeagues(user: SessionUser): Promise<void> {
       player: store.players.filter((p) => p.leagueId === league.id),
       match: store.matches.filter((m) => m.leagueId === league.id),
       race: store.races.filter((r) => r.leagueId === league.id),
+      group_match: store.groupMatches.filter((g) => g.leagueId === league.id),
       event: store.events.filter((e) => e.leagueId === league.id),
       tournament: store.tournaments.filter((t) => t.leagueId === league.id),
     };
@@ -87,7 +87,7 @@ async function uploadLocalOnlyLeagues(user: SessionUser): Promise<void> {
       });
     }
     for (const [entity, rows] of Object.entries(children) as [
-      'player' | 'match' | 'race' | 'event' | 'tournament',
+      Exclude<DocEntity, 'league'>,
       { id: string; updatedAt: string }[],
     ][]) {
       for (const row of rows) {

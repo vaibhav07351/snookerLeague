@@ -57,6 +57,9 @@ function migrateDemoUidInStore(store: AppDataStore, fromUid: string, toUid: stri
     races: store.races.map((r) =>
       r.createdByUid === fromUid ? { ...r, createdByUid: toUid, updatedAt: stamp } : r,
     ),
+    groupMatches: store.groupMatches.map((g) =>
+      g.createdByUid === fromUid ? { ...g, createdByUid: toUid, updatedAt: stamp } : g,
+    ),
   };
 }
 

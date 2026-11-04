@@ -1,11 +1,17 @@
 import { z } from 'zod';
 
-import { nextActivePlayerId, withRaceDefaults } from '@/features/race/services/race-helpers';
+import {
+  activePlayerIds,
+  nextActivePlayerId,
+  raceTurnOrder,
+  withRaceDefaults,
+} from '@/features/race/services/race-helpers';
 import { nextPlace, persistRace } from '@/features/race/services/race.service';
 import { AppError } from '@/shared/errors/app-error';
 import { logger } from '@/shared/logging/logger';
 import { getStore, loadStore } from '@/shared/storage/local-store';
 import { createId, nowIso } from '@/shared/utils/id';
+import { movePlayerAfter } from '@/shared/utils/turn-order';
 import type { BallValue, Race, RaceEntrant, RaceLiveShot } from '@/shared/types/domain';
 
 const ballSchema = z.union([
@@ -33,7 +39,7 @@ async function requireLiveRace(raceId: string): Promise<Race> {
 }
 
 function atTableId(race: Race): string {
-  const active = race.entrants.filter((e) => e.place === null).map((e) => e.playerId);
+  const active = activePlayerIds(race.entrants);
   const seated =
     race.atTablePlayerId && active.includes(race.atTablePlayerId)
       ? race.atTablePlayerId
@@ -93,8 +99,16 @@ export async function setAtTablePlayer(raceId: string, playerId: string): Promis
   if (!target || target.place !== null) {
     throw new AppError('INVALID_STATE', 'That player is not at the table');
   }
-  const updated: Race = { ...race, atTablePlayerId: playerId, updatedAt: nowIso() };
+  // The picked player plays after whoever shot last, so learn that seat for later visits.
+  const lastShooter = race.liveShots?.[race.liveShots.length - 1]?.playerId ?? null;
+  const order = raceTurnOrder(race);
+  const turnOrder = lastShooter ? movePlayerAfter(order, lastShooter, playerId) : order;
+  const updated: Race = { ...race, atTablePlayerId: playerId, turnOrder, updatedAt: nowIso() };
   await persistRace(updated);
+  logger.info('race-live.service', 'At-table player set', {
+    raceId,
+    reordered: turnOrder.join() !== order.join(),
+  });
   return updated;
 }
 
@@ -111,7 +125,7 @@ export async function recordPot(raceId: string, ball: BallValue): Promise<Race> 
   }));
   entrants = applyTarget(entrants, playerId, race.targetScore);
   const stillIn = entrants.find((e) => e.playerId === playerId)?.place === null;
-  const nextId = stillIn ? playerId : nextActivePlayerId(entrants, playerId);
+  const nextId = stillIn ? playerId : nextActivePlayerId(entrants, playerId, raceTurnOrder(race));
   const shot: RaceLiveShot = {
     id: createId('rs'),
     at: nowIso(),
@@ -141,7 +155,11 @@ export async function recordFoul(raceId: string, points: number): Promise<Race> 
     kind: 'foul',
     points: parsed.data,
   };
-  return appendShot({ ...race, entrants }, shot, nextActivePlayerId(entrants, playerId));
+  return appendShot(
+    { ...race, entrants },
+    shot,
+    nextActivePlayerId(entrants, playerId, raceTurnOrder(race)),
+  );
 }
 
 export async function recordMiss(raceId: string): Promise<Race> {
@@ -154,7 +172,7 @@ export async function recordMiss(raceId: string): Promise<Race> {
     kind: 'miss',
     points: 0,
   };
-  return appendShot(race, shot, nextActivePlayerId(race.entrants, playerId));
+  return appendShot(race, shot, nextActivePlayerId(race.entrants, playerId, raceTurnOrder(race)));
 }
 
 export async function undoLast(raceId: string): Promise<Race> {

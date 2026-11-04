@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { AppDataStore, Match } from '@/shared/types/domain';
+import type { AppDataStore } from '@/shared/types/domain';
 
 /**
  * On-disk layout of the local store (v3).
@@ -9,7 +9,7 @@ import type { AppDataStore, Match } from '@/shared/types/domain';
  * without bound, so the store is split:
  * - one key for small session fields (`meta`),
  * - one key per collection (players, races, ...),
- * - one key per match, plus an index of match ids.
+ * - one key per match (and per free-for-all match), plus an index of ids for each.
  * Only the parts that changed are serialized and written on each save.
  *
  * v3 started with the move from Firebase to the Snookit API, as a blank start (decision D8):
@@ -19,11 +19,24 @@ import type { AppDataStore, Match } from '@/shared/types/domain';
 
 const PREFIX = 'snooker.v3.';
 const META_KEY = `${PREFIX}meta`;
-const MATCH_INDEX_KEY = `${PREFIX}matchIndex`;
-const MATCH_KEY_PREFIX = `${PREFIX}match.`;
 export const STORE_VERSION = 3;
 
-/** Collections stored as one key each. Matches are stored per match instead. */
+/**
+ * Collections whose documents carry growing shot logs: stored one key per document plus an
+ * index of ids, so no single value gets too big to read back.
+ */
+const PER_DOC_COLLECTIONS = [
+  { name: 'matches', indexKey: `${PREFIX}matchIndex`, keyPrefix: `${PREFIX}match.` },
+  { name: 'groupMatches', indexKey: `${PREFIX}groupMatchIndex`, keyPrefix: `${PREFIX}groupMatch.` },
+] as const satisfies readonly {
+  name: keyof AppDataStore;
+  indexKey: string;
+  keyPrefix: string;
+}[];
+
+type PerDocCollection = (typeof PER_DOC_COLLECTIONS)[number];
+
+/** Collections stored as one key each. Per-document collections are listed above instead. */
 const COLLECTIONS = [
   'leagues',
   'players',
@@ -46,14 +59,15 @@ interface StoreMeta {
   user: AppDataStore['user'];
   activeLeagueId: AppDataStore['activeLeagueId'];
   syncCursor: AppDataStore['syncCursor'];
+  pullKindsVersion?: AppDataStore['pullKindsVersion'];
 }
 
 function collectionKey(name: CollectionName): string {
   return `${PREFIX}${name}`;
 }
 
-function matchKey(id: string): string {
-  return `${MATCH_KEY_PREFIX}${id}`;
+function docKey(collection: PerDocCollection, id: string): string {
+  return `${collection.keyPrefix}${id}`;
 }
 
 function metaOf(store: AppDataStore): StoreMeta {
@@ -62,6 +76,7 @@ function metaOf(store: AppDataStore): StoreMeta {
     user: store.user,
     activeLeagueId: store.activeLeagueId,
     syncCursor: store.syncCursor,
+    pullKindsVersion: store.pullKindsVersion,
   };
 }
 
@@ -85,10 +100,18 @@ async function readParts(): Promise<Partial<AppDataStore> | null> {
     return null;
   }
   const meta = parseJson(metaRaw, 'meta') as Partial<StoreMeta>;
-  const indexRaw = await AsyncStorage.getItem(MATCH_INDEX_KEY);
-  const matchIds = indexRaw == null ? [] : (parseJson(indexRaw, 'matchIndex') as string[]);
+  const indexPairs = await AsyncStorage.multiGet(PER_DOC_COLLECTIONS.map((c) => c.indexKey));
+  const indexes = new Map(indexPairs);
+  const idsByCollection = PER_DOC_COLLECTIONS.map((collection) => {
+    const indexRaw = indexes.get(collection.indexKey);
+    const ids = indexRaw == null ? [] : (parseJson(indexRaw, collection.indexKey) as string[]);
+    return { collection, ids };
+  });
 
-  const keys = [...COLLECTIONS.map(collectionKey), ...matchIds.map(matchKey)];
+  const keys = [
+    ...COLLECTIONS.map(collectionKey),
+    ...idsByCollection.flatMap(({ collection, ids }) => ids.map((id) => docKey(collection, id))),
+  ];
   const pairs = await AsyncStorage.multiGet(keys);
   const values = new Map(pairs);
 
@@ -96,6 +119,7 @@ async function readParts(): Promise<Partial<AppDataStore> | null> {
     user: meta.user ?? null,
     activeLeagueId: meta.activeLeagueId ?? null,
     syncCursor: meta.syncCursor ?? 0,
+    pullKindsVersion: meta.pullKindsVersion ?? 0,
   };
   for (const name of COLLECTIONS) {
     const value = values.get(collectionKey(name));
@@ -103,16 +127,18 @@ async function readParts(): Promise<Partial<AppDataStore> | null> {
       (raw as Record<string, unknown>)[name] = parseJson(value, name);
     }
   }
-  const matches: Match[] = [];
-  for (const id of matchIds) {
-    const value = values.get(matchKey(id));
-    if (value == null) {
-      // The index names a match that isn't on disk: the store is inconsistent, never guess.
-      throw new Error('Match listed in index is missing on disk');
+  for (const { collection, ids } of idsByCollection) {
+    const docs: unknown[] = [];
+    for (const id of ids) {
+      const value = values.get(docKey(collection, id));
+      if (value == null) {
+        // The index names a document that isn't on disk: the store is inconsistent, never guess.
+        throw new Error(`Document listed in ${collection.indexKey} is missing on disk`);
+      }
+      docs.push(parseJson(value, collection.name));
     }
-    matches.push(parseJson(value, 'match') as Match);
+    (raw as Record<string, unknown>)[collection.name] = docs;
   }
-  raw.matches = matches;
   return raw;
 }
 
@@ -146,17 +172,19 @@ export class PersistedSnapshot {
     for (const name of COLLECTIONS) {
       consider(collectionKey(name), next[name], () => next[name] ?? []);
     }
-    const ids = next.matches.map((m) => m.id);
-    consider(MATCH_INDEX_KEY, next.matches, () => ids);
-    const liveKeys = new Set<string>();
-    for (const match of next.matches) {
-      const key = matchKey(match.id);
-      liveKeys.add(key);
-      consider(key, match, () => match);
-    }
-    for (const key of this.parts.keys()) {
-      if (key.startsWith(MATCH_KEY_PREFIX) && !liveKeys.has(key)) {
-        removes.push(key);
+    for (const collection of PER_DOC_COLLECTIONS) {
+      const docs: readonly { id: string }[] = next[collection.name] ?? [];
+      consider(collection.indexKey, docs, () => docs.map((d) => d.id));
+      const liveKeys = new Set<string>();
+      for (const doc of docs) {
+        const key = docKey(collection, doc.id);
+        liveKeys.add(key);
+        consider(key, doc, () => doc);
+      }
+      for (const key of this.parts.keys()) {
+        if (key.startsWith(collection.keyPrefix) && !liveKeys.has(key)) {
+          removes.push(key);
+        }
       }
     }
     return { writes, removes };
@@ -174,9 +202,12 @@ export class PersistedSnapshot {
     for (const name of COLLECTIONS) {
       this.refs.set(collectionKey(name), next[name]);
     }
-    this.refs.set(MATCH_INDEX_KEY, next.matches);
-    for (const match of next.matches) {
-      this.refs.set(matchKey(match.id), match);
+    for (const collection of PER_DOC_COLLECTIONS) {
+      const docs: readonly { id: string }[] = next[collection.name] ?? [];
+      this.refs.set(collection.indexKey, docs);
+      for (const doc of docs) {
+        this.refs.set(docKey(collection, doc.id), doc);
+      }
     }
   }
 

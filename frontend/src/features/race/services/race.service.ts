@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
-import { nextActivePlayerId, netRaceScore } from '@/features/race/services/race-helpers';
+import {
+  nextActivePlayerId,
+  netRaceScore,
+  raceTurnOrder,
+} from '@/features/race/services/race-helpers';
 import { applyPlayerStats } from '@/features/stats/services/stats.service';
 import { AppError } from '@/shared/errors/app-error';
 import { logger } from '@/shared/logging/logger';
@@ -81,6 +85,7 @@ export async function createRace(input: {
     entrants,
     status: 'in_progress',
     atTablePlayerId: parsed.data.playerIds[0] ?? null,
+    turnOrder: [...parsed.data.playerIds],
     liveShots: [],
   };
 
@@ -137,7 +142,11 @@ export async function persistRace(race: Race, event?: FeedEvent): Promise<Race> 
     }
 
     // Derived stats: not an edit of the player, so no updatedAt bump.
-    const players = applyPlayerStats(s.players, race.leagueId, s.matches, races);
+    const players = applyPlayerStats(s.players, race.leagueId, {
+      matches: s.matches,
+      races,
+      groupMatches: s.groupMatches,
+    });
 
     return { ...s, races, leagues, events, players };
   });
@@ -228,7 +237,7 @@ export async function setEntrantScore(
 
   const atTablePlayerId =
     targetHit && race.atTablePlayerId === playerId
-      ? nextActivePlayerId(entrants, playerId)
+      ? nextActivePlayerId(entrants, playerId, raceTurnOrder(race))
       : (race.atTablePlayerId ?? null);
 
   const updated: Race = { ...race, entrants, atTablePlayerId, updatedAt: nowIso() };
@@ -275,7 +284,7 @@ export async function markDnf(raceId: string, playerId: string): Promise<Race> {
 
   const atTablePlayerId =
     race.atTablePlayerId === playerId
-      ? nextActivePlayerId(entrants, playerId)
+      ? nextActivePlayerId(entrants, playerId, raceTurnOrder(race))
       : (race.atTablePlayerId ?? null);
 
   const updated: Race = { ...race, entrants, atTablePlayerId, updatedAt: nowIso() };

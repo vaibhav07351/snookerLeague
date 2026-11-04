@@ -253,6 +253,12 @@ function playerInLiveEvent(playerId: string): boolean {
   if (inMatch) {
     return true;
   }
+  const inGroup = store.groupMatches.some(
+    (g) => g.status === 'in_progress' && g.playerIds.includes(playerId),
+  );
+  if (inGroup) {
+    return true;
+  }
   return store.races.some(
     (r) => r.status === 'in_progress' && r.entrants.some((e) => e.playerId === playerId),
   );

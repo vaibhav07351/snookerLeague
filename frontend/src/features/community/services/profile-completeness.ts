@@ -13,7 +13,11 @@ export interface Completeness {
 }
 
 export function profileCompleteness(user: SessionUser, player: Player | null): Completeness {
-  const played = (player?.stats.standard.played ?? 0) + (player?.stats.race.played ?? 0) > 0;
+  const played =
+    (player?.stats.standard.played ?? 0) +
+      (player?.stats.race.played ?? 0) +
+      (player?.stats.group?.played ?? 0) >
+    0;
   const items: CompletenessItem[] = [
     {
       id: 'city',

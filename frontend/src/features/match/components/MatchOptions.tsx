@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
+import { formatCanCrown, matchFormatOf } from '@/features/match/services/match.service';
 import { Button } from '@/shared/ui/Button';
 import { Chip } from '@/shared/ui/Chip';
 import type { Match, Player, ScoringPolicy } from '@/shared/types/domain';
@@ -58,7 +59,7 @@ export function MatchOptions({
 
   const body = (
     <View style={[styles.body, embedded && styles.bodyEmbedded]}>
-      {canManage && inProgress ? (
+      {canManage && inProgress && formatCanCrown(matchFormatOf(match)) ? (
         <View style={styles.optionRow}>
           <View style={styles.optionText}>
             <Text style={styles.optionTitle}>Title match</Text>

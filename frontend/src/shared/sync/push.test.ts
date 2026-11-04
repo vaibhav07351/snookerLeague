@@ -203,3 +203,49 @@ describe('applyServerDocs', () => {
     expect(s.serverVersions).toEqual({ 'league:lg1': 2, 'player:p1': 3, 'player:gone': 4 });
   });
 });
+
+describe('applyServerDocs with document kinds', () => {
+  const group = {
+    id: 'gm1',
+    leagueId: 'lg1',
+    createdAt: '2026-11-05T00:00:00.000Z',
+    updatedAt: '2026-11-05T00:00:00.000Z',
+    createdByUid: 'u1',
+    playerIds: ['p1', 'p2', 'p3'],
+    turnOrder: ['p1', 'p2', 'p3'],
+    bestOf: 3,
+    namedLabel: null,
+    frames: [],
+    openFrame: null,
+    status: 'in_progress',
+    winnerId: null,
+    finishedAt: null,
+  };
+
+  it('stores free-for-all matches and removes them on a server delete', async () => {
+    const { store, apply } = fresh();
+    await store.loadStore();
+
+    await apply.applyServerDocs([serverDoc('group_match', group, 5)]);
+    expect(store.getStore().groupMatches.map((g) => g.id)).toEqual(['gm1']);
+
+    await apply.applyServerDocs([{ ...serverDoc('group_match', group, 6), deleted: true }]);
+    expect(store.getStore().groupMatches).toEqual([]);
+    expect(store.getStore().serverVersions['group_match:gm1']).toBe(6);
+  });
+
+  it('skips a kind this build does not know instead of breaking the pull', async () => {
+    const { store, apply } = fresh();
+    await store.loadStore();
+    const unknown = {
+      ...serverDoc('player', player(), 7),
+      entity: 'future_kind' as ServerDoc['entity'],
+    };
+
+    await apply.applyServerDocs([unknown, serverDoc('player', player({ id: 'p2' }), 8)]);
+
+    const s = store.getStore();
+    expect(s.players.map((p) => p.id)).toEqual(['p2']);
+    expect(s.serverVersions['future_kind:p1']).toBe(7);
+  });
+});

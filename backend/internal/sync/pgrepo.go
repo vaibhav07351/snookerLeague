@@ -36,14 +36,14 @@ func (s *PGStore) InTx(ctx context.Context, fn func(Tx) error) error {
 }
 
 // Pull returns changed documents for the user's leagues, oldest version first.
-func (s *PGStore) Pull(ctx context.Context, userID string, since int64, limit int) ([]Doc, error) {
+func (s *PGStore) Pull(ctx context.Context, userID string, since int64, limit int, hidden []Entity) ([]Doc, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT d.entity, d.id, d.league_id, d.version, d.deleted, d.data, d.updated_at
 		   FROM docs d
 		   JOIN league_members m ON m.league_id = d.league_id AND m.user_id = $1
-		  WHERE d.version > $2
+		  WHERE d.version > $2 AND NOT (d.entity = ANY($4::text[]))
 		  ORDER BY d.version
-		  LIMIT $3`, userID, since, limit)
+		  LIMIT $3`, userID, since, limit, entityNames(hidden))
 	if err != nil {
 		return nil, fmt.Errorf("query docs: %w", err)
 	}
@@ -51,18 +51,27 @@ func (s *PGStore) Pull(ctx context.Context, userID string, since int64, limit in
 }
 
 // PullLeague returns one league's changed documents, oldest version first, for a member.
-func (s *PGStore) PullLeague(ctx context.Context, userID, leagueID string, since int64, limit int) ([]Doc, error) {
+func (s *PGStore) PullLeague(ctx context.Context, userID, leagueID string, since int64, limit int, hidden []Entity) ([]Doc, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT d.entity, d.id, d.league_id, d.version, d.deleted, d.data, d.updated_at
 		   FROM docs d
 		   JOIN league_members m ON m.league_id = d.league_id AND m.user_id = $1
-		  WHERE d.league_id = $2 AND d.version > $3
+		  WHERE d.league_id = $2 AND d.version > $3 AND NOT (d.entity = ANY($5::text[]))
 		  ORDER BY d.version
-		  LIMIT $4`, userID, leagueID, since, limit)
+		  LIMIT $4`, userID, leagueID, since, limit, entityNames(hidden))
 	if err != nil {
 		return nil, fmt.Errorf("query league docs: %w", err)
 	}
 	return scanDocs(rows)
+}
+
+// entityNames converts kinds to a SQL text array (never nil, so `= ANY` sees an empty array).
+func entityNames(entities []Entity) []string {
+	out := make([]string, 0, len(entities))
+	for _, e := range entities {
+		out = append(out, string(e))
+	}
+	return out
 }
 
 func scanDocs(rows pgx.Rows) ([]Doc, error) {

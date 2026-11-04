@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"time"
 )
 
@@ -21,11 +22,30 @@ const (
 	EntityEvent  Entity = "event"
 	// EntityTournament is a knockout or round-robin; its fixtures are matches tagged with it.
 	EntityTournament Entity = "tournament"
+	// EntityGroupMatch is a free-for-all match: 3 to 8 players, each for themselves.
+	EntityGroupMatch Entity = "group_match"
 )
+
+// optInEntities are kinds a client only receives when its pull lists them in `kinds`.
+// App builds from before a kind existed stop syncing on a document they cannot read, so
+// every kind added after the first release goes here.
+var optInEntities = []Entity{EntityGroupMatch}
+
+// hiddenEntities returns the opt-in kinds the client did not ask for.
+func hiddenEntities(optIn []Entity) []Entity {
+	hidden := []Entity{}
+	for _, e := range optInEntities {
+		if !slices.Contains(optIn, e) {
+			hidden = append(hidden, e)
+		}
+	}
+	return hidden
+}
 
 func (e Entity) valid() bool {
 	switch e {
-	case EntityLeague, EntityPlayer, EntityMatch, EntityRace, EntityEvent, EntityTournament:
+	case EntityLeague, EntityPlayer, EntityMatch, EntityRace, EntityEvent, EntityTournament,
+		EntityGroupMatch:
 		return true
 	}
 	return false
@@ -132,9 +152,10 @@ type Tx interface {
 // Store is the persistence boundary of the sync module.
 type Store interface {
 	InTx(ctx context.Context, fn func(Tx) error) error
-	// Pull returns documents in leagues the user belongs to with version > since.
-	Pull(ctx context.Context, userID string, since int64, limit int) ([]Doc, error)
+	// Pull returns documents in leagues the user belongs to with version > since, leaving
+	// out the `hidden` kinds.
+	Pull(ctx context.Context, userID string, since int64, limit int, hidden []Entity) ([]Doc, error)
 	// PullLeague returns one league's documents with version > since, if the user is a
 	// member (used right after joining, when the league's history is older than the cursor).
-	PullLeague(ctx context.Context, userID, leagueID string, since int64, limit int) ([]Doc, error)
+	PullLeague(ctx context.Context, userID, leagueID string, since int64, limit int, hidden []Entity) ([]Doc, error)
 }

@@ -93,11 +93,17 @@ export function useLeagueStats(
       (m) => m.leagueId === leagueId && m.outcome.status !== 'in_progress',
     );
     const races = store.races.filter((r) => r.leagueId === leagueId && r.status === 'completed');
+    const groupMatches = store.groupMatches.filter(
+      (g) => g.leagueId === leagueId && g.status === 'completed',
+    );
     const players = applyPlayerStats(
       store.players.filter((p) => p.leagueId === leagueId),
       leagueId,
-      matches,
-      races,
+      {
+        matches,
+        races,
+        groupMatches,
+      },
     ).sort((a, b) => a.displayName.localeCompare(b.displayName));
     const ratings = computeRatings(matches, races);
     return {
@@ -135,6 +141,11 @@ function dataSignature(leagueId: string): string {
   for (const r of store.races) {
     if (r.leagueId === leagueId && r.status === 'completed') {
       parts.push(`r:${r.id}:${r.updatedAt}`);
+    }
+  }
+  for (const g of store.groupMatches) {
+    if (g.leagueId === leagueId && g.status === 'completed') {
+      parts.push(`g:${g.id}:${g.updatedAt}`);
     }
   }
   return parts.join('|');

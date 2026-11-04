@@ -12,6 +12,7 @@ import { HomeFilterChips } from '@/features/home/components/HomeFilterChips';
 import { LiveResumeCard } from '@/features/home/components/LiveResumeCard';
 import { Screen } from '@/shared/ui/Screen';
 import {
+  groupResumeCopy,
   matchResumeCopy,
   raceResumeCopy,
   useLiveSessions,
@@ -73,6 +74,7 @@ export default function HomeScreen(): ReactNode {
         events: store.events,
         matches: store.matches,
         races: store.races,
+        groupMatches: store.groupMatches,
       }),
     );
     setLastMatchAt(await matchService.getLastMatchPlayedAt(leagueId));
@@ -109,7 +111,7 @@ export default function HomeScreen(): ReactNode {
   const ctaHint = !hasRoster
     ? 'Add at least 2 players to start scoring.'
     : players.length < 4
-      ? 'Singles works with 2 · doubles needs 4.'
+      ? 'Singles works with 2 · free-for-all 3 · doubles 4.'
       : null;
 
   return (
@@ -163,7 +165,7 @@ export default function HomeScreen(): ReactNode {
       </TourTarget>
 
       {/* Live games sit with the actions, not under the feed chips, so a filter never hides them. */}
-      {live.matches.length > 0 || live.races.length > 0 ? (
+      {live.matches.length > 0 || live.races.length > 0 || live.groups.length > 0 ? (
         <View style={styles.liveBlock}>
           {live.matches.map((m) => {
             const copy = matchResumeCopy(m, nameOf);
@@ -186,6 +188,18 @@ export default function HomeScreen(): ReactNode {
                 title={copy.title}
                 meta={copy.meta}
                 onPress={() => router.push(`/race/${r.id}`)}
+              />
+            );
+          })}
+          {live.groups.map((g) => {
+            const copy = groupResumeCopy(g, nameOf);
+            return (
+              <LiveResumeCard
+                key={g.id}
+                eyebrow="Live free-for-all"
+                title={copy.title}
+                meta={copy.meta}
+                onPress={() => router.push(`/group/${g.id}`)}
               />
             );
           })}

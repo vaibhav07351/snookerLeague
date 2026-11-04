@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { Button } from '@/shared/ui/Button';
 import { Screen } from '@/shared/ui/Screen';
 import { TextField } from '@/shared/ui/TextField';
+import * as groupService from '@/features/group/services/group.service';
 import * as matchService from '@/features/match/services/match.service';
 import * as playersService from '@/features/players/services/players.service';
 import { TourTarget } from '@/features/tour/components/TourTarget';
@@ -22,6 +23,23 @@ import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
 
 const BEST_OF_OPTIONS = [1, 3, 5, 7, 9, 11] as const;
 
+/** What the scorer picks: a two-sided format, or free-for-all (each player for themselves). */
+type NewMatchKind = MatchFormat | 'free_for_all';
+
+const KIND_OPTIONS: { kind: NewMatchKind; title: string; sub: string }[] = [
+  { kind: 'singles', title: 'Singles', sub: '1 v 1' },
+  { kind: 'doubles', title: 'Doubles', sub: '2 v 2' },
+  { kind: 'one_vs_two', title: '1 vs 2', sub: 'Solo v pair' },
+  { kind: 'free_for_all', title: 'Free-for-all', sub: '3 to 8' },
+];
+
+const KIND_NAMES: Record<NewMatchKind, string> = {
+  singles: 'Singles',
+  doubles: 'Doubles',
+  one_vs_two: '1 vs 2',
+  free_for_all: 'Free-for-all',
+};
+
 export default function NewMatchScreen(): ReactNode {
   const styles = useStyles(makeStyles);
   const palette = usePalette();
@@ -29,9 +47,11 @@ export default function NewMatchScreen(): ReactNode {
   const params = useLocalSearchParams<{ opponentPlayerId?: string; leagueId?: string }>();
   const [players, setPlayers] = useState<Player[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [format, setFormat] = useState<MatchFormat>('doubles');
+  const [format, setFormat] = useState<NewMatchKind>('doubles');
   const [sideA, setSideA] = useState<string[]>([]);
   const [sideB, setSideB] = useState<string[]>([]);
+  /** Free-for-all players, in playing order (the first one breaks). */
+  const [group, setGroup] = useState<string[]>([]);
   const [bestOf, setBestOf] = useState(3);
   const [label, setLabel] = useState('');
   const [crowns, setCrowns] = useState(false);
@@ -39,7 +59,9 @@ export default function NewMatchScreen(): ReactNode {
   const [moreOpen, setMoreOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const perSide = format === 'singles' ? 1 : 2;
+  const freeForAll = format === 'free_for_all';
+  const [sizeA, sizeB] = freeForAll ? [0, 0] : matchService.sideSizesOf(format);
+  const canCrown = !freeForAll && matchService.formatCanCrown(format);
   const scoringLeagueId =
     typeof params.leagueId === 'string' && params.leagueId ? params.leagueId : (league?.id ?? null);
 
@@ -74,15 +96,38 @@ export default function NewMatchScreen(): ReactNode {
     return (id: string): string => byId.get(id) ?? 'Player';
   }, [players]);
 
-  function changeFormat(next: MatchFormat): void {
+  function changeFormat(next: NewMatchKind): void {
     setFormat(next);
-    const cap = next === 'singles' ? 1 : 2;
-    setSideA((a) => a.slice(0, cap));
-    setSideB((b) => b.slice(0, cap));
+    if (next === 'free_for_all') {
+      // Carry the players already picked over, in the order they were picked.
+      setGroup((g) => (g.length > 0 ? g : [...sideA, ...sideB]));
+      setCrowns(false);
+      setMidway(false);
+      return;
+    }
+    const [capA, capB] = matchService.sideSizesOf(next);
+    setSideA((a) => a.slice(0, capA));
+    setSideB((b) => b.slice(0, capB));
+    if (!matchService.formatCanCrown(next)) {
+      setCrowns(false);
+    }
+  }
+
+  /** Free-for-all: tap adds a player to the end of the playing order; tap again removes. */
+  function toggleGroup(id: string): void {
+    if (group.includes(id)) {
+      setGroup(group.filter((x) => x !== id));
+    } else if (group.length < groupService.MAX_GROUP_PLAYERS) {
+      setGroup([...group, id]);
+    }
   }
 
   /** Tap a player: fills Side A first, then Side B. Tap again to remove. */
   function toggle(id: string): void {
+    if (freeForAll) {
+      toggleGroup(id);
+      return;
+    }
     if (sideA.includes(id)) {
       setSideA(sideA.filter((x) => x !== id));
       return;
@@ -91,14 +136,16 @@ export default function NewMatchScreen(): ReactNode {
       setSideB(sideB.filter((x) => x !== id));
       return;
     }
-    if (sideA.length < perSide) {
+    if (sideA.length < sizeA) {
       setSideA([...sideA, id]);
-    } else if (sideB.length < perSide) {
+    } else if (sideB.length < sizeB) {
       setSideB([...sideB, id]);
     }
   }
 
-  const ready = sideA.length === perSide && sideB.length === perSide;
+  const ready = freeForAll
+    ? group.length >= groupService.MIN_GROUP_PLAYERS
+    : sideA.length === sizeA && sideB.length === sizeB;
   useAutoTour('match-new', loaded && league != null);
 
   async function create(): Promise<void> {
@@ -107,6 +154,17 @@ export default function NewMatchScreen(): ReactNode {
     }
     setBusy(true);
     try {
+      if (format === 'free_for_all') {
+        const created = await groupService.createGroupMatch({
+          leagueId: scoringLeagueId,
+          createdByUid: user.uid,
+          playerIds: group,
+          bestOf,
+          namedLabel: label.trim() || null,
+        });
+        router.replace({ pathname: '/group/[id]', params: { id: created.id } });
+        return;
+      }
       const match = await matchService.createMatch({
         leagueId: scoringLeagueId,
         createdByUid: user.uid,
@@ -115,7 +173,7 @@ export default function NewMatchScreen(): ReactNode {
         teamB: sideB,
         bestOf,
         namedLabel: label.trim() || null,
-        crownsChampion: crowns,
+        crownsChampion: crowns && canCrown,
       });
       router.replace({
         pathname: '/match/[id]',
@@ -142,7 +200,12 @@ export default function NewMatchScreen(): ReactNode {
     );
   }
 
-  const needed = perSide * 2;
+  const needed = freeForAll ? groupService.MIN_GROUP_PLAYERS : sizeA + sizeB;
+  const startLabel = ready
+    ? 'Start match'
+    : freeForAll
+      ? `Pick at least ${needed} players`
+      : `Pick ${needed} players`;
   const extrasSummary = [
     crowns ? 'Title match' : null,
     midway ? 'Mid-match' : null,
@@ -152,11 +215,14 @@ export default function NewMatchScreen(): ReactNode {
     .join(' · ');
 
   return (
+    // One page, no scroll: only the player list scrolls (inside its own box) when the league is
+    // big. Opening "More options" lets the page scroll, since typing a name brings the keyboard.
     <Screen
+      scroll={moreOpen}
       footer={
         <TourTarget id="match-new.start">
           <Button
-            label={ready ? 'Start match' : `Pick ${needed} players`}
+            label={startLabel}
             icon="play"
             loading={busy}
             onPress={() => void create()}
@@ -166,51 +232,80 @@ export default function NewMatchScreen(): ReactNode {
       }
     >
       <TourTarget id="match-new.format" style={styles.segment}>
-        {(['singles', 'doubles'] as const).map((f) => (
+        {KIND_OPTIONS.map(({ kind, title, sub }) => (
           <Pressable
-            key={f}
+            key={kind}
             accessibilityRole="radio"
-            accessibilityState={{ selected: format === f }}
-            onPress={() => changeFormat(f)}
-            style={[styles.segmentItem, format === f && styles.segmentOn]}
+            accessibilityLabel={`${title}, ${sub}`}
+            accessibilityState={{ selected: format === kind }}
+            onPress={() => changeFormat(kind)}
+            style={[styles.segmentItem, format === kind && styles.segmentOn]}
           >
-            <Text style={[styles.segmentText, format === f && styles.segmentTextOn]}>
-              {f === 'singles' ? 'Singles · 1v1' : 'Doubles · 2v2'}
+            <Text
+              style={[styles.segmentText, format === kind && styles.segmentTextOn]}
+              numberOfLines={1}
+            >
+              {title}
             </Text>
           </Pressable>
         ))}
       </TourTarget>
 
-      <TourTarget id="match-new.sides" style={styles.sides}>
-        <SideSlot side="a" ids={sideA} perSide={perSide} nameOf={nameOf} onRemove={toggle} />
-        <Text style={styles.vs}>vs</Text>
-        <SideSlot side="b" ids={sideB} perSide={perSide} nameOf={nameOf} onRemove={toggle} />
-      </TourTarget>
+      {freeForAll ? (
+        // The numbered player chips below already show the order, so this stays one line.
+        <TourTarget id="match-new.sides" style={styles.orderSlot}>
+          <Text style={[styles.slotTitle, { color: palette.primary }]}>Playing order</Text>
+          <Text style={styles.orderHint} numberOfLines={2}>
+            {group.length === 0
+              ? `Tap ${groupService.MIN_GROUP_PLAYERS} to ${groupService.MAX_GROUP_PLAYERS} players in the order they play. #1 breaks.`
+              : `${group.length} picked · ${nameOf(group[0] ?? '')} breaks. Tap again to remove.`}
+          </Text>
+        </TourTarget>
+      ) : (
+        <TourTarget id="match-new.sides" style={styles.sides}>
+          <SideSlot side="a" ids={sideA} perSide={sizeA} nameOf={nameOf} onRemove={toggle} />
+          <Text style={styles.vs}>vs</Text>
+          <SideSlot side="b" ids={sideB} perSide={sizeB} nameOf={nameOf} onRemove={toggle} />
+        </TourTarget>
+      )}
 
-      <Text style={[styles.label, styles.labelGap]}>Players</Text>
+      <View style={styles.labelGap} />
       {loaded && players.length < needed ? (
         <EmptyState
           icon="person-add-outline"
           title="Need more players"
-          message={`${format === 'singles' ? 'Singles' : 'Doubles'} needs ${needed} players. Add friends as guests, or invite them to the league.`}
+          message={`${KIND_NAMES[format]} needs ${freeForAll ? 'at least ' : ''}${needed} players. Add friends as guests, or invite them to the league.`}
           actionLabel="Add players"
           onAction={() => router.push('/(main)/players')}
         />
       ) : (
-        <View style={styles.grid}>
+        <ScrollView
+          style={moreOpen ? undefined : styles.playersBox}
+          contentContainerStyle={styles.grid}
+          nestedScrollEnabled
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={!moreOpen}
+        >
           {players.map((p) => {
-            const inA = sideA.includes(p.id);
-            const inB = sideB.includes(p.id);
+            const seat = freeForAll ? group.indexOf(p.id) : -1;
+            const inGroup = seat >= 0;
+            const inA = !freeForAll && sideA.includes(p.id);
+            const inB = !freeForAll && sideB.includes(p.id);
+            const tag = inGroup ? `${seat + 1} · ` : inA ? 'A · ' : inB ? 'B · ' : '';
             return (
               <Pressable
                 key={p.id}
                 accessibilityRole="button"
-                accessibilityState={{ selected: inA || inB }}
+                accessibilityState={{ selected: inA || inB || inGroup }}
                 onPress={() => toggle(p.id)}
                 style={[
                   styles.player,
                   inA && { borderColor: palette.teamA, backgroundColor: palette.teamASoft },
                   inB && { borderColor: palette.teamB, backgroundColor: palette.teamBSoft },
+                  inGroup && {
+                    borderColor: palette.primary,
+                    backgroundColor: palette.cardHighlight,
+                  },
                 ]}
               >
                 <Text
@@ -218,21 +313,24 @@ export default function NewMatchScreen(): ReactNode {
                     styles.playerText,
                     inA && { color: palette.teamA },
                     inB && { color: palette.teamB },
+                    inGroup && { color: palette.primary },
                   ]}
                   numberOfLines={1}
                 >
-                  {inA ? 'A · ' : inB ? 'B · ' : ''}
+                  {tag}
                   {p.displayName}
                 </Text>
               </Pressable>
             );
           })}
-        </View>
+        </ScrollView>
       )}
 
       <View style={[styles.bestOfHead, styles.labelGap]}>
         <Text style={styles.label}>Best of</Text>
-        <Text style={styles.hint}>First to {matchService.framesToWin(bestOf)} wins</Text>
+        <Text style={styles.hint}>
+          {freeForAll ? 'Most frames wins' : `First to ${matchService.framesToWin(bestOf)} wins`}
+        </Text>
       </View>
       <View style={styles.bestOfRow}>
         {BEST_OF_OPTIONS.map((n) => (
@@ -261,7 +359,12 @@ export default function NewMatchScreen(): ReactNode {
             <View style={styles.toggleText}>
               <Text style={styles.toggleTitle}>More options</Text>
               <Text style={styles.moreSummary} numberOfLines={1}>
-                {extrasSummary || 'Title match, mid-match, name'}
+                {extrasSummary ||
+                  (freeForAll
+                    ? 'Match name'
+                    : canCrown
+                      ? 'Title match, mid-match, name'
+                      : 'Mid-match, name')}
               </Text>
             </View>
             <Ionicons
@@ -272,19 +375,25 @@ export default function NewMatchScreen(): ReactNode {
           </Pressable>
           {moreOpen ? (
             <View style={styles.moreBody}>
-              <ToggleRow
-                title="Title match"
-                hint="The winner becomes the league champion."
-                value={crowns}
-                onChange={setCrowns}
-              />
-              <View style={styles.divider} />
-              <ToggleRow
-                title="We are already mid-match"
-                hint="Enter frames won and the current score next."
-                value={midway}
-                onChange={setMidway}
-              />
+              {canCrown ? (
+                <>
+                  <ToggleRow
+                    title="Title match"
+                    hint="The winner becomes the league champion."
+                    value={crowns}
+                    onChange={setCrowns}
+                  />
+                  <View style={styles.divider} />
+                </>
+              ) : null}
+              {freeForAll ? null : (
+                <ToggleRow
+                  title="We are already mid-match"
+                  hint="Enter frames won and the current score next."
+                  value={midway}
+                  onChange={setMidway}
+                />
+              )}
               <TextField
                 label="Match name (optional)"
                 value={label}
@@ -385,9 +494,14 @@ const makeStyles = (c: Palette) =>
       borderColor: c.border,
       marginTop: spacing.sm,
     },
+    // Sized to the label, spare width shared: "Free-for-all" is far longer than "1 vs 2", and
+    // equal quarters cut it off on 320-wide phones. Titles only, so all four fit one row.
     segmentItem: {
-      flex: 1,
+      flexGrow: 1,
+      flexShrink: 1,
+      flexBasis: 'auto',
       minHeight: 44,
+      paddingHorizontal: 6,
       borderRadius: radii.sm,
       alignItems: 'center',
       justifyContent: 'center',
@@ -397,7 +511,27 @@ const makeStyles = (c: Palette) =>
     },
     segmentText: {
       fontFamily: fonts.bodyBold,
-      fontSize: 14,
+      fontSize: 13,
+      color: c.textMuted,
+    },
+    // Takes the height left over, so the page itself never scrolls.
+    playersBox: {
+      flex: 1,
+      minHeight: 0,
+    },
+    orderSlot: {
+      marginTop: spacing.md,
+      padding: spacing.sm,
+      borderRadius: radii.md,
+      borderWidth: 1.5,
+      borderStyle: 'dashed',
+      borderColor: c.primary,
+      gap: 2,
+    },
+    orderHint: {
+      fontFamily: fonts.body,
+      fontSize: 13,
+      lineHeight: 18,
       color: c.textMuted,
     },
     segmentTextOn: {
@@ -496,7 +630,7 @@ const makeStyles = (c: Palette) =>
       marginBottom: spacing.sm,
     },
     labelGap: {
-      marginTop: spacing.lg,
+      marginTop: spacing.md,
     },
     bestOfHead: {
       flexDirection: 'row',
@@ -536,7 +670,7 @@ const makeStyles = (c: Palette) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
-      minHeight: 56,
+      minHeight: 48,
     },
     moreSummary: {
       fontFamily: fonts.body,

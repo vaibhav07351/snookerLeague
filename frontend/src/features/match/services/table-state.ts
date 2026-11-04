@@ -22,7 +22,7 @@ export interface TableState {
   pointsRemaining: number;
 }
 
-interface TableSeed {
+export interface TableSeed {
   startingReds?: number;
   redsRemoved?: number;
 }
@@ -83,8 +83,11 @@ export function pointsRemainingFor(redsLeft: number, on: BallOn): number {
   }
 }
 
+/** The parts of a shot the table cares about (match and free-for-all shots both fit). */
+export type TableShot = Pick<Shot, 'kind' | 'points' | 'ball'>;
+
 /** Replay a frame's shots to find reds left and the ball on. Pure and order-dependent. */
-export function tableStateFromShots(shots: Shot[], seed: TableSeed = {}): TableState {
+export function tableStateFromShots(shots: readonly TableShot[], seed: TableSeed = {}): TableState {
   let redsLeft = clampReds((seed.startingReds ?? FULL_RACK_REDS) - (seed.redsRemoved ?? 0));
   let on: BallOn = redsLeft > 0 ? { kind: 'red' } : { kind: 'clearance', ball: 2 };
 

@@ -3,6 +3,7 @@ import { updateStore } from '@/shared/storage/local-store';
 import { withoutLeague } from '@/shared/sync/cloud-leagues';
 import {
   asEvent,
+  asGroupMatch,
   asLeague,
   asMatch,
   asPlayer,
@@ -12,6 +13,7 @@ import {
 } from '@/shared/sync/mappers';
 import {
   mergeEvents,
+  mergeGroupMatches,
   mergeLeagues,
   mergeMatches,
   mergePlayers,
@@ -22,6 +24,7 @@ import {
 import type {
   AppDataStore,
   FeedEvent,
+  GroupMatch,
   League,
   Match,
   Player,
@@ -29,20 +32,29 @@ import type {
   Tournament,
 } from '@/shared/types/domain';
 
-type RowKey = 'players' | 'matches' | 'races' | 'events' | 'tournaments';
+type RowKey = 'players' | 'matches' | 'races' | 'groupMatches' | 'events' | 'tournaments';
+
+type LocalRow = League | Player | Match | Race | GroupMatch | FeedEvent | Tournament;
 
 const ROW_KEY: Record<Exclude<DocEntity, 'league'>, RowKey> = {
   player: 'players',
   match: 'matches',
   race: 'races',
+  group_match: 'groupMatches',
   event: 'events',
   tournament: 'tournaments',
 };
 
+/**
+ * True for kinds this build can store. A newer server may send kinds this build has never
+ * heard of; those are skipped (their version is still recorded) instead of breaking the pull.
+ */
+function isKnownKind(entity: string): entity is DocEntity {
+  return entity === 'league' || entity in ROW_KEY;
+}
+
 /** Server copy of one document as the app's local type. */
-export function localRowOf(
-  doc: ServerDoc,
-): League | Player | Match | Race | FeedEvent | Tournament | null {
+export function localRowOf(doc: ServerDoc): LocalRow | null {
   if (doc.deleted || !doc.data) {
     return null;
   }
@@ -55,6 +67,8 @@ export function localRowOf(
       return asMatch(doc.data, doc.id, doc.leagueId);
     case 'race':
       return asRace(doc.data, doc.id, doc.leagueId);
+    case 'group_match':
+      return asGroupMatch(doc.data, doc.id, doc.leagueId);
     case 'event':
       return asEvent(doc.data, doc.id, doc.leagueId);
     case 'tournament':
@@ -69,6 +83,7 @@ function mergeDocs(s: AppDataStore, docs: ServerDoc[]): AppDataStore {
   const players: Player[] = [];
   const matches: Match[] = [];
   const races: Race[] = [];
+  const groupMatches: GroupMatch[] = [];
   const events: FeedEvent[] = [];
   const tournaments: Tournament[] = [];
   const deletedLeagues: string[] = [];
@@ -76,6 +91,9 @@ function mergeDocs(s: AppDataStore, docs: ServerDoc[]): AppDataStore {
 
   for (const doc of docs) {
     serverVersions[versionKey(doc.entity, doc.id)] = doc.version;
+    if (!isKnownKind(doc.entity)) {
+      continue;
+    }
     const row = localRowOf(doc);
     if (!row) {
       if (doc.entity === 'league') {
@@ -99,6 +117,9 @@ function mergeDocs(s: AppDataStore, docs: ServerDoc[]): AppDataStore {
       case 'race':
         races.push(row as Race);
         break;
+      case 'group_match':
+        groupMatches.push(row as GroupMatch);
+        break;
       case 'event':
         events.push(row as FeedEvent);
         break;
@@ -115,6 +136,10 @@ function mergeDocs(s: AppDataStore, docs: ServerDoc[]): AppDataStore {
     players: players.length > 0 ? mergePlayers(s.players, players, pending) : s.players,
     matches: matches.length > 0 ? mergeMatches(s.matches, matches, pending) : s.matches,
     races: races.length > 0 ? mergeRaces(s.races, races, pending) : s.races,
+    groupMatches:
+      groupMatches.length > 0
+        ? mergeGroupMatches(s.groupMatches, groupMatches, pending)
+        : s.groupMatches,
     events: events.length > 0 ? mergeEvents(s.events, events, pending) : s.events,
     tournaments:
       tournaments.length > 0
@@ -150,6 +175,9 @@ export async function applyServerDocs(docs: ServerDoc[]): Promise<void> {
 export async function replaceWithServerDoc(doc: ServerDoc): Promise<void> {
   await updateStore((s) => {
     const serverVersions = { ...s.serverVersions, [versionKey(doc.entity, doc.id)]: doc.version };
+    if (!isKnownKind(doc.entity)) {
+      return { ...s, serverVersions };
+    }
     const row = localRowOf(doc);
     if (doc.entity === 'league') {
       if (!row) {
@@ -174,7 +202,7 @@ export async function replaceWithServerDoc(doc: ServerDoc): Promise<void> {
 /** Store one rebased row and the server version it is now based on. */
 export async function storeRebasedRow(
   entity: DocEntity,
-  row: League | Player | Match | Race | FeedEvent | Tournament,
+  row: LocalRow,
   version: number,
 ): Promise<void> {
   await updateStore((s) => {

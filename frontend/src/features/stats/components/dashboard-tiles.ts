@@ -114,7 +114,10 @@ export function dashboardTiles(
           key: 'played',
           label: 'Played',
           value: String(i.totalGames),
-          hint: `${i.matchesPlayed} matches · ${i.racesPlayed} races`,
+          hint:
+            i.groupPlayed > 0
+              ? `${i.matchesPlayed} matches · ${i.groupPlayed} free-for-all · ${i.racesPlayed} races`
+              : `${i.matchesPlayed} matches · ${i.racesPlayed} races`,
           tone: 'teamA',
         },
       ];

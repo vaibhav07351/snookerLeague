@@ -1,4 +1,4 @@
-import type { Match, Player } from '@/shared/types/domain';
+import { emptyGroupStats, type Match, type Player } from '@/shared/types/domain';
 
 /**
  * Semantic colour role for a chart datum. Services stay theme-free: the UI resolves a role
@@ -33,6 +33,10 @@ export interface PlayerInsights {
   forfeits: number;
   winsByForfeit: number;
   racesPlayed: number;
+  /** Free-for-all matches (3+ players, each for themselves). */
+  groupPlayed: number;
+  groupWins: number;
+  groupHighestBreak: number;
   raceFirsts: number;
   racePodiums: number;
   raceFirstPct: number;
@@ -100,12 +104,13 @@ function countFramesPlayed(player: Player, matches: Match[]): number {
 export function buildPlayerInsights(player: Player, matches: Match[]): PlayerInsights {
   const s = player.stats.standard;
   const r = player.stats.race;
+  const g = player.stats.group ?? emptyGroupStats();
   const forfeits = s.forfeits ?? 0;
   const winsByForfeit = s.winsByForfeit ?? 0;
   const matchLosses = Math.max(s.played - s.wins, 0);
   const cleanLosses = Math.max(matchLosses - forfeits, 0);
   const podiums = r.firsts + r.seconds + r.thirds;
-  const lastCandidates = [s.lastPlayedAt, r.lastPlayedAt].filter(
+  const lastCandidates = [s.lastPlayedAt, r.lastPlayedAt, g.lastPlayedAt].filter(
     (x): x is string => typeof x === 'string',
   );
   const lastPlayedAt = lastCandidates.length > 0 ? (lastCandidates.sort().at(-1) ?? null) : null;
@@ -139,7 +144,7 @@ export function buildPlayerInsights(player: Player, matches: Match[]): PlayerIns
 
   return {
     player,
-    totalGames: s.played + r.played,
+    totalGames: s.played + r.played + g.played,
     matchesPlayed: s.played,
     matchWins: s.wins,
     matchLosses,
@@ -148,6 +153,9 @@ export function buildPlayerInsights(player: Player, matches: Match[]): PlayerIns
     forfeits,
     winsByForfeit,
     racesPlayed: r.played,
+    groupPlayed: g.played,
+    groupWins: g.wins,
+    groupHighestBreak: g.highestBreak,
     raceFirsts: r.firsts,
     racePodiums: podiums,
     raceFirstPct: r.firstPct,

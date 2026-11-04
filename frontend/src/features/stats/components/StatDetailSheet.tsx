@@ -70,6 +70,9 @@ export function StatDetailSheet({ detail, card, onClose }: StatDetailSheetProps)
         <KeyValueRow label="Wins by forfeit" value={String(i.winsByForfeit)} />
         <KeyValueRow label="Current win streak" value={String(r.currentStreak)} />
         <KeyValueRow label="Best win streak" value={String(r.bestStreak)} />
+        {i.groupPlayed > 0 ? (
+          <KeyValueRow label="Free-for-all wins" value={`${i.groupWins} of ${i.groupPlayed}`} />
+        ) : null}
       </>
     );
   } else if (detail === 'races') {

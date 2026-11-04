@@ -23,6 +23,7 @@ export function withoutLeague(s: AppDataStore, leagueId: string): AppDataStore {
     players: s.players.filter((p) => p.leagueId !== leagueId),
     matches: s.matches.filter((m) => m.leagueId !== leagueId),
     races: s.races.filter((r) => r.leagueId !== leagueId),
+    groupMatches: s.groupMatches.filter((g) => g.leagueId !== leagueId),
     events: s.events.filter((e) => e.leagueId !== leagueId),
     tournaments: s.tournaments.filter((t) => t.leagueId !== leagueId),
     pendingOps: s.pendingOps.filter((op) => op.leagueId !== leagueId && op.docId !== leagueId),

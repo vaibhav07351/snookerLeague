@@ -12,7 +12,7 @@ import {
 } from '@/features/league/services/champions.service';
 import * as playersService from '@/features/players/services/players.service';
 import { useStoreReload } from '@/shared/hooks/use-store-reload';
-import type { Player } from '@/shared/types/domain';
+import type { MatchFormat, Player } from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { formatDateTimeSubtle } from '@/shared/utils/datetime';
@@ -20,6 +20,12 @@ import { useStyles } from '@/theme/ThemeProvider';
 import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
 
 type ChampTab = 'match' | 'race';
+
+const FORMAT_TAGS: Record<MatchFormat, string> = {
+  singles: 'SINGLES',
+  doubles: 'DOUBLES',
+  one_vs_two: '1 V 2',
+};
 
 export default function ChampionsHistoryScreen(): ReactNode {
   const styles = useStyles(makeStyles);
@@ -98,7 +104,7 @@ export default function ChampionsHistoryScreen(): ReactNode {
             >
               <View style={styles.cardTop}>
                 <Text style={[styles.kind, row.isCurrent && styles.kindCurrent]}>
-                  {row.isCurrent ? 'CURRENT' : row.format === 'singles' ? 'SINGLES' : 'DOUBLES'}
+                  {row.isCurrent ? 'CURRENT' : FORMAT_TAGS[row.format]}
                   {row.viaForfeit ? ' · FORFEIT' : ''}
                 </Text>
                 <Text style={styles.when}>{formatDateTimeSubtle(row.crownedAt)}</Text>

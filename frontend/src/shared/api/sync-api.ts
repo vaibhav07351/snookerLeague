@@ -1,7 +1,14 @@
 import { apiRequest } from '@/shared/api/client';
 
 /** League-scoped document kinds the server versions and syncs. */
-export type DocEntity = 'league' | 'player' | 'match' | 'race' | 'event' | 'tournament';
+export type DocEntity =
+  'league' | 'player' | 'match' | 'race' | 'event' | 'tournament' | 'group_match';
+
+/**
+ * Kinds added after the first release. The server only sends them to clients that list them,
+ * because older builds stop syncing on a document kind they cannot read.
+ */
+export const OPT_IN_KINDS: readonly DocEntity[] = ['group_match'];
 
 /** One stored document. Deleted documents are tombstones with no data. */
 export interface ServerDoc {
@@ -58,7 +65,7 @@ export async function pushOps(ops: PushOp[]): Promise<PushResult[]> {
 /** Changes after `since` in every league I belong to, or in one league when given. */
 export function pullPage(since: number, leagueId?: string): Promise<PullPage> {
   return apiRequest<PullPage>('/v1/sync/pull', {
-    query: { since, limit: 500, league: leagueId },
+    query: { since, limit: 500, league: leagueId, kinds: OPT_IN_KINDS.join(',') },
     timeoutMs: 30_000,
   });
 }

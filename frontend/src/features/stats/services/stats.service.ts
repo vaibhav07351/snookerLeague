@@ -1,15 +1,18 @@
 import type {
   FeedEvent,
+  GroupMatch,
+  GroupStats,
   Match,
   Player,
   Race,
   RaceStats,
   StandardStats,
 } from '@/shared/types/domain';
-import { emptyRaceStats, emptyStandardStats } from '@/shared/types/domain';
+import { emptyGroupStats, emptyRaceStats, emptyStandardStats } from '@/shared/types/domain';
 import { updateStore } from '@/shared/storage/local-store';
 import { playerShotTotals } from '@/features/match/services/frame-rank';
 import { visitBreaks } from '@/features/match/services/frame-engine';
+import { highestBreaksOf } from '@/features/group/services/group-frame-engine';
 
 function pct(part: number, whole: number): number {
   if (whole <= 0) {
@@ -222,11 +225,42 @@ export function recomputeRaceStats(playerId: string, races: Race[]): RaceStats {
   };
 }
 
+export function recomputeGroupStats(playerId: string, groupMatches: GroupMatch[]): GroupStats {
+  const relevant = groupMatches
+    .filter((g) => g.status === 'completed' && g.playerIds.includes(playerId))
+    .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
+  const stats = emptyGroupStats();
+  for (const match of relevant) {
+    stats.played += 1;
+    if (match.winnerId === playerId) {
+      stats.wins += 1;
+    }
+    for (const frame of match.frames) {
+      stats.framesPlayed += 1;
+      if (frame.winnerId === playerId) {
+        stats.framesWon += 1;
+      }
+      stats.pointsScored += frame.points[playerId] ?? 0;
+      const best = highestBreaksOf(frame.shots ?? [])[playerId] ?? 0;
+      stats.highestBreak = Math.max(stats.highestBreak, best);
+    }
+    stats.lastPlayedAt = match.finishedAt ?? match.updatedAt;
+  }
+  stats.winPct = pct(stats.wins, stats.played);
+  return stats;
+}
+
+/** Results a league's player stats are computed from. */
+export interface LeagueResults {
+  matches: Match[];
+  races: Race[];
+  groupMatches: GroupMatch[];
+}
+
 export function applyPlayerStats(
   players: Player[],
   leagueId: string,
-  matches: Match[],
-  races: Race[],
+  { matches, races, groupMatches }: LeagueResults,
 ): Player[] {
   return players.map((player) => {
     if (player.leagueId !== leagueId) {
@@ -243,6 +277,10 @@ export function applyPlayerStats(
           player.id,
           races.filter((r) => r.leagueId === leagueId),
         ),
+        group: recomputeGroupStats(
+          player.id,
+          groupMatches.filter((g) => g.leagueId === leagueId),
+        ),
       },
     };
   });
@@ -251,7 +289,7 @@ export function applyPlayerStats(
 export function resetPlayerStats(player: Player): Player {
   return {
     ...player,
-    stats: { standard: emptyStandardStats(), race: emptyRaceStats() },
+    stats: { standard: emptyStandardStats(), race: emptyRaceStats(), group: emptyGroupStats() },
   };
 }
 
@@ -265,7 +303,11 @@ export function listFeed(events: FeedEvent[], leagueId: string, limit = 20): Fee
 /** Recompute cached player aggregates locally. No-ops if nothing changed. */
 export async function refreshLeaguePlayerStats(leagueId: string): Promise<void> {
   await updateStore((s) => {
-    const nextPlayers = applyPlayerStats(s.players, leagueId, s.matches, s.races);
+    const nextPlayers = applyPlayerStats(s.players, leagueId, {
+      matches: s.matches,
+      races: s.races,
+      groupMatches: s.groupMatches,
+    });
     const prevById = new Map(s.players.map((p) => [p.id, p]));
     const changed = nextPlayers.some((p) => {
       if (p.leagueId !== leagueId) {

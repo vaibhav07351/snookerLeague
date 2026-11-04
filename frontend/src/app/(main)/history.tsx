@@ -5,11 +5,13 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSession } from '@/features/auth/hooks/use-session';
 import { Button } from '@/shared/ui/Button';
 import { Screen } from '@/shared/ui/Screen';
+import { groupStandings } from '@/features/group/services/group-frame-engine';
+import * as groupService from '@/features/group/services/group.service';
 import * as matchService from '@/features/match/services/match.service';
 import * as playersService from '@/features/players/services/players.service';
 import * as raceService from '@/features/race/services/race.service';
 import { useStoreReload } from '@/shared/hooks/use-store-reload';
-import type { Match, Player, Race } from '@/shared/types/domain';
+import type { GroupMatch, Match, Player, Race } from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { formatDateTimeSubtle } from '@/shared/utils/datetime';
@@ -17,8 +19,26 @@ import { useStyles } from '@/theme/ThemeProvider';
 import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
 
 type Filter = 'all' | 'match' | 'race';
+/** Free-for-all matches list under "Matches" too: they are matches, just not two-sided. */
 type HistoryItem =
-  { kind: 'match'; at: string; match: Match } | { kind: 'race'; at: string; race: Race };
+  | { kind: 'match'; at: string; match: Match }
+  | { kind: 'group'; at: string; group: GroupMatch }
+  | { kind: 'race'; at: string; race: Race };
+
+function filterOf(item: HistoryItem): Filter {
+  return item.kind === 'race' ? 'race' : 'match';
+}
+
+function idOf(item: HistoryItem): string {
+  switch (item.kind) {
+    case 'match':
+      return item.match.id;
+    case 'group':
+      return item.group.id;
+    case 'race':
+      return item.race.id;
+  }
+}
 
 const FILTERS: Filter[] = ['all', 'match', 'race'];
 const FILTER_LABEL: Record<Filter, string> = { all: 'All', match: 'Matches', race: 'Races' };
@@ -40,18 +60,22 @@ export default function HistoryScreen(): ReactNode {
     if (!leagueId) {
       return;
     }
-    const [matches, races, roster] = await Promise.all([
+    const [matches, groups, races, roster] = await Promise.all([
       matchService.listMatches(leagueId, { limit: pageSize }),
+      groupService.listGroupMatches(leagueId, { limit: pageSize }),
       raceService.listRaces(leagueId, { limit: pageSize }),
       playersService.listPlayers(leagueId),
     ]);
     setPlayers(roster);
-    setHasMore(matches.length === pageSize || races.length === pageSize);
+    setHasMore(
+      matches.length === pageSize || groups.length === pageSize || races.length === pageSize,
+    );
     const combined: HistoryItem[] = [
       ...matches.map((match) => ({ kind: 'match' as const, at: match.updatedAt, match })),
+      ...groups.map((group) => ({ kind: 'group' as const, at: group.updatedAt, group })),
       ...races.map((race) => ({ kind: 'race' as const, at: race.updatedAt, race })),
     ]
-      .filter((row) => filter === 'all' || row.kind === filter)
+      .filter((row) => filter === 'all' || filterOf(row) === filter)
       .sort((a, b) => b.at.localeCompare(a.at));
     setItems(combined);
   }, [leagueId, filter, pageSize]);
@@ -96,7 +120,7 @@ export default function HistoryScreen(): ReactNode {
         style={styles.listFlex}
         contentContainerStyle={styles.list}
         data={items}
-        keyExtractor={(item) => (item.kind === 'match' ? item.match.id : item.race.id)}
+        keyExtractor={idOf}
         ListFooterComponent={
           hasMore ? (
             <Button
@@ -151,6 +175,31 @@ export default function HistoryScreen(): ReactNode {
                   {m.namedLabel ?? `${labels.teamA} vs ${labels.teamB}`}
                 </Text>
                 <Text style={styles.meta}>{forfeitLine ?? score}</Text>
+              </Card>
+            );
+          }
+          if (item.kind === 'group') {
+            const g = item.group;
+            const done = g.status === 'completed';
+            const leader = groupStandings(g.frames, g.playerIds)[0];
+            return (
+              <Card style={styles.row} onPress={() => router.push(`/group/${g.id}`)}>
+                <View style={styles.kindRow}>
+                  <Text style={[styles.kind, !done && styles.kindLive]}>
+                    {done ? 'FREE-FOR-ALL' : 'LIVE FREE-FOR-ALL'}
+                  </Text>
+                  {when ? <Text style={styles.when}>{when}</Text> : null}
+                </View>
+                <Text style={styles.title} numberOfLines={2}>
+                  {g.namedLabel ?? g.playerIds.map(nameOf).join(', ')}
+                </Text>
+                <Text style={styles.meta}>
+                  {done
+                    ? `Winner: ${g.winnerId ? nameOf(g.winnerId) : '-'}`
+                    : leader && leader.framesWon > 0
+                      ? `${nameOf(leader.playerId)} leads on ${leader.framesWon} frame${leader.framesWon === 1 ? '' : 's'}`
+                      : `Frame ${g.frames.length + 1} in progress`}
+                </Text>
               </Card>
             );
           }

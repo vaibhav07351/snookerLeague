@@ -1,6 +1,7 @@
 import { canManageMatch, isMatchScorer } from '@/features/match/services/match-access';
 import { AppError } from '@/shared/errors/app-error';
 import { getStore, loadStore } from '@/shared/storage/local-store';
+import { serializeWrite } from '@/shared/utils/serialize-write';
 import type { League, Match } from '@/shared/types/domain';
 
 export interface MatchContext {
@@ -52,25 +53,7 @@ export function requireManager(ctx: MatchContext): void {
   }
 }
 
-const queues = new Map<string, Promise<unknown>>();
-
-/**
- * Run match writes one at a time, in call order. Each write reads the latest match from the
- * store, so without this two quick taps could both read the same state and one shot would
- * be lost. A failed write does not block the ones queued after it.
- */
+/** Run match writes one at a time, in call order (see shared serializeWrite). */
 export function serializeMatchWrite<T>(matchId: string, write: () => Promise<T>): Promise<T> {
-  const previous = queues.get(matchId) ?? Promise.resolve();
-  const next = previous.then(write, write);
-  const settled = next.then(
-    () => undefined,
-    () => undefined,
-  );
-  queues.set(matchId, settled);
-  void settled.then(() => {
-    if (queues.get(matchId) === settled) {
-      queues.delete(matchId);
-    }
-  });
-  return next;
+  return serializeWrite(`match:${matchId}`, write);
 }

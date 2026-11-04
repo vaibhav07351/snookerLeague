@@ -115,6 +115,8 @@ func authorize(ctx context.Context, tx Tx, userID string, op Op, current *Doc) (
 		return authorizeMatch(userID, role, op, cur, next), nil
 	case EntityRace:
 		return authorizeRace(userID, role, op, cur, next), nil
+	case EntityGroupMatch:
+		return authorizeGroupMatch(userID, role, op, cur, next), nil
 	case EntityEvent:
 		return authorizeEvent(role, op), nil
 	case EntityTournament:
@@ -259,6 +261,21 @@ func authorizeRace(userID string, role Role, op Op, cur, next fields) *rejection
 		return reject("forbidden", "You can only create races as yourself.")
 	}
 	// Races have no scorer lock yet (planned for phase 6): any member may score.
+	return nil
+}
+
+// authorizeGroupMatch: like races, create as yourself, the creator or league owner deletes,
+// and any member may score (no scorer lock yet).
+func authorizeGroupMatch(userID string, role Role, op Op, cur, next fields) *rejection {
+	if op.Action == ActionDelete {
+		if cur.str("createdByUid") != userID && role != RoleOwner {
+			return reject("forbidden", "Only the match creator or league owner can delete a match.")
+		}
+		return nil
+	}
+	if cur == nil && next.str("createdByUid") != userID {
+		return reject("forbidden", "You can only create matches as yourself.")
+	}
 	return nil
 }
 

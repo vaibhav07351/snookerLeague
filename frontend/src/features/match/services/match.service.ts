@@ -28,6 +28,7 @@ import {
   type FeedEvent,
   type FrameScore,
   type Match,
+  type MatchFormat,
   type MatchOutcome,
   type OpenFrame,
   type TeamChampions,
@@ -36,7 +37,7 @@ import {
 const createMatchSchema = z.object({
   leagueId: z.string().min(1),
   createdByUid: z.string().min(1),
-  format: z.enum(['singles', 'doubles']),
+  format: z.enum(['singles', 'doubles', 'one_vs_two']),
   teamA: z.array(z.string().min(1)).min(1).max(2),
   teamB: z.array(z.string().min(1)).min(1).max(2),
   bestOf: z.number().int().min(1).max(35),
@@ -63,27 +64,42 @@ function sideCanStillWin(
   return own + remaining >= need;
 }
 
-function validateSides(format: 'singles' | 'doubles', teamA: string[], teamB: string[]): void {
-  const expected = format === 'singles' ? 1 : 2;
-  if (teamA.length !== expected || teamB.length !== expected) {
-    throw new AppError(
-      'VALIDATION',
-      format === 'singles'
-        ? 'Singles needs one player per side'
-        : 'Doubles needs two players per side',
-    );
-  }
-  const all = [...teamA, ...teamB];
-  if (new Set(all).size !== all.length) {
-    throw new AppError(
-      'VALIDATION',
-      format === 'singles' ? 'Pick two different players' : 'Pick four different players',
-    );
+/** Players per side for each format: [side A, side B]. In 1v2 the solo player is side A. */
+export function sideSizesOf(format: MatchFormat): [number, number] {
+  switch (format) {
+    case 'singles':
+      return [1, 1];
+    case 'doubles':
+      return [2, 2];
+    case 'one_vs_two':
+      return [1, 2];
   }
 }
 
-export function matchFormatOf(match: Match): 'singles' | 'doubles' {
-  if (match.format === 'singles' || match.format === 'doubles') {
+const SIDE_SIZE_MESSAGES: Record<MatchFormat, string> = {
+  singles: 'Singles needs one player per side',
+  doubles: 'Doubles needs two players per side',
+  one_vs_two: '1 vs 2 needs one player against a pair',
+};
+
+function validateSides(format: MatchFormat, teamA: string[], teamB: string[]): void {
+  const [sizeA, sizeB] = sideSizesOf(format);
+  if (teamA.length !== sizeA || teamB.length !== sizeB) {
+    throw new AppError('VALIDATION', SIDE_SIZE_MESSAGES[format]);
+  }
+  const all = [...teamA, ...teamB];
+  if (new Set(all).size !== all.length) {
+    throw new AppError('VALIDATION', 'Pick different players for each place');
+  }
+}
+
+/** Only singles and doubles can be title matches; an uneven 1v2 never crowns a champion. */
+export function formatCanCrown(format: MatchFormat): boolean {
+  return format !== 'one_vs_two';
+}
+
+export function matchFormatOf(match: Match): MatchFormat {
+  if (match.format === 'singles' || match.format === 'doubles' || match.format === 'one_vs_two') {
     return match.format;
   }
   return match.teamA.length === 1 && match.teamB.length === 1 ? 'singles' : 'doubles';
@@ -118,7 +134,7 @@ export async function getMatch(matchId: string): Promise<Match | null> {
 export async function createMatch(input: {
   leagueId: string;
   createdByUid: string;
-  format: 'singles' | 'doubles';
+  format: MatchFormat;
   teamA: string[];
   teamB: string[];
   bestOf: number;
@@ -132,6 +148,9 @@ export async function createMatch(input: {
     throw new AppError('VALIDATION', 'Invalid match setup');
   }
   validateSides(parsed.data.format, parsed.data.teamA, parsed.data.teamB);
+  if (parsed.data.crownsChampion && !formatCanCrown(parsed.data.format)) {
+    throw new AppError('VALIDATION', 'A 1 vs 2 match cannot be a title match');
+  }
 
   const now = nowIso();
   const teams = { a: parsed.data.teamA, b: parsed.data.teamB };
@@ -253,7 +272,11 @@ export async function persistMatchResult(
     );
     const events = event ? [...s.events, { ...event, updatedAt: event.updatedAt }] : s.events;
     // Derived stats: not an edit of the player, so no updatedAt bump.
-    const players = applyPlayerStats(s.players, match.leagueId, matches, s.races);
+    const players = applyPlayerStats(s.players, match.leagueId, {
+      matches,
+      races: s.races,
+      groupMatches: s.groupMatches,
+    });
     return { ...s, matches, leagues, events, players };
   });
 

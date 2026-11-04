@@ -3,7 +3,7 @@ import { listLookingPosts } from '@/features/community/services/looking.service'
 import { getCityHubForUser } from '@/features/league/services/city-hub.service';
 import { listLiveMatches } from '@/features/match/services/match.service';
 import { getStore } from '@/shared/storage/local-store';
-import type { FeedEvent, Match, Race } from '@/shared/types/domain';
+import type { FeedEvent, GroupMatch, Match, Race } from '@/shared/types/domain';
 import { cityHubId } from '@/shared/types/domain';
 
 export type HomeFilter = 'your' | 'played' | 'network' | 'all';
@@ -54,6 +54,7 @@ export function listHomeActivity(input: {
   events: FeedEvent[];
   matches: Match[];
   races: Race[];
+  groupMatches: GroupMatch[];
 }): HomeActivity[] {
   const store = getStore();
   const following = new Set(
@@ -109,7 +110,25 @@ export function listHomeActivity(input: {
         body: 'Finished',
         href: `/race/${r.id}`,
       }));
-    return [...matchRows, ...raceRows].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 20);
+    const myId = input.myPlayerId;
+    const groupRows: HomeActivity[] = input.groupMatches
+      .filter(
+        (g) =>
+          g.leagueId === input.leagueId &&
+          g.status === 'completed' &&
+          myId != null &&
+          g.playerIds.includes(myId),
+      )
+      .map((g) => ({
+        id: g.id,
+        at: g.updatedAt,
+        title: g.namedLabel ?? 'Free-for-all',
+        body: g.winnerId === myId ? 'Won' : 'Finished',
+        href: `/group/${g.id}`,
+      }));
+    return [...matchRows, ...groupRows, ...raceRows]
+      .sort((a, b) => b.at.localeCompare(a.at))
+      .slice(0, 20);
   }
 
   const hubId = input.cityId ? cityHubId(input.cityId) : null;

@@ -255,7 +255,8 @@ func randomCode(n int) (string, error) {
 }
 
 // PullLeague returns one league's documents after `since`, for a member of that league.
-func (s *Service) PullLeague(ctx context.Context, userID, leagueID string, since int64, limit int) (PullPage, error) {
+// Opt-in kinds (see optInEntities) are only included when listed in `optIn`.
+func (s *Service) PullLeague(ctx context.Context, userID, leagueID string, since int64, limit int, optIn ...Entity) (PullPage, error) {
 	if since < 0 || leagueID == "" || len(leagueID) > maxIDLength {
 		return PullPage{}, fmt.Errorf("%w: invalid league or since", ErrBadRequest)
 	}
@@ -274,7 +275,7 @@ func (s *Service) PullLeague(ctx context.Context, userID, leagueID string, since
 	if role == RoleNone {
 		return PullPage{}, ErrNotMember
 	}
-	docs, err := s.store.PullLeague(ctx, userID, leagueID, since, limit+1)
+	docs, err := s.store.PullLeague(ctx, userID, leagueID, since, limit+1, hiddenEntities(optIn))
 	if err != nil {
 		return PullPage{}, fmt.Errorf("pull league: %w", err)
 	}

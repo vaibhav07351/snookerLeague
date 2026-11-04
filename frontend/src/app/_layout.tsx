@@ -132,6 +132,7 @@ function AppShell({ fontsLoaded }: { fontsLoaded: boolean }): ReactNode {
               <Stack.Screen name="match/[id]" options={{ title: 'Match' }} />
               <Stack.Screen name="race/new" options={{ title: 'New race' }} />
               <Stack.Screen name="race/[id]" options={{ title: 'Race' }} />
+              <Stack.Screen name="group/[id]" options={{ title: 'Free-for-all' }} />
               <Stack.Screen name="join/[code]" options={{ title: 'Join league' }} />
               <Stack.Screen name="tournament/new" options={{ title: 'New tournament' }} />
               <Stack.Screen name="tournament/[id]" options={{ title: 'Tournament' }} />

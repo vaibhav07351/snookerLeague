@@ -1,6 +1,7 @@
 import {
   MATCH_SETTINGS_FIELDS,
   type FeedEvent,
+  type GroupMatch,
   type League,
   type Match,
   type Player,
@@ -110,6 +111,15 @@ export function mergeMatches(local: Match[], remote: Match[], pendingDocIds: Set
 }
 
 export function mergeRaces(local: Race[], remote: Race[], pendingDocIds: Set<string>): Race[] {
+  return mergeById(local, remote, pendingDocIds);
+}
+
+/** Free-for-all matches have no settings or scorer lock yet: newest write wins, like races. */
+export function mergeGroupMatches(
+  local: GroupMatch[],
+  remote: GroupMatch[],
+  pendingDocIds: Set<string>,
+): GroupMatch[] {
   return mergeById(local, remote, pendingDocIds);
 }
 
