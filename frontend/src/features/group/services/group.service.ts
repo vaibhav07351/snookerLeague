@@ -7,6 +7,7 @@ import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { scheduleSync, type ScheduleItem } from '@/shared/sync';
 import type { FeedEvent, GroupMatch } from '@/shared/types/domain';
 import { createId, nowIso } from '@/shared/utils/id';
+import { applyResultEvent } from '@/shared/utils/result-event';
 import { serializeWrite } from '@/shared/utils/serialize-write';
 
 export const MIN_GROUP_PLAYERS = 3;
@@ -123,11 +124,17 @@ export async function requireGroupMatch(groupId: string): Promise<GroupMatch> {
  * stats, and queue the changed documents for sync.
  */
 export async function persistGroupMatch(group: GroupMatch, event?: FeedEvent): Promise<GroupMatch> {
+  // The match's one result post: added or replaced when it finishes, withdrawn when the
+  // finished match is reopened.
+  const changed: { event: FeedEvent | null } = { event: null };
   await updateStore((s) => {
     const groupMatches = s.groupMatches.map((g) => (g.id === group.id ? group : g));
-    const events = event
-      ? [...s.events, { ...event, updatedAt: event.updatedAt ?? event.createdAt }]
-      : s.events;
+    let events = s.events;
+    if (event || group.status !== 'completed') {
+      const result = applyResultEvent(s.events, group.id, event ?? null, nowIso());
+      events = result.events;
+      changed.event = result.changed;
+    }
     // Derived stats: not an edit of the player, so no updatedAt bump.
     const players = applyPlayerStats(s.players, group.leagueId, {
       matches: s.matches,
@@ -138,18 +145,16 @@ export async function persistGroupMatch(group: GroupMatch, event?: FeedEvent): P
   });
 
   const items: ScheduleItem[] = [groupSyncItem(group)];
-  if (event) {
-    const saved = getStore().events.find((e) => e.id === event.id);
-    if (saved) {
-      items.push({
-        entity: 'event',
-        docId: saved.id,
-        leagueId: saved.leagueId,
-        action: 'upsert',
-        payload: saved,
-        updatedAt: saved.updatedAt,
-      });
-    }
+  const saved = changed.event;
+  if (saved) {
+    items.push({
+      entity: 'event',
+      docId: saved.id,
+      leagueId: saved.leagueId,
+      action: 'upsert',
+      payload: saved,
+      updatedAt: saved.updatedAt,
+    });
   }
   await scheduleSync(items);
   return group;
@@ -174,6 +179,7 @@ export function deleteGroupMatch(groupId: string): Promise<void> {
     if (!canManageGroupMatch(group, getStore().user?.uid)) {
       throw new AppError('FORBIDDEN', 'Only the match creator or league owner can do this');
     }
+    const changed: { event: FeedEvent | null } = { event: null };
     await updateStore((s) => {
       const groupMatches = s.groupMatches.filter((g) => g.id !== groupId);
       const players = applyPlayerStats(s.players, group.leagueId, {
@@ -181,9 +187,12 @@ export function deleteGroupMatch(groupId: string): Promise<void> {
         races: s.races,
         groupMatches,
       });
-      return { ...s, groupMatches, players };
+      // A deleted match's result post is withdrawn too.
+      const result = applyResultEvent(s.events, group.id, null, nowIso());
+      changed.event = result.changed;
+      return { ...s, groupMatches, players, events: result.events };
     });
-    await scheduleSync([
+    const items: ScheduleItem[] = [
       {
         entity: 'group_match',
         docId: group.id,
@@ -192,7 +201,19 @@ export function deleteGroupMatch(groupId: string): Promise<void> {
         payload: null,
         updatedAt: nowIso(),
       },
-    ]);
+    ];
+    const retracted = changed.event;
+    if (retracted) {
+      items.push({
+        entity: 'event',
+        docId: retracted.id,
+        leagueId: retracted.leagueId,
+        action: 'upsert',
+        payload: retracted,
+        updatedAt: retracted.updatedAt,
+      });
+    }
+    await scheduleSync(items);
     logger.info('group.service', 'Free-for-all match deleted', { groupId });
   });
 }

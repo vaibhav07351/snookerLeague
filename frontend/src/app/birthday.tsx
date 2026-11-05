@@ -4,7 +4,11 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
-import { parseAndValidateDob } from '@/features/auth/services/division.service';
+import {
+  divisionLabel,
+  parseAndValidateDob,
+  SNOOKER_DIVISIONS,
+} from '@/features/auth/services/division.service';
 import * as profileService from '@/features/community/services/profile.service';
 import { BrandWordmark } from '@/features/home/components/BrandWordmark';
 import { Button } from '@/shared/ui/Button';
@@ -17,7 +21,7 @@ import { notify } from '@/shared/ui/notify';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
 import { fonts, makeTypography, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
 
-const DIVISIONS = ['Under 16', 'Under 18', 'Under 21', 'Open', 'Masters 40+', 'Seniors 50+'];
+const DIVISIONS = SNOOKER_DIVISIONS.map(divisionLabel);
 
 export default function BirthdayScreen(): ReactNode {
   const { user, refresh } = useSession();
@@ -77,8 +81,8 @@ export default function BirthdayScreen(): ReactNode {
         {isEditing ? 'Update your date of birth' : 'When were you born?'}
       </Text>
       <Text style={[typography.subtitle, styles.sub]}>
-        Snooker tables are split by age. We keep the date on your account and only show your
-        division publicly.
+        Snooker tables are split by age. Your date of birth stays private: others only see your age
+        band. Players under 18 are not shown on public city boards.
       </Text>
       <View style={styles.divisions}>
         {DIVISIONS.map((d) => (

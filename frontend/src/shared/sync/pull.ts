@@ -84,9 +84,16 @@ export async function fetchCloudUser(uid: string): Promise<CloudUserProfile | nu
   return getCommunityDoc<CloudUserProfile>('user', uid);
 }
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** The saved date of birth when it has the expected YYYY-MM-DD shape (the server checks it too). */
+function validSavedDob(value: unknown): string | null {
+  return typeof value === 'string' && ISO_DATE.test(value) ? value : null;
+}
+
 /**
- * Restore what the server remembers about this user (city, active league) onto the session.
- * Leagues themselves come from the pull, and the date of birth never leaves the phone.
+ * Restore what the server remembers about this user (city, active league, date of birth) onto
+ * the session. Leagues themselves come from the pull.
  */
 export async function restoreCloudUser(uid: string): Promise<void> {
   const profile = await fetchCloudUser(uid);
@@ -113,6 +120,7 @@ export async function restoreCloudUser(uid: string): Promise<void> {
         cityId: profile?.cityId ?? s.user.cityId,
         cityName: profile?.cityName ?? s.user.cityName,
         termsAcceptedAt: s.user.termsAcceptedAt ?? profile?.termsAcceptedAt ?? null,
+        dateOfBirth: s.user.dateOfBirth ?? validSavedDob(profile?.dateOfBirth),
       },
     };
   });

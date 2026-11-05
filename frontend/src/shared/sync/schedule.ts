@@ -96,8 +96,8 @@ function buildCloudUserPayload(user: SessionUser, store = getStore()): CloudUser
     updatedAt: nowIso(),
     cityId: user.cityId,
     cityName: user.cityName,
-    // D5: the date of birth never leaves the phone.
-    dateOfBirth: null,
+    // Private settings only (never the public profile). Null leaves the saved date alone.
+    dateOfBirth: user.dateOfBirth ?? null,
     termsAcceptedAt: user.termsAcceptedAt ?? null,
   };
 }

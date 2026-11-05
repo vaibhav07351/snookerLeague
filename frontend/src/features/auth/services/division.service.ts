@@ -89,7 +89,7 @@ export function divisionLabel(division: SnookerDivision | null | undefined): str
     case 'u21':
       return 'Under 21';
     case 'open':
-      return 'Open';
+      return 'Open 21-39';
     case 'masters':
       return 'Masters 40+';
     case 'seniors':

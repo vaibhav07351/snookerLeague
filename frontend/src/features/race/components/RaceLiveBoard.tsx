@@ -1,7 +1,12 @@
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { foulPointsOf, netRaceScore } from '@/features/race/services/race-helpers';
+import {
+  compareRaceBoard,
+  compareUnfinished,
+  foulPointsOf,
+  netRaceScore,
+} from '@/features/race/services/race-helpers';
 import type { Race, RacePlace } from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
 import { useStyles } from '@/theme/ThemeProvider';
@@ -41,19 +46,7 @@ export function RaceLiveBoard({
   onSelectPlayer,
 }: RaceLiveBoardProps): ReactNode {
   const styles = useStyles(makeStyles);
-  const live = [...race.entrants].sort((a, b) => {
-    if (a.place === 'dnf' && b.place !== 'dnf') {
-      return 1;
-    }
-    if (b.place === 'dnf' && a.place !== 'dnf') {
-      return -1;
-    }
-    const netDiff = netRaceScore(b) - netRaceScore(a);
-    if (netDiff !== 0) {
-      return netDiff;
-    }
-    return 0;
-  });
+  const live = [...race.entrants].sort(compareRaceBoard);
 
   const livePlaces = new Map<string, number>();
   let cursor = 0;
@@ -66,16 +59,16 @@ export function RaceLiveBoard({
   }
 
   const leader = live.find((e) => e.place !== 'dnf');
-  const leaderNet = leader ? netRaceScore(leader) : 0;
-  const tied = live.filter((e) => e.place !== 'dnf' && netRaceScore(e) === leaderNet).length > 1;
+  const tied =
+    leader?.place === null &&
+    live.filter((e) => e.place === null && compareUnfinished(e, leader) === 0).length > 1;
   const hasScore = live.some((e) => e.score > 0 || foulPointsOf(e) > 0);
-  const leadLabel = !hasScore
-    ? 'Level at the top'
-    : tied
-      ? 'Tied at the top'
-      : leader
-        ? `${nameOf(leader.playerId)} leading`
-        : 'Level at the top';
+  let leadLabel = 'Level at the top';
+  if (leader && typeof leader.place === 'number') {
+    leadLabel = `${nameOf(leader.playerId)} finished first`;
+  } else if (leader && hasScore) {
+    leadLabel = tied ? 'Tied at the top' : `${nameOf(leader.playerId)} leading`;
+  }
 
   return (
     <Card tone="raised" style={styles.wrap}>
@@ -91,8 +84,8 @@ export function RaceLiveBoard({
         </Text>
       </View>
       <View style={styles.legend}>
-        <Text style={styles.legendPts}>Pts</Text>
-        <Text style={styles.legendFoul}>Foul</Text>
+        <Text style={styles.legendPts}>Score</Text>
+        <Text style={styles.legendFoul}>Fouls</Text>
       </View>
       {live.map((e) => {
         const leading = leader?.playerId === e.playerId && hasScore && !tied;
@@ -115,7 +108,12 @@ export function RaceLiveBoard({
             <Text style={[styles.name, leading && styles.lead]} numberOfLines={1}>
               {nameOf(e.playerId)}
             </Text>
-            <Text style={[styles.pts, leading && styles.ptsLead]}>{e.score}</Text>
+            <Text
+              style={[styles.pts, leading && styles.ptsLead]}
+              accessibilityLabel={`Score ${netRaceScore(e)}, ${e.score} potted, ${foulPointsOf(e)} in fouls`}
+            >
+              {netRaceScore(e)}
+            </Text>
             <Text style={[styles.fouls, foulPointsOf(e) > 0 && styles.foulsOn]}>
               {foulPointsOf(e)}
             </Text>
@@ -167,14 +165,14 @@ const makeStyles = (c: Palette) =>
       fontFamily: fonts.bodyBold,
       color: c.textFaint,
       fontSize: 10,
-      minWidth: 32,
+      minWidth: 44,
       textAlign: 'right',
     },
     legendFoul: {
       fontFamily: fonts.bodyBold,
       color: c.textFaint,
       fontSize: 10,
-      minWidth: 32,
+      minWidth: 44,
       textAlign: 'right',
     },
     row: {
@@ -210,7 +208,7 @@ const makeStyles = (c: Palette) =>
       fontFamily: fonts.bodyBold,
     },
     pts: {
-      minWidth: 32,
+      minWidth: 44,
       textAlign: 'right',
       fontFamily: fonts.display,
       fontSize: 20,
@@ -220,7 +218,7 @@ const makeStyles = (c: Palette) =>
       color: c.primary,
     },
     fouls: {
-      minWidth: 32,
+      minWidth: 44,
       textAlign: 'right',
       fontFamily: fonts.bodyBold,
       fontSize: 14,

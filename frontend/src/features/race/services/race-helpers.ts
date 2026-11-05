@@ -5,8 +5,44 @@ export function foulPointsOf(entrant: RaceEntrant): number {
   return entrant.foulPoints ?? 0;
 }
 
+/**
+ * The live race score: points potted minus foul points. It can go below zero. A player
+ * finishes when this reaches the target.
+ */
 export function netRaceScore(entrant: RaceEntrant): number {
   return entrant.score - foulPointsOf(entrant);
+}
+
+/** Whether an unplaced entrant has reached the target with their live score. */
+export function hasReachedTarget(entrant: RaceEntrant, targetScore: number): boolean {
+  return entrant.place === null && netRaceScore(entrant) >= targetScore;
+}
+
+/**
+ * Order for players still playing: higher live score, then fewer fouls, then more potted.
+ * Returns 0 only when two players are level on all three.
+ */
+export function compareUnfinished(a: RaceEntrant, b: RaceEntrant): number {
+  return (
+    netRaceScore(b) - netRaceScore(a) || foulPointsOf(a) - foulPointsOf(b) || b.score - a.score
+  );
+}
+
+/**
+ * Board order: finished players by place, then players still playing (see
+ * `compareUnfinished`), then players who are out.
+ */
+export function compareRaceBoard(a: RaceEntrant, b: RaceEntrant): number {
+  const rank = (e: RaceEntrant): number =>
+    e.place === 'dnf' ? 2 : typeof e.place === 'number' ? 0 : 1;
+  const byGroup = rank(a) - rank(b);
+  if (byGroup !== 0) {
+    return byGroup;
+  }
+  if (typeof a.place === 'number' && typeof b.place === 'number') {
+    return a.place - b.place;
+  }
+  return a.place === null ? compareUnfinished(a, b) : 0;
 }
 
 export function activePlayerIds(entrants: RaceEntrant[]): string[] {

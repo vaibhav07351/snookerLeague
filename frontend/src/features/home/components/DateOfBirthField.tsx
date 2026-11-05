@@ -65,7 +65,10 @@ export function DateOfBirthField({ value, onChange, error }: DateOfBirthFieldPro
     if (!division) {
       return 'Used for Under 16 / Open / Masters tables in your city.';
     }
-    return `You play in ${divisionLabel(division)}.`;
+    const minor = division === 'u16' || division === 'u18';
+    return minor
+      ? `You play in ${divisionLabel(division)}. You won't be shown on public city boards.`
+      : `You play in ${divisionLabel(division)}.`;
   }, [value]);
 
   return (

@@ -9,8 +9,16 @@ import { TextField } from '@/shared/ui/TextField';
 import * as playersService from '@/features/players/services/players.service';
 import { RaceBallPad } from '@/features/race/components/RaceBallPad';
 import { RaceLiveBoard } from '@/features/race/components/RaceLiveBoard';
-import { currentRaceBreak, withRaceDefaults } from '@/features/race/services/race-helpers';
+import {
+  compareRaceBoard,
+  currentRaceBreak,
+  foulPointsOf,
+  netRaceScore,
+  withRaceDefaults,
+} from '@/features/race/services/race-helpers';
 import * as raceLive from '@/features/race/services/race-live.service';
+import { RulesButton } from '@/features/rules/components/RulesButton';
+import { raceRules } from '@/features/rules/services/rules';
 import * as raceService from '@/features/race/services/race.service';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { useLayout } from '@/shared/hooks/use-layout';
@@ -110,14 +118,11 @@ export default function RaceDetailScreen(): ReactNode {
       : (activeIds[0] ?? null);
   const visitBreak = currentRaceBreak(race.liveShots, scoringId);
 
-  const sorted = [...race.entrants].sort((a, b) => {
-    const placeA = a.place === null ? 999 : a.place === 'dnf' ? 998 : a.place;
-    const placeB = b.place === null ? 999 : b.place === 'dnf' ? 998 : b.place;
-    if (placeA !== placeB) {
-      return placeA - placeB;
-    }
-    return b.score - a.score;
-  });
+  const sorted = [...race.entrants].sort(compareRaceBoard);
+  const scoreLine = (e: Race['entrants'][number]): string =>
+    foulPointsOf(e) > 0
+      ? `Score ${netRaceScore(e)} (${e.score} potted, ${foulPointsOf(e)} in fouls)`
+      : `Score ${netRaceScore(e)}`;
 
   function alertLive(error: unknown): void {
     notify.error('Could not record', toUserMessage(error));
@@ -136,7 +141,7 @@ export default function RaceDetailScreen(): ReactNode {
   async function markDidntFinish(playerId: string, playerName: string): Promise<void> {
     const ok = await confirmAction(
       "Mark as didn't finish?",
-      `${playerName} will drop out of this race. You can undo while the race is still in progress.`,
+      `${playerName} drops out and takes last place, which still counts in ratings. You can undo while the race is still in progress.`,
       "Didn't finish",
     );
     if (!ok) {
@@ -156,7 +161,7 @@ export default function RaceDetailScreen(): ReactNode {
   async function completeRace(): Promise<void> {
     const ok = await confirmAction(
       'Complete the race?',
-      'Places are locked in from the current scores.',
+      'Players still playing are placed by score after fouls. If level, fewer fouls goes ahead.',
       'Complete race',
     );
     if (!ok) {
@@ -202,6 +207,7 @@ export default function RaceDetailScreen(): ReactNode {
           </Text>
         </View>
         <View style={styles.metaRow}>
+          <RulesButton iconOnly rules={raceRules(race.targetScore)} />
           {race.crownsRaceChampion ? (
             <View style={styles.crownPill} accessibilityLabel="Crowns race king">
               <Ionicons name="trophy" size={12} color={palette.primary} />
@@ -286,7 +292,7 @@ export default function RaceDetailScreen(): ReactNode {
                   <View style={styles.scoreEdit}>
                     <View style={styles.scoreField}>
                       <TextField
-                        label="Set score"
+                        label="Potted points"
                         value={draftScores[e.playerId] ?? ''}
                         onChangeText={(t) =>
                           setDraftScores((prev) => ({ ...prev, [e.playerId]: t }))
@@ -313,7 +319,7 @@ export default function RaceDetailScreen(): ReactNode {
                   </View>
                 ) : race.status === 'in_progress' && e.place === 'dnf' ? (
                   <View style={styles.outRow}>
-                    <Text style={styles.finalScore}>Score {e.score}</Text>
+                    <Text style={styles.finalScore}>{scoreLine(e)}</Text>
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={`Undo didn't finish for ${playerName}`}
@@ -325,7 +331,7 @@ export default function RaceDetailScreen(): ReactNode {
                     </Pressable>
                   </View>
                 ) : (
-                  <Text style={styles.finalScore}>Score {e.score}</Text>
+                  <Text style={styles.finalScore}>{scoreLine(e)}</Text>
                 )}
               </View>
             );

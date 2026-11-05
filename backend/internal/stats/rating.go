@@ -171,7 +171,7 @@ func Ratings(matches []Match, races []Race) []Rating {
 	var events []event
 	for i := range matches {
 		if matches[i].Outcome.Status != "in_progress" {
-			events = append(events, event{at: matches[i].UpdatedAt, match: &matches[i]})
+			events = append(events, event{at: matches[i].PlayedAt(), match: &matches[i]})
 		}
 	}
 	for i := range races {

@@ -2,7 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import type { GroupStandingRow } from '@/features/group/services/group-frame-engine';
+import {
+  groupWinReason,
+  type GroupStandingRow,
+  type GroupWinReason,
+} from '@/features/group/services/group-frame-engine';
 import type { GroupFrame } from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
@@ -15,10 +19,22 @@ interface GroupResultProps {
   nameOf: (playerId: string) => string;
 }
 
+function reasonText(reason: GroupWinReason): string {
+  switch (reason.kind) {
+    case 'frames':
+      return `Most frames won (${reason.won} to ${reason.runnerUp})`;
+    case 'points':
+      return `Level on frames, won on total points (${reason.won} to ${reason.runnerUp})`;
+    case 'latest_frame':
+      return 'Level on frames and points, won the latest frame';
+  }
+}
+
 /** Final table of a finished free-for-all match, then each frame's scores. */
 export function GroupResult({ winnerId, standings, frames, nameOf }: GroupResultProps): ReactNode {
   const styles = useStyles(makeStyles);
   const palette = usePalette();
+  const reason = winnerId ? groupWinReason(standings, winnerId) : null;
 
   return (
     <View style={styles.wrap}>
@@ -30,6 +46,11 @@ export function GroupResult({ winnerId, standings, frames, nameOf }: GroupResult
             <Text style={styles.winner} numberOfLines={1}>
               {nameOf(winnerId)}
             </Text>
+            {reason ? (
+              <Text style={styles.reason} numberOfLines={2}>
+                {reasonText(reason)}
+              </Text>
+            ) : null}
           </View>
         </Card>
       ) : null}
@@ -98,6 +119,12 @@ const makeStyles = (c: Palette) =>
       fontFamily: fonts.display,
       fontSize: 22,
       color: c.text,
+    },
+    reason: {
+      marginTop: 2,
+      fontFamily: fonts.body,
+      fontSize: 13,
+      color: c.textMuted,
     },
     table: {
       gap: spacing.xs,

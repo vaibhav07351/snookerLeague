@@ -77,3 +77,77 @@ describe('race turn order', () => {
     expect(r.atTablePlayerId).toBe('b');
   });
 });
+
+describe('race scoring after fouls', () => {
+  async function twoPlayerRace(target: number) {
+    const { race, live, store } = fresh();
+    await store.loadStore();
+    const created = await race.createRace({
+      leagueId: 'lg1',
+      createdByUid: 'u1',
+      playerIds: ['ravi', 'amit'],
+      targetScore: target,
+      namedLabel: null,
+      crownsRaceChampion: false,
+    });
+    return { race, live, id: created.id };
+  }
+
+  it('lets the live score go below zero', async () => {
+    const { live, id } = await twoPlayerRace(10);
+    const r = await live.recordFoul(id, 4);
+    const ravi = r.entrants.find((e) => e.playerId === 'ravi')!;
+    expect(ravi.score - (ravi.foulPoints ?? 0)).toBe(-4);
+  });
+
+  it('finishes only when the score after fouls reaches the target', async () => {
+    const { live, id } = await twoPlayerRace(10);
+    await live.recordFoul(id, 4); // Ravi -4, Amit to play
+    await live.recordMiss(id); // back to Ravi
+    let r = await live.recordPot(id, 7);
+    r = await live.recordPot(id, 7); // potted 14, live 10
+    expect(r.entrants.find((e) => e.playerId === 'ravi')?.place).toBe(1);
+    // Potted points are kept as they are, never bumped to the target.
+    expect(r.entrants.find((e) => e.playerId === 'ravi')?.score).toBe(14);
+  });
+
+  it('does not finish a player whose potted points reach the target but fouls pull them back', async () => {
+    const { live, id } = await twoPlayerRace(10);
+    await live.recordFoul(id, 4);
+    await live.recordMiss(id);
+    const r = await live.recordPot(id, 7);
+    await live.recordPot(id, 5);
+    const after = await live.recordPot(id, 1); // potted 13, live 9
+    expect(r.entrants.find((e) => e.playerId === 'ravi')?.place).toBeNull();
+    expect(after.entrants.find((e) => e.playerId === 'ravi')?.place).toBeNull();
+  });
+
+  it('reopens a finished player when undo takes them back under the target', async () => {
+    const { live, id } = await twoPlayerRace(7);
+    await live.recordPot(id, 7);
+    const r = await live.undoLast(id);
+    expect(r.entrants.find((e) => e.playerId === 'ravi')?.place).toBeNull();
+  });
+});
+
+describe('placesForUnfinished', () => {
+  const entrant = (playerId: string, score: number, foulPoints: number) => ({
+    playerId,
+    score,
+    foulPoints,
+    place: null,
+    finishedAt: null,
+  });
+
+  it('orders by live score, then fewer fouls, and shares a place when fully level', () => {
+    const { race } = fresh();
+    const places = race.placesForUnfinished([
+      { ...entrant('done', 60, 0), place: 1 },
+      entrant('a', 30, 10), // live 20, 10 fouls
+      entrant('b', 24, 4), // live 20, 4 fouls: ahead of a
+      entrant('c', 24, 4), // level with b on everything
+      entrant('d', 5, 0),
+    ]);
+    expect(Object.fromEntries(places)).toEqual({ b: 2, c: 2, a: 4, d: 5 });
+  });
+});

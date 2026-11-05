@@ -90,6 +90,7 @@ func (r *PGRepository) accountAges(ctx context.Context) (map[string]time.Time, e
 func ratedGame(raw []byte, owners map[string]string) (RatedGame, bool) {
 	var m struct {
 		UpdatedAt       string   `json:"updatedAt"`
+		FinishedAt      string   `json:"finishedAt"`
 		CreatedByUID    string   `json:"createdByUid"`
 		ScorerUID       string   `json:"scorerUid"`
 		TeamA           []string `json:"teamA"`
@@ -120,7 +121,11 @@ func ratedGame(raw []byte, owners map[string]string) (RatedGame, bool) {
 	if !agreed(ua) || !agreed(ub) {
 		return RatedGame{}, false
 	}
-	at, err := time.Parse(time.RFC3339Nano, m.UpdatedAt)
+	playedAt := m.FinishedAt
+	if playedAt == "" {
+		playedAt = m.UpdatedAt
+	}
+	at, err := time.Parse(time.RFC3339Nano, playedAt)
 	if err != nil {
 		return RatedGame{}, false
 	}

@@ -120,22 +120,27 @@ export async function startFixture(input: {
     throw new AppError('NOT_FOUND', 'Tournament not found');
   }
   const { state, fixtures } = stateOf(tournament);
-  const existing = fixtures.find((m) => m.round === input.round && m.slot === input.slot);
-  if (existing) {
-    return existing;
-  }
   let a = '';
   let b = '';
+  let matchId = '';
   let label = tournament.name;
   if (state.format === 'knockout') {
     const slot = state.rounds?.[input.round]?.[input.slot];
     a = slot?.a ?? '';
     b = slot?.b ?? '';
+    matchId = slot?.matchId ?? '';
     label = `${tournament.name} - ${roundName(input.round, state.rounds?.length ?? 1)}`;
   } else {
     const pairing = state.pairings?.[input.slot];
     a = pairing?.a ?? '';
     b = pairing?.b ?? '';
+    matchId = pairing?.matchId ?? '';
+  }
+  // The slot's current fixture (a stale one, between players no longer in the slot, does not
+  // count: a fresh fixture is started for the right players).
+  const existing = matchId ? fixtures.find((m) => m.id === matchId) : undefined;
+  if (existing) {
+    return existing;
   }
   if (!a || !b) {
     throw new AppError('INVALID_STATE', 'Both players for this fixture are not known yet.');

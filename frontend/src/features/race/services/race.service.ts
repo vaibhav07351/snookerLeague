@@ -1,8 +1,9 @@
 import { z } from 'zod';
 
 import {
+  compareUnfinished,
+  hasReachedTarget,
   nextActivePlayerId,
-  netRaceScore,
   raceTurnOrder,
 } from '@/features/race/services/race-helpers';
 import { applyPlayerStats } from '@/features/stats/services/stats.service';
@@ -224,14 +225,12 @@ export async function setEntrantScore(
   });
 
   const targetHit = entrants.find(
-    (e) => e.playerId === playerId && e.place === null && e.score >= race.targetScore,
+    (e) => e.playerId === playerId && hasReachedTarget(e, race.targetScore),
   );
   if (targetHit) {
     const place = nextPlace(entrants);
     entrants = entrants.map((e) =>
-      e.playerId === playerId
-        ? { ...e, place, finishedAt: nowIso(), score: Math.max(e.score, race.targetScore) }
-        : e,
+      e.playerId === playerId ? { ...e, place, finishedAt: nowIso() } : e,
     );
   }
 
@@ -322,6 +321,28 @@ export async function undoDnf(raceId: string, playerId: string): Promise<Race> {
   return updated;
 }
 
+/**
+ * Places for players still playing when a race is completed by hand: live score, then fewer
+ * fouls, then more potted. Players level on all three share a place, and the next place
+ * skips accordingly (two players sharing 2nd are followed by 4th).
+ */
+export function placesForUnfinished(entrants: RaceEntrant[]): Map<string, number> {
+  const sorted = entrants.filter((e) => e.place === null).sort(compareUnfinished);
+  const start = nextPlace(entrants);
+  const places = new Map<string, number>();
+  sorted.forEach((entrant, i) => {
+    const prev = sorted[i - 1];
+    const prevPlace = prev ? places.get(prev.playerId) : undefined;
+    places.set(
+      entrant.playerId,
+      prev && prevPlace !== undefined && compareUnfinished(prev, entrant) === 0
+        ? prevPlace
+        : start + i,
+    );
+  });
+  return places;
+}
+
 export async function completeRace(raceId: string): Promise<Race> {
   await loadStore();
   const race = getStore().races.find((r) => r.id === raceId);
@@ -332,22 +353,11 @@ export async function completeRace(raceId: string): Promise<Race> {
     throw new AppError('INVALID_STATE', 'Race already finished');
   }
 
-  const unfinished = race.entrants.filter((e) => e.place === null);
-  const sorted = [...unfinished].sort((a, b) => netRaceScore(b) - netRaceScore(a));
-  let placeCursor = nextPlace(race.entrants);
-  const placeMap = new Map<string, number>();
-  for (const entrant of sorted) {
-    placeMap.set(entrant.playerId, placeCursor);
-    placeCursor += 1;
-  }
-
+  const placeMap = placesForUnfinished(race.entrants);
   const now = nowIso();
   const entrants = race.entrants.map((e) => {
-    if (e.place !== null) {
-      return e;
-    }
-    const place = placeMap.get(e.playerId) ?? placeCursor;
-    return { ...e, place, finishedAt: now };
+    const place = placeMap.get(e.playerId);
+    return e.place === null && place !== undefined ? { ...e, place, finishedAt: now } : e;
   });
 
   const updated: Race = {

@@ -84,16 +84,13 @@ type State struct {
 
 // Derive computes the tournament state from its fixtures.
 func Derive(t Tournament, fixtures []Fixture) (State, error) {
-	byKey := map[[2]int]Fixture{}
+	byKey := map[[2]int][]Fixture{}
 	for _, f := range fixtures {
 		if f.TournamentID != t.ID {
 			continue
 		}
 		key := [2]int{f.Round, f.Slot}
-		// Prefer a finished fixture if a slot was (wrongly) played twice.
-		if prev, ok := byKey[key]; !ok || (!finished(prev) && finished(f)) {
-			byKey[key] = f
-		}
+		byKey[key] = append(byKey[key], f)
 	}
 	switch t.Format {
 	case Knockout:
@@ -102,6 +99,33 @@ func Derive(t Tournament, fixtures []Fixture) (State, error) {
 		return roundRobin(t, byKey), nil
 	}
 	return State{}, fmt.Errorf("unknown tournament format %q", t.Format)
+}
+
+// fixtureFor picks the fixture that counts for a slot: one played by exactly players a and b,
+// a finished one first if the slot was (wrongly) played twice. A fixture between other
+// players is stale: an earlier result was edited after it started (fixtureFor in the app).
+func fixtureFor(fixtures map[[2]int][]Fixture, key [2]int, a, b string) (Fixture, bool) {
+	if a == "" || b == "" {
+		return Fixture{}, false
+	}
+	first := func(team []string) string {
+		if len(team) == 0 {
+			return ""
+		}
+		return team[0]
+	}
+	var found Fixture
+	ok := false
+	for _, f := range fixtures[key] {
+		fa, fb := first(f.TeamA), first(f.TeamB)
+		if !(fa == a && fb == b) && !(fa == b && fb == a) {
+			continue
+		}
+		if !ok || (!finished(found) && finished(f)) {
+			found, ok = f, true
+		}
+	}
+	return found, ok
 }
 
 func finished(f Fixture) bool {
@@ -145,7 +169,7 @@ func bracketSize(entrants int) int {
 	return size
 }
 
-func knockout(t Tournament, fixtures map[[2]int]Fixture) State {
+func knockout(t Tournament, fixtures map[[2]int][]Fixture) State {
 	size := bracketSize(len(t.Entrants))
 	seeds := SeedPositions(size)
 	entrant := func(seed int) string {
@@ -172,11 +196,9 @@ func knockout(t Tournament, fixtures map[[2]int]Fixture) State {
 			case round == 0 && slot.B != "" && slot.A == "":
 				slot.Winner = slot.B
 			default:
-				if f, ok := fixtures[[2]int{round, s}]; ok {
+				if f, ok := fixtureFor(fixtures, [2]int{round, s}, slot.A, slot.B); ok {
 					slot.MatchID, slot.FramesA, slot.FramesB = f.ID, f.Outcome.FramesA, f.Outcome.FramesB
-					if slot.A != "" && slot.B != "" {
-						slot.Winner = winnerOf(f)
-					}
+					slot.Winner = winnerOf(f)
 				}
 			}
 			slots[s] = slot
@@ -201,7 +223,7 @@ func RoundRobinPairs(entrants []string) [][2]string {
 	return out
 }
 
-func roundRobin(t Tournament, fixtures map[[2]int]Fixture) State {
+func roundRobin(t Tournament, fixtures map[[2]int][]Fixture) State {
 	rows := map[string]*Standing{}
 	seed := map[string]int{}
 	for i, id := range t.Entrants {
@@ -213,7 +235,7 @@ func roundRobin(t Tournament, fixtures map[[2]int]Fixture) State {
 	done := 0
 	for i, p := range pairs {
 		pairing := Pairing{Slot: i, A: p[0], B: p[1]}
-		if f, ok := fixtures[[2]int{0, i}]; ok {
+		if f, ok := fixtureFor(fixtures, [2]int{0, i}, p[0], p[1]); ok {
 			pairing.MatchID = f.ID
 			if w := winnerOf(f); w != "" {
 				pairing.Winner = w

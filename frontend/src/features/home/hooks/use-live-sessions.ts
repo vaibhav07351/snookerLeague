@@ -4,6 +4,7 @@ import { replayGroupFrame } from '@/features/group/services/group-frame-engine';
 import * as groupService from '@/features/group/services/group.service';
 import * as matchService from '@/features/match/services/match.service';
 import { listPlayers } from '@/features/players/services/players.service';
+import { compareRaceBoard, netRaceScore } from '@/features/race/services/race-helpers';
 import * as raceService from '@/features/race/services/race.service';
 import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { GroupMatch, Match, Player, Race } from '@/shared/types/domain';
@@ -25,8 +26,9 @@ export function raceResumeCopy(
   race: Race,
   nameOf: (id: string) => string,
 ): { title: string; meta: string } {
-  const leader = [...race.entrants].sort((a, b) => b.score - a.score)[0];
-  const leadLine = leader != null ? `${nameOf(leader.playerId)} ${leader.score}` : 'In progress';
+  const leader = [...race.entrants].sort(compareRaceBoard)[0];
+  const leadLine =
+    leader != null ? `${nameOf(leader.playerId)} ${netRaceScore(leader)}` : 'In progress';
   return {
     title: race.namedLabel ?? `Race to ${race.targetScore}`,
     meta: `${leadLine} · race to ${race.targetScore}`,

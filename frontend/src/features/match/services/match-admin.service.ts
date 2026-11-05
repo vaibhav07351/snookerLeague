@@ -12,6 +12,7 @@ import {
 import {
   formatCanCrown,
   framesToWin,
+  oddBestOf,
   matchFormatOf,
   persistMatchResult,
   tallyFromFrames,
@@ -169,10 +170,10 @@ async function startFromCurrentScoreNow(matchId: string, input: MidwayInput): Pr
   }
   const { framesA, framesB, pointsA, pointsB, redsLeft, atTable } = parsed.data;
   const need = framesToWin(match.bestOf);
-  if (framesA >= need || framesB >= need || framesA + framesB >= match.bestOf) {
+  if (framesA >= need || framesB >= need || framesA + framesB >= oddBestOf(match.bestOf)) {
     throw new AppError(
       'VALIDATION',
-      `In a best of ${match.bestOf}, nobody can have ${need} frames yet`,
+      `In a best of ${oddBestOf(match.bestOf)}, nobody can have ${need} frames yet`,
     );
   }
 
@@ -202,6 +203,7 @@ async function startFromCurrentScoreNow(matchId: string, input: MidwayInput): Pr
     ...match,
     frames,
     outcome: { status: 'in_progress', ...tallyFromFrames(frames) },
+    finishedAt: null,
     openFrame,
     frameStartedAt: null,
     updatedAt: nowIso(),

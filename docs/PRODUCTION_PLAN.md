@@ -504,7 +504,7 @@ starts empty and testers sign in again.
 
 **Goal:** pass Play review, follow the law, give value on day one.
 
-- [x] **18+ accounts** (D5): "I am 18+" check + self-declared age band; no date of birth stored; (done 2026-10-31 as D5 decided: "I am 13 or older" tick box before sign-in, no date of birth on the server, under-18s off public boards and pages)
+- [x] **18+ accounts** (D5): "I am 18+" check + self-declared age band; no date of birth stored; (done 2026-10-31 as D5 decided: "I am 13 or older" tick box before sign-in, no date of birth on the server, under-18s off public boards and pages). Changed 2026-11-05: the date of birth is now kept in the private user settings doc (never the public profile) so returning players are not asked again on every sign-in.
       migrated DOBs are not copied (users under 18 by DOB are flagged and offered deletion).
 - [x] **Account deletion** in app and on a public web page (`/delete-account`), done **by the (done 2026-10-31: DELETE /v1/me + Settings button + /delete-account page; matches in other leagues kept with the card renamed "Deleted player")
       server in one transaction**: revoke sessions, hand over or delete owned leagues, rename cards

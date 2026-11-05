@@ -8,6 +8,7 @@ import {
   replayGroupFrame,
 } from '@/features/group/services/group-frame-engine';
 import {
+  canManageGroupMatch,
   persistGroupMatch,
   requireGroupMatch,
   serializeGroupWrite,
@@ -15,6 +16,7 @@ import {
 import { freeBallValue, tableStateFromShots } from '@/features/match/services/table-state';
 import { AppError } from '@/shared/errors/app-error';
 import { logger } from '@/shared/logging/logger';
+import { getStore } from '@/shared/storage/local-store';
 import type {
   FeedEvent,
   GroupFrame,
@@ -23,6 +25,7 @@ import type {
   GroupShot,
 } from '@/shared/types/domain';
 import { createId, nowIso } from '@/shared/utils/id';
+import { resultEventId } from '@/shared/utils/result-event';
 import { movePlayerAfter } from '@/shared/utils/turn-order';
 
 const ballSchema = z.union([
@@ -161,6 +164,10 @@ export function undoLast(groupId: string): Promise<GroupMatch> {
     if (!lastFrame) {
       throw new AppError('INVALID_STATE', 'Nothing to undo');
     }
+    // Reopening a finished match changes its result: only its creator or the league owner.
+    if (group.status === 'completed' && !canManageGroupMatch(group, getStore().user?.uid)) {
+      throw new AppError('FORBIDDEN', 'Only the match creator or league owner can reopen it');
+    }
     const updated = reopenFrame(group, lastFrame);
     await persistGroupMatch(updated);
     logger.info('group-live.service', 'Last frame reopened', { groupId });
@@ -256,7 +263,7 @@ export function endFrame(groupId: string, winnerId: string): Promise<GroupMatch>
 
 function groupWonEvent(group: GroupMatch, winnerId: string, at: string): FeedEvent {
   return {
-    id: createId('ev'),
+    id: resultEventId(group.id),
     leagueId: group.leagueId,
     type: 'group_won',
     createdAt: at,

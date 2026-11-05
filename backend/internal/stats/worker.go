@@ -10,8 +10,9 @@ import (
 
 // Card is a league player card as the worker needs it.
 type Card struct {
-	ID      string
-	AuthUID string
+	ID        string
+	AuthUID   string
+	UpdatedAt string
 }
 
 // LeagueData is everything one league's numbers are computed from.
@@ -99,25 +100,33 @@ func Compute(d LeagueData) []Standing {
 	return rows
 }
 
-// cityRanks picks, for each person in a city hub, the card with the most games (a person can
-// end up with two cards after a claim) and turns it into their public numbers.
-func cityRanks(d LeagueData, rows []Standing) map[string]CityRank {
+// memberCardID is the stable id of a person's own card in a league (memberPlayerId in the app).
+func memberCardID(leagueID, uid string) string {
+	return "pm_" + leagueID + "_" + uid
+}
+
+// cityRanks picks, for each person in a city hub, one card (a person can end up with two
+// cards after a claim) and turns it into their public numbers. Same rule as the app's
+// hubCardsByUid: the stable-id card first, then the most games, then the latest update.
+func cityRanks(leagueID string, d LeagueData, rows []Standing) map[string]CityRank {
 	byCard := map[string]Standing{}
 	for _, r := range rows {
 		byCard[r.PlayerID] = r
 	}
-	best := map[string]Standing{}
+	best := map[string]cardPick{}
 	for _, c := range d.Cards {
 		if c.AuthUID == "" {
 			continue
 		}
-		s := byCard[c.ID]
-		if cur, ok := best[c.AuthUID]; !ok || s.Standard.Played > cur.Standard.Played {
-			best[c.AuthUID] = s
+		next := cardPick{card: c, s: byCard[c.ID]}
+		cur, ok := best[c.AuthUID]
+		if !ok || betterCard(leagueID, next, cur) {
+			best[c.AuthUID] = next
 		}
 	}
 	out := map[string]CityRank{}
-	for uid, s := range best {
+	for uid, p := range best {
+		s := p.s
 		st := s.Standard
 		out[uid] = CityRank{
 			RankScore: RankScore(st.Played, st.WinPct), Played: st.Played, WinPct: st.WinPct,
@@ -126,6 +135,23 @@ func cityRanks(d LeagueData, rows []Standing) map[string]CityRank {
 		}
 	}
 	return out
+}
+
+// cardPick is one candidate card for a person's city rank, with its numbers.
+type cardPick struct {
+	card Card
+	s    Standing
+}
+
+func betterCard(leagueID string, next, cur cardPick) bool {
+	stable := memberCardID(leagueID, next.card.AuthUID)
+	if (next.card.ID == stable) != (cur.card.ID == stable) {
+		return next.card.ID == stable
+	}
+	if next.s.Standard.Played != cur.s.Standard.Played {
+		return next.s.Standard.Played > cur.s.Standard.Played
+	}
+	return next.card.UpdatedAt > cur.card.UpdatedAt
 }
 
 // Worker recomputes queued leagues in the background, and the public rating periodically.
@@ -202,7 +228,7 @@ func (w *Worker) recompute(ctx context.Context, leagueID string) error {
 		return fmt.Errorf("save standings: %w", err)
 	}
 	if data.Kind == "city" && data.CityID != "" {
-		for uid, rank := range cityRanks(data, rows) {
+		for uid, rank := range cityRanks(leagueID, data, rows) {
 			if err := w.ranks.SetCityRank(ctx, uid, data.CityID, rank); err != nil {
 				return fmt.Errorf("set city rank: %w", err)
 			}

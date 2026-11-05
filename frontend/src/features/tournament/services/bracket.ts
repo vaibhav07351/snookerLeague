@@ -88,23 +88,40 @@ export function roundRobinPairs(entrants: string[]): [string, string][] {
   return out;
 }
 
-function fixtureMap(tournament: Tournament, matches: Match[]): Map<string, Match> {
-  const byKey = new Map<string, Match>();
+/** Every fixture of the tournament, grouped by "round:slot" (a slot can hold stale ones). */
+function fixtureMap(tournament: Tournament, matches: Match[]): Map<string, Match[]> {
+  const byKey = new Map<string, Match[]>();
   for (const m of matches) {
     if (m.tournamentId !== tournament.id || m.round == null || m.slot == null) {
       continue;
     }
     const key = `${m.round}:${m.slot}`;
-    const prev = byKey.get(key);
-    // Prefer a finished fixture if a slot was (wrongly) played twice.
-    if (!prev || (!finished(prev) && finished(m))) {
-      byKey.set(key, m);
-    }
+    byKey.set(key, [...(byKey.get(key) ?? []), m]);
   }
   return byKey;
 }
 
-function knockout(t: Tournament, fixtures: Map<string, Match>): TournamentState {
+/**
+ * The fixture that counts for a slot: one played by exactly these two players, a finished
+ * one first if the slot was (wrongly) played twice. A fixture between other players is stale:
+ * an earlier result was edited after it started, so a different player now holds the slot.
+ */
+function fixtureFor(
+  fixtures: Map<string, Match[]>,
+  key: string,
+  a: string,
+  b: string,
+): Match | undefined {
+  if (!a || !b) {
+    return undefined;
+  }
+  const players = (m: Match): string[] => [m.teamA[0] ?? '', m.teamB[0] ?? ''].sort();
+  const want = [a, b].sort().join('|');
+  const current = (fixtures.get(key) ?? []).filter((m) => players(m).join('|') === want);
+  return current.find(finished) ?? current[0];
+}
+
+function knockout(t: Tournament, fixtures: Map<string, Match[]>): TournamentState {
   const size = bracketSize(t.entrants.length);
   const seeds = seedPositions(size);
   const entrant = (seed: number): string =>
@@ -130,14 +147,12 @@ function knockout(t: Tournament, fixtures: Map<string, Match>): TournamentState 
       } else if (round === 0 && slot.b && !slot.a) {
         slot.winner = slot.b;
       } else {
-        const f = fixtures.get(`${round}:${s}`);
+        const f = fixtureFor(fixtures, `${round}:${s}`, slot.a, slot.b);
         if (f) {
           slot.matchId = f.id;
           slot.framesA = f.outcome.framesA;
           slot.framesB = f.outcome.framesB;
-          if (slot.a && slot.b) {
-            slot.winner = winnerOf(f);
-          }
+          slot.winner = winnerOf(f);
         }
       }
       slots.push(slot);
@@ -154,7 +169,7 @@ function knockout(t: Tournament, fixtures: Map<string, Match>): TournamentState 
   };
 }
 
-function roundRobin(t: Tournament, fixtures: Map<string, Match>): TournamentState {
+function roundRobin(t: Tournament, fixtures: Map<string, Match[]>): TournamentState {
   const rows = new Map<string, RoundRobinRow>();
   const seed = new Map<string, number>();
   t.entrants.forEach((id, i) => {
@@ -173,7 +188,7 @@ function roundRobin(t: Tournament, fixtures: Map<string, Match>): TournamentStat
   let done = 0;
   const pairings: RoundRobinPairing[] = pairs.map(([pa, pb], i) => {
     const pairing: RoundRobinPairing = { slot: i, a: pa, b: pb, winner: '', matchId: '' };
-    const f = fixtures.get(`0:${i}`);
+    const f = fixtureFor(fixtures, `0:${i}`, pa, pb);
     if (!f) {
       return pairing;
     }

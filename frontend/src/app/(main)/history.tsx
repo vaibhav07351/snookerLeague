@@ -11,7 +11,13 @@ import * as matchService from '@/features/match/services/match.service';
 import * as playersService from '@/features/players/services/players.service';
 import * as raceService from '@/features/race/services/race.service';
 import { useStoreReload } from '@/shared/hooks/use-store-reload';
-import type { GroupMatch, Match, Player, Race } from '@/shared/types/domain';
+import {
+  matchPlayedAt,
+  type GroupMatch,
+  type Match,
+  type Player,
+  type Race,
+} from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { formatDateTimeSubtle } from '@/shared/utils/datetime';
@@ -71,7 +77,7 @@ export default function HistoryScreen(): ReactNode {
       matches.length === pageSize || groups.length === pageSize || races.length === pageSize,
     );
     const combined: HistoryItem[] = [
-      ...matches.map((match) => ({ kind: 'match' as const, at: match.updatedAt, match })),
+      ...matches.map((match) => ({ kind: 'match' as const, at: matchPlayedAt(match), match })),
       ...groups.map((group) => ({ kind: 'group' as const, at: group.updatedAt, group })),
       ...races.map((race) => ({ kind: 'race' as const, at: race.updatedAt, race })),
     ]

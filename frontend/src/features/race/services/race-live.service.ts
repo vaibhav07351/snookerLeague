@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 import {
   activePlayerIds,
+  hasReachedTarget,
+  netRaceScore,
   nextActivePlayerId,
   raceTurnOrder,
   withRaceDefaults,
@@ -55,18 +57,12 @@ function applyTarget(
   playerId: string,
   targetScore: number,
 ): RaceEntrant[] {
-  const hit = entrants.find(
-    (e) => e.playerId === playerId && e.place === null && e.score >= targetScore,
-  );
+  const hit = entrants.find((e) => e.playerId === playerId && hasReachedTarget(e, targetScore));
   if (!hit) {
     return entrants;
   }
   const place = nextPlace(entrants);
-  return entrants.map((e) =>
-    e.playerId === playerId
-      ? { ...e, place, finishedAt: nowIso(), score: Math.max(e.score, targetScore) }
-      : e,
-  );
+  return entrants.map((e) => (e.playerId === playerId ? { ...e, place, finishedAt: nowIso() } : e));
 }
 
 function mapEntrant(
@@ -188,7 +184,7 @@ export async function undoLast(raceId: string): Promise<Race> {
     entrants = mapEntrant(entrants, last.playerId, (e) => {
       const score = Math.max(0, e.score - last.points);
       const placed = typeof e.place === 'number';
-      const reopen = placed && score < race.targetScore;
+      const reopen = placed && netRaceScore({ ...e, score }) < race.targetScore;
       return {
         ...e,
         score,

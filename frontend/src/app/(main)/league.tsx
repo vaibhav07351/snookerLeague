@@ -238,14 +238,14 @@ export default function LeagueScreen(): ReactNode {
               value={raceTarget}
               onChangeText={setRaceTarget}
               keyboardType="number-pad"
-              hint="Points needed to win a race"
+              hint="Score after fouls needed to finish a race"
             />
             <TextField
               label="Default best of"
               value={bestOf}
               onChangeText={setBestOf}
               keyboardType="number-pad"
-              hint="Frames in a match. Odd numbers work best (3, 5, 7)."
+              hint="Frames in a match: 1, 3, 5, 7... An even number is saved as the next odd one."
             />
             <Button label="Save settings" onPress={() => void save()} />
             {isCreator ? (

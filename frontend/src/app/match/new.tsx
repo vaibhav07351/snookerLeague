@@ -9,6 +9,8 @@ import { Screen } from '@/shared/ui/Screen';
 import { TextField } from '@/shared/ui/TextField';
 import * as groupService from '@/features/group/services/group.service';
 import * as matchService from '@/features/match/services/match.service';
+import { RulesButton } from '@/features/rules/components/RulesButton';
+import { freeForAllRules, matchRules } from '@/features/rules/services/rules';
 import * as playersService from '@/features/players/services/players.service';
 import { TourTarget } from '@/features/tour/components/TourTarget';
 import { useAutoTour } from '@/features/tour/hooks/use-tour';
@@ -68,7 +70,7 @@ export default function NewMatchScreen(): ReactNode {
   // Set up once per league. Depending on the league object would reset the form every
   // time anything in the league is scored (the object changes on each update).
   const leagueId = league?.id ?? null;
-  const defaultBestOf = league?.defaultBestOf ?? 3;
+  const defaultBestOf = matchService.oddBestOf(league?.defaultBestOf ?? 3);
   useEffect(() => {
     if (!leagueId || !scoringLeagueId) {
       return;
@@ -327,10 +329,15 @@ export default function NewMatchScreen(): ReactNode {
       )}
 
       <View style={[styles.bestOfHead, styles.labelGap]}>
-        <Text style={styles.label}>Best of</Text>
-        <Text style={styles.hint}>
-          {freeForAll ? 'Most frames wins' : `First to ${matchService.framesToWin(bestOf)} wins`}
-        </Text>
+        <View style={styles.bestOfLabel}>
+          <Text style={styles.label}>Best of</Text>
+          <Text style={styles.hint}>
+            {freeForAll
+              ? `Plays ${bestOf}, most frames wins`
+              : `First to ${matchService.framesToWin(bestOf)} wins`}
+          </Text>
+        </View>
+        <RulesButton rules={freeForAll ? freeForAllRules(bestOf) : matchRules(bestOf, format)} />
       </View>
       <View style={styles.bestOfRow}>
         {BEST_OF_OPTIONS.map((n) => (
@@ -634,8 +641,15 @@ const makeStyles = (c: Palette) =>
     },
     bestOfHead: {
       flexDirection: 'row',
-      alignItems: 'baseline',
+      alignItems: 'center',
       justifyContent: 'space-between',
+      gap: spacing.sm,
+    },
+    bestOfLabel: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      flexShrink: 1,
+      gap: spacing.sm,
     },
     bestOfRow: {
       flexDirection: 'row',

@@ -6,6 +6,7 @@ import {
   frameLeaders,
   groupMatchWinner,
   groupStandings,
+  groupWinReason,
   highestBreaksOf,
   nextBreakerId,
   replayGroupFrame,
@@ -148,15 +149,62 @@ describe('groupMatchWinner', () => {
     expect(groupMatchWinner(frames, 3, PLAYERS)).toBe('ravi');
   });
 
-  it('plays a decider when the planned frames end level at the top', () => {
+  it('ends after the planned frames, settling a frame tie on total points', () => {
     const level = [
       frame('ravi', { ravi: 50, amit: 20, sunil: 10 }),
       frame('amit', { ravi: 20, amit: 60, sunil: 10 }),
-      frame('sunil', { ravi: 20, amit: 10, sunil: 70 }),
+      frame('sunil', { ravi: 20, amit: 10, sunil: 75 }),
     ];
-    expect(groupMatchWinner(level, 3, PLAYERS)).toBeNull();
-    const decided = [...level, frame('amit', { ravi: 5, amit: 40, sunil: 30 })];
-    expect(groupMatchWinner(decided, 3, PLAYERS)).toBe('amit');
+    // One frame each; points Ravi 90, Amit 90, Sunil 95.
+    expect(groupMatchWinner(level, 3, PLAYERS)).toBe('sunil');
+  });
+
+  it('settles a tie on frames and points by the latest frame win', () => {
+    const level = [
+      frame('ravi', { ravi: 50, amit: 30, sunil: 20 }),
+      frame('amit', { ravi: 30, amit: 50, sunil: 20 }),
+      frame('sunil', { ravi: 20, amit: 20, sunil: 60 }),
+    ];
+    // Everyone on 1 frame and 100 points: Sunil won last.
+    expect(groupMatchWinner(level, 3, PLAYERS)).toBe('sunil');
+  });
+
+  it('finishes a match that already ran past its planned frames', () => {
+    const over = [
+      frame('ravi', { ravi: 50, amit: 30, sunil: 20 }),
+      frame('amit', { ravi: 30, amit: 50, sunil: 20 }),
+      frame('sunil', { ravi: 20, amit: 20, sunil: 60 }),
+      frame('amit', { ravi: 5, amit: 40, sunil: 30 }),
+    ];
+    expect(groupMatchWinner(over, 3, PLAYERS)).toBe('amit');
+  });
+});
+
+describe('groupWinReason', () => {
+  const row = (playerId: string, framesWon: number, points: number) => ({
+    playerId,
+    framesWon,
+    points,
+  });
+
+  it('names what separated the winner from the runner-up', () => {
+    expect(groupWinReason([row('ravi', 2, 90), row('amit', 1, 120)], 'ravi')).toEqual({
+      kind: 'frames',
+      won: 2,
+      runnerUp: 1,
+    });
+    expect(groupWinReason([row('ravi', 1, 95), row('amit', 1, 90)], 'ravi')).toEqual({
+      kind: 'points',
+      won: 95,
+      runnerUp: 90,
+    });
+    expect(groupWinReason([row('ravi', 1, 90), row('amit', 1, 90)], 'ravi')).toEqual({
+      kind: 'latest_frame',
+    });
+  });
+
+  it('returns null without a runner-up', () => {
+    expect(groupWinReason([row('ravi', 1, 90)], 'ravi')).toBeNull();
   });
 });
 

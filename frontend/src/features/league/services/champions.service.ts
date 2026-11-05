@@ -1,5 +1,5 @@
 import { getStore, loadStore } from '@/shared/storage/local-store';
-import type { Match, MatchFormat, Race } from '@/shared/types/domain';
+import { matchPlayedAt, type Match, type MatchFormat, type Race } from '@/shared/types/domain';
 import { matchFormatOf } from '@/features/match/services/match.service';
 
 export interface TeamChampionRecord {
@@ -47,7 +47,7 @@ export async function listTeamChampionHistory(leagueId: string): Promise<TeamCha
       return {
         kind: 'team' as const,
         matchId: m.id,
-        crownedAt: m.updatedAt,
+        crownedAt: matchPlayedAt(m),
         playerIds: winnerIds,
         namedLabel: m.namedLabel,
         scoreLine: scoreLineFor(m),

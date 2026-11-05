@@ -319,6 +319,11 @@ export interface Match {
   crownsChampion: boolean;
   frames: FrameScore[];
   outcome: MatchOutcome;
+  /**
+   * When the result was decided (ISO). Kept through later edits of a finished match, cleared
+   * when it is reopened. Missing on matches saved before this existed: see `matchPlayedAt`.
+   */
+  finishedAt?: string | null;
   /** Persist auto frame timer preference for this match. */
   timingEnabled?: boolean;
   /** ISO timestamp when the open frame timer started. */
@@ -349,6 +354,14 @@ export interface Match {
    * on their own and merged by this stamp, so a scorer's shot never undoes a settings change.
    */
   settingsUpdatedAt?: string;
+}
+
+/**
+ * When a match was played: its finish time, or the last edit for matches saved before finish
+ * times existed (and for live matches). Use this, not `updatedAt`, to order or window results.
+ */
+export function matchPlayedAt(match: Pick<Match, 'finishedAt' | 'updatedAt'>): string {
+  return match.finishedAt ?? match.updatedAt;
 }
 
 /** Match fields that only change through settings updates, never through a scorer's save. */
@@ -480,6 +493,11 @@ export interface FeedEvent {
   title: string;
   body: string;
   relatedIds: string[];
+  /**
+   * The result this post announced was undone (match reopened or deleted). Kept instead of
+   * deleted because only league owners may delete feed posts; feeds hide it.
+   */
+  retracted?: boolean;
 }
 
 export type TournamentFormat = 'knockout' | 'round_robin';
@@ -551,7 +569,7 @@ export interface CloudUserProfile {
   updatedAt: string;
   cityId: string | null;
   cityName: string | null;
-  /** ISO date YYYY-MM-DD. Kept on this phone only: the server drops it (decision D5). */
+  /** ISO date YYYY-MM-DD. Stored in these private settings only, never on the public profile. */
   dateOfBirth: string | null;
   /** 13+ and community rules accepted (ISO); the server requires it before posting. */
   termsAcceptedAt?: string | null;

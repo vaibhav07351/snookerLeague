@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { MAX_BEST_OF, oddBestOf } from '@/features/match/services/match.service';
 import { makeMemberPlayer } from '@/features/players/services/players.service';
 import { ApiError, apiErrorMeta } from '@/shared/api/client';
 import { loadTokens } from '@/shared/api/tokens';
@@ -330,10 +331,33 @@ export async function setActiveLeague(leagueId: string, uid: string): Promise<Le
   return league;
 }
 
+const leagueDefaultsSchema = z.object({
+  defaultRaceTarget: z.number().int().min(1).max(500).optional(),
+  defaultBestOf: z.number().int().min(1).max(MAX_BEST_OF).optional(),
+  name: z.string().trim().max(60).optional(),
+});
+
+/**
+ * Save the league's defaults. An even "best of" is saved as the next odd number (4 becomes
+ * 5), because a best-of match must have a clear winner.
+ */
 export async function updateLeagueDefaults(
   leagueId: string,
-  defaults: { defaultRaceTarget?: number; defaultBestOf?: number; name?: string },
+  input: { defaultRaceTarget?: number; defaultBestOf?: number; name?: string },
 ): Promise<League> {
+  const parsed = leagueDefaultsSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new AppError(
+      'VALIDATION',
+      `Race target must be 1 to 500 and best of 1 to ${MAX_BEST_OF} frames`,
+    );
+  }
+  const defaults = {
+    ...parsed.data,
+    ...(parsed.data.defaultBestOf !== undefined
+      ? { defaultBestOf: oddBestOf(parsed.data.defaultBestOf) }
+      : {}),
+  };
   await loadStore();
   const league = getStore().leagues.find((l) => l.id === leagueId);
   if (!league) {

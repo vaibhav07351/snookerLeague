@@ -231,8 +231,11 @@ func (s *Service) index(ctx context.Context, userID string, kind Kind, id string
 		if id != userID {
 			return Doc{}, ErrForbidden
 		}
-		// D5: the date of birth stays on the phone; the server never stores it.
-		delete(body, "dateOfBirth")
+		// The date of birth is kept only in these private settings, so a returning player is
+		// not asked again. It never goes on the public profile.
+		if err := keepDateOfBirth(body, current); err != nil {
+			return Doc{}, err
+		}
 		return Doc{OwnerID: userID, CityID: body.str("cityId")}, nil
 	case KindProfile:
 		if id != userID || (body.str("uid") != "" && body.str("uid") != userID) {
@@ -443,6 +446,31 @@ func keepServerRank(body fields, current *Doc) (float64, error) {
 		return current.SortValue, nil
 	}
 	return 0, nil // a new city starts unranked until its hub is recomputed
+}
+
+// keepDateOfBirth checks a sent date of birth (YYYY-MM-DD, not in the future). A write without
+// one keeps the saved date, so a phone that has not restored it yet can never wipe it.
+func keepDateOfBirth(body fields, current *Doc) error {
+	if raw, ok := body["dateOfBirth"]; ok && raw != nil {
+		dob, isStr := raw.(string)
+		parsed, err := time.Parse(time.DateOnly, dob)
+		if !isStr || err != nil || parsed.After(time.Now().UTC()) {
+			return fmt.Errorf("%w: invalid dateOfBirth", ErrBadRequest)
+		}
+		return nil
+	}
+	delete(body, "dateOfBirth")
+	if current == nil {
+		return nil
+	}
+	var cur fields
+	if err := json.Unmarshal(current.Data, &cur); err != nil {
+		return fmt.Errorf("decode user settings: %w", err)
+	}
+	if saved := cur.str("dateOfBirth"); saved != "" {
+		body["dateOfBirth"] = saved
+	}
+	return nil
 }
 
 func rankFields(r stats.CityRank) map[string]any {

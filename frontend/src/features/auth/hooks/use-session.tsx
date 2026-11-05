@@ -9,6 +9,7 @@ import {
 } from 'react';
 
 import * as authService from '@/features/auth/services/auth.service';
+import * as profileService from '@/features/community/services/profile.service';
 import * as safetyService from '@/features/community/services/safety.service';
 import * as leagueService from '@/features/league/services/league.service';
 import { registerForPush } from '@/features/notifications/services/push.service';
@@ -62,6 +63,13 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactNod
         await safetyService.blockedUids();
         void safetyService.refreshBlocks();
         void registerForPush();
+      }
+      if (current?.dateOfBirth) {
+        void profileService.refreshOwnDivision().catch((error: unknown) => {
+          logger.error('use-session', 'Age band refresh failed', {
+            shape: error instanceof Error ? error.name : 'unknown',
+          });
+        });
       }
       setUser(current);
       const active = await leagueService.getActiveLeague();

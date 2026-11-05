@@ -150,10 +150,11 @@ func playerShotTotals(shots []Shot, teamA, teamB []string) map[string]*shotTotal
 	return totals
 }
 
-// sortedBy returns a copy ordered by updatedAt (stable, like Array.prototype.sort).
+// sortedMatches returns a copy ordered by when each match was played (stable, like
+// Array.prototype.sort).
 func sortedMatches(ms []Match) []Match {
 	out := append([]Match(nil), ms...)
-	sort.SliceStable(out, func(i, j int) bool { return out[i].UpdatedAt < out[j].UpdatedAt })
+	sort.SliceStable(out, func(i, j int) bool { return out[i].PlayedAt() < out[j].PlayedAt() })
 	return out
 }
 
@@ -190,7 +191,7 @@ func Standard(playerID string, matches []Match) StandardStats {
 		if m.CrownsChampion && won {
 			s.Titles++
 		}
-		at := m.UpdatedAt
+		at := m.PlayedAt()
 		s.LastPlayedAt = &at
 
 		for _, f := range m.Frames {

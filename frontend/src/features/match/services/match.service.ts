@@ -22,9 +22,11 @@ import { createId, nowIso } from '@/shared/utils/id';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { scheduleSync, type ScheduleItem } from '@/shared/sync';
 import { joinSide } from '@/shared/utils/names';
+import { applyResultEvent, resultEventId } from '@/shared/utils/result-event';
 import {
   FULL_RACK_REDS,
   leagueKindOf,
+  matchPlayedAt,
   type FeedEvent,
   type FrameScore,
   type Match,
@@ -34,18 +36,35 @@ import {
   type TeamChampions,
 } from '@/shared/types/domain';
 
+export const MAX_BEST_OF = 35;
+
 const createMatchSchema = z.object({
   leagueId: z.string().min(1),
   createdByUid: z.string().min(1),
   format: z.enum(['singles', 'doubles', 'one_vs_two']),
   teamA: z.array(z.string().min(1)).min(1).max(2),
   teamB: z.array(z.string().min(1)).min(1).max(2),
-  bestOf: z.number().int().min(1).max(35),
+  bestOf: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_BEST_OF)
+    .refine((n) => n % 2 === 1, 'Best of must be an odd number'),
   namedLabel: z.string().trim().max(40).nullable(),
   crownsChampion: z.boolean(),
 });
 
 const framePointsSchema = z.number().int().min(0).max(1000);
+
+/**
+ * A best-of match is played to a clear winner, so N is odd. An even N (only possible from
+ * older league settings) plays as the next odd number: best of 4 plays as best of 5, which
+ * needs the same 3 frames to win.
+ */
+export function oddBestOf(bestOf: number): number {
+  const whole = Math.min(MAX_BEST_OF, Math.max(1, Math.floor(bestOf)));
+  return whole % 2 === 0 ? whole + 1 : whole;
+}
 
 export function framesToWin(bestOf: number): number {
   return Math.floor(bestOf / 2) + 1;
@@ -60,7 +79,7 @@ function sideCanStillWin(
 ): boolean {
   const need = framesToWin(bestOf);
   const own = side === 'a' ? framesA : framesB;
-  const remaining = Math.max(0, bestOf - framesA - framesB);
+  const remaining = Math.max(0, oddBestOf(bestOf) - framesA - framesB);
   return own + remaining >= need;
 }
 
@@ -114,7 +133,7 @@ export async function listMatches(
   const offset = opts?.offset ?? 0;
   return getStore()
     .matches.filter((m) => m.leagueId === leagueId)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .sort((a, b) => matchPlayedAt(b).localeCompare(matchPlayedAt(a)))
     .slice(offset, offset + limit);
 }
 
@@ -229,7 +248,7 @@ function latestTeamChampions(matches: Match[], leagueId: string): TeamChampions 
   const crowned = matches
     .filter((m) => m.leagueId === leagueId && m.crownsChampion)
     .filter((m) => m.outcome.status === 'completed' || m.outcome.status === 'forfeited')
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+    .sort((a, b) => matchPlayedAt(b).localeCompare(matchPlayedAt(a)))[0];
   if (!crowned || crowned.outcome.status === 'in_progress') {
     return null;
   }
@@ -237,7 +256,7 @@ function latestTeamChampions(matches: Match[], leagueId: string): TeamChampions 
     playerIds: crowned.outcome.winner === 'a' ? crowned.teamA : crowned.teamB,
     matchId: crowned.id,
     namedLabel: crowned.namedLabel,
-    crownedAt: crowned.updatedAt,
+    crownedAt: matchPlayedAt(crowned),
   };
 }
 
@@ -261,6 +280,10 @@ export async function persistMatchResult(
   opts: { event?: FeedEvent; deleted?: boolean } = {},
 ): Promise<Match> {
   const { event, deleted = false } = opts;
+  // The match's one result post: added or replaced when it finishes, withdrawn when the
+  // result is undone (reopened or deleted), left alone when a finished match is edited.
+  const finished = !deleted && match.outcome.status !== 'in_progress';
+  const changed: { event: FeedEvent | null } = { event: null };
   await updateStore((s) => {
     const matches = deleted
       ? s.matches.filter((m) => m.id !== match.id)
@@ -270,7 +293,12 @@ export async function persistMatchResult(
         ? { ...l, reigningTeam: latestTeamChampions(matches, l.id), updatedAt: nowIso() }
         : l,
     );
-    const events = event ? [...s.events, { ...event, updatedAt: event.updatedAt }] : s.events;
+    let events = s.events;
+    if (event || !finished) {
+      const result = applyResultEvent(s.events, match.id, event ?? null, nowIso());
+      events = result.events;
+      changed.event = result.changed;
+    }
     // Derived stats: not an edit of the player, so no updatedAt bump.
     const players = applyPlayerStats(s.players, match.leagueId, {
       matches,
@@ -307,14 +335,15 @@ export async function persistMatchResult(
       fieldsOnly: ['reigningTeam', 'updatedAt'],
     });
   }
-  if (event) {
+  const syncedEvent = changed.event;
+  if (syncedEvent) {
     items.push({
       entity: 'event',
-      docId: event.id,
-      leagueId: event.leagueId,
+      docId: syncedEvent.id,
+      leagueId: syncedEvent.leagueId,
       action: 'upsert',
-      payload: event,
-      updatedAt: event.updatedAt,
+      payload: syncedEvent,
+      updatedAt: syncedEvent.updatedAt,
     });
   }
   // Player stats are not uploaded: the server computes its own from the matches and races
@@ -344,23 +373,40 @@ function durationFromTimer(match: Match): number | undefined {
   return Math.max(0, Math.floor((Date.now() - started) / 1000));
 }
 
-/** The match after a frame list change: outcome, next open frame and clock reset. */
+/**
+ * When the match finished, given its new outcome: now when it has just been decided, the
+ * original time when an already finished match is edited, and null while it is in progress.
+ */
+export function finishedAtFor(match: Match, outcome: MatchOutcome, now: string): string | null {
+  if (outcome.status === 'in_progress') {
+    return null;
+  }
+  if (match.outcome.status !== 'in_progress') {
+    // Matches saved before finish times existed: their last save is the best guess.
+    return match.finishedAt ?? match.updatedAt;
+  }
+  return now;
+}
+
+/** The match after a frame list change: outcome, finish time, next open frame, clock reset. */
 function withFrames(match: Match, frames: FrameScore[], outcome: MatchOutcome): Match {
   const inProgress = outcome.status === 'in_progress';
+  const now = nowIso();
   return {
     ...match,
     frames,
     outcome,
+    finishedAt: finishedAtFor(match, outcome, now),
     // The next frame's clock starts on its first shot.
     frameStartedAt: null,
     openFrame: inProgress ? newOpenFrame(nextBreakerSide(frames), teamsOf(match)) : null,
-    updatedAt: nowIso(),
+    updatedAt: now,
   };
 }
 
 function matchWonEvent(match: Match, updatedAt: string): FeedEvent {
   return {
-    id: createId('ev'),
+    id: resultEventId(match.id),
     leagueId: match.leagueId,
     type: match.crownsChampion ? 'team_crowned' : 'match_won',
     createdAt: updatedAt,
@@ -497,7 +543,7 @@ async function forfeitFrameNow(matchId: string, forfeitedBy: 'a' | 'b'): Promise
     const pointsPart =
       framePointsA > 0 || framePointsB > 0 ? ` · frame ${framePointsA}-${framePointsB}` : '';
     event = {
-      id: createId('ev'),
+      id: resultEventId(match.id),
       leagueId: match.leagueId,
       type: match.crownsChampion ? 'team_crowned' : 'match_won',
       createdAt: updatedAt,
@@ -608,7 +654,13 @@ async function clearFrameDurationNow(matchId: string, frameIndex: number): Promi
     const { durationSeconds: _removed, ...rest } = f;
     return rest;
   });
-  const updated: Match = { ...ctx.match, frames, updatedAt: nowIso() };
+  const now = nowIso();
+  const updated: Match = {
+    ...ctx.match,
+    frames,
+    finishedAt: finishedAtFor(ctx.match, ctx.match.outcome, now),
+    updatedAt: now,
+  };
   await persistMatchResult(updated);
   logger.info('match.service', 'Frame duration cleared', { matchId, frameIndex });
   return updated;
@@ -659,6 +711,7 @@ async function reopenLastFrameNow(matchId: string): Promise<Match> {
     ...match,
     frames,
     outcome: { status: 'in_progress', ...tallyFromFrames(frames) },
+    finishedAt: null,
     openFrame,
     frameStartedAt: null,
     updatedAt: nowIso(),
@@ -699,8 +752,8 @@ export async function getLastMatchPlayedAt(leagueId: string): Promise<string | n
   await loadStore();
   const latest = getStore()
     .matches.filter((m) => m.leagueId === leagueId)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
-  return latest?.updatedAt ?? null;
+    .sort((a, b) => matchPlayedAt(b).localeCompare(matchPlayedAt(a)))[0];
+  return latest ? matchPlayedAt(latest) : null;
 }
 
 export function playerNamesForMatch(

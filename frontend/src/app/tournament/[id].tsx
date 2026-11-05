@@ -6,6 +6,8 @@ import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { useSession } from '@/features/auth/hooks/use-session';
 import { Screen } from '@/shared/ui/Screen';
 import * as playersService from '@/features/players/services/players.service';
+import { RulesButton } from '@/features/rules/components/RulesButton';
+import { tournamentRules } from '@/features/rules/services/rules';
 import { roundName, type TournamentState } from '@/features/tournament/services/bracket';
 import * as tournamentService from '@/features/tournament/services/tournament.service';
 import { getApiBaseUrl } from '@/shared/config/env';
@@ -50,6 +52,8 @@ interface FixtureRowProps {
   onStart: () => void;
   name: (id: string) => string;
   first: boolean;
+  /** Shown for a missing player: "Bye" in round 1 (no opponent), else "TBD" (not decided). */
+  emptyLabel?: string;
 }
 
 /** One fixture as a single tappable line: open the match, or start it when it is ready. */
@@ -63,12 +67,13 @@ function FixtureRow({
   onStart,
   name,
   first,
+  emptyLabel = 'TBD',
 }: FixtureRowProps): ReactNode {
   const styles = useStyles(makeStyles);
   const palette = usePalette();
   const action = matchId ? () => router.push(`/match/${matchId}`) : canStart ? onStart : undefined;
-  const sideA = a ? name(a) : 'TBD';
-  const sideB = b ? name(b) : 'TBD';
+  const sideA = a ? name(a) : emptyLabel;
+  const sideB = b ? name(b) : emptyLabel;
   return (
     <Pressable
       accessibilityRole={action ? 'button' : undefined}
@@ -220,6 +225,7 @@ export default function TournamentScreen(): ReactNode {
             {state.completed ? `Champion: ${name(state.champion)}` : 'In progress'}
           </Text>
         </View>
+        <RulesButton iconOnly rules={tournamentRules(t.format, t.bestOf)} />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Share bracket"
@@ -264,6 +270,7 @@ export default function TournamentScreen(): ReactNode {
                 canStart={!s.matchId && s.a !== '' && s.b !== '' && !s.winner}
                 onStart={() => void start(s.round, s.slot)}
                 name={name}
+                emptyLabel={s.round === 0 ? 'Bye' : 'TBD'}
               />
             ))}
           </Card>
@@ -281,6 +288,10 @@ export default function TournamentScreen(): ReactNode {
           />
           {robinTab === 'table' ? (
             <Card>
+              <View style={styles.tableRow}>
+                <Text style={[styles.tableName, styles.tableHead]}>Player</Text>
+                <Text style={[styles.tableNum, styles.tableHead]}>W-L | Frames +/- | Points</Text>
+              </View>
               {(state.standings ?? []).map((row, i) => (
                 <View key={row.playerId} style={styles.tableRow}>
                   <Text style={styles.tableName} numberOfLines={1}>
@@ -407,5 +418,10 @@ const makeStyles = (c: Palette) =>
       fontFamily: fonts.body,
       fontSize: 13,
       color: c.textMuted,
+    },
+    tableHead: {
+      fontFamily: fonts.bodyBold,
+      fontSize: 11,
+      color: c.textFaint,
     },
   });

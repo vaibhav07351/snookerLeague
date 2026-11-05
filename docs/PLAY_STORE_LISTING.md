@@ -65,6 +65,7 @@ Data is encrypted in transit (HTTPS). Users can request deletion (in app, and th
 | Data type                            | Collected | Shared | Purpose                               | Optional |
 | ------------------------------------ | --------- | ------ | ------------------------------------- | -------- |
 | Name                                 | Yes       | No     | App functionality, account management | No       |
+| Date of birth (other personal info)  | Yes       | No     | App functionality (age band)          | No       |
 | Email address                        | Yes       | No     | Account management                    | No       |
 | Photos (Google profile photo URL)    | Yes       | No     | App functionality                     | Yes      |
 | Approximate location (city)          | Yes       | No     | App functionality (city board)        | Yes      |
@@ -74,7 +75,8 @@ Data is encrypted in transit (HTTPS). Users can request deletion (in app, and th
 | Device or other IDs (push token)     | Yes       | No     | App functionality (notifications)     | Yes      |
 
 "Shared" means given to a third party for their own use; processors (hosting, Sentry, Expo
-push delivery) do not count as sharing. Date of birth stays on the phone and is not collected.
+push delivery) do not count as sharing. Date of birth is stored privately with the account
+settings (so returning players are not asked again); only the age band is shown to others.
 
 ## Before each release
 

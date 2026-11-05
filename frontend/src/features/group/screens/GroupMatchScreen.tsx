@@ -6,6 +6,8 @@ import { GroupFrameEndRow } from '@/features/group/components/GroupFrameEndRow';
 import { GroupLiveBoard } from '@/features/group/components/GroupLiveBoard';
 import { GroupResult } from '@/features/group/components/GroupResult';
 import { useGroupMatch } from '@/features/group/hooks/use-group-match';
+import { RulesButton } from '@/features/rules/components/RulesButton';
+import { freeForAllRules } from '@/features/rules/services/rules';
 import { LiveScoreboard } from '@/features/match/components/LiveScoreboard';
 import { haptic } from '@/shared/feedback/haptics';
 import { useLayout } from '@/shared/hooks/use-layout';
@@ -92,7 +94,7 @@ export function GroupMatchScreen({ groupId }: { groupId: string | undefined }): 
   return (
     <Screen
       footer={
-        !inProgress && group.frames.length > 0 ? (
+        !inProgress && group.frames.length > 0 && canManage ? (
           <Button
             label="Reopen last frame"
             icon="arrow-undo"
@@ -110,12 +112,11 @@ export function GroupMatchScreen({ groupId }: { groupId: string | undefined }): 
           </Text>
           <Text style={[styles.title, { fontSize: scale(24) }]} numberOfLines={1}>
             {inProgress
-              ? frameNumber > group.bestOf
-                ? `Decider · frame ${frameNumber}`
-                : `Frame ${frameNumber} of ${group.bestOf}`
+              ? `Frame ${Math.min(frameNumber, group.bestOf)} of ${group.bestOf}`
               : 'Final'}
           </Text>
         </View>
+        <RulesButton iconOnly rules={freeForAllRules(group.bestOf)} />
         <View style={[styles.statusPill, !inProgress && styles.statusPillDone]}>
           {inProgress ? <View style={styles.liveDot} /> : null}
           <Text style={[styles.statusText, !inProgress && styles.statusTextDone]}>

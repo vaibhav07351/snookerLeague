@@ -1,8 +1,11 @@
 import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { divisionLabel, SNOOKER_DIVISIONS } from '@/features/auth/services/division.service';
+import { MIN_GAMES_FOR_RANK } from '@/features/community/services/profile.service';
+import { RulesButton } from '@/features/rules/components/RulesButton';
+import { cityRules } from '@/features/rules/services/rules';
 import { LeaderboardRow } from '@/features/stats/components/LeaderboardRow';
 import { useCityBoard } from '@/features/stats/hooks/use-city-board';
 import { useLayout } from '@/shared/hooks/use-layout';
@@ -10,7 +13,8 @@ import type { PlayerProfile, SessionUser, SnookerDivision } from '@/shared/types
 import { Chip } from '@/shared/ui/Chip';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { PagedList } from '@/shared/ui/PagedList';
-import { spacing } from '@/theme/tokens';
+import { useStyles } from '@/theme/ThemeProvider';
+import { fonts, spacing, type Palette } from '@/theme/tokens';
 
 type DivisionFilter = 'all' | SnookerDivision;
 
@@ -22,6 +26,7 @@ interface CityBoardProps {
 /** City ranking across clubs, filterable by age division. */
 export function CityBoard({ user, rowHeight }: CityBoardProps): ReactNode {
   const { compact } = useLayout();
+  const styles = useStyles(makeStyles);
   const profiles = useCityBoard(user);
   const [division, setDivision] = useState<DivisionFilter>('all');
   const rows = division === 'all' ? profiles : profiles.filter((p) => p.division === division);
@@ -45,6 +50,12 @@ export function CityBoard({ user, rowHeight }: CityBoardProps): ReactNode {
           />
         ))}
       </ScrollView>
+      <View style={styles.hintRow}>
+        <Text style={styles.hint} numberOfLines={2}>
+          Win % and games played together · {MIN_GAMES_FOR_RANK} games to be ranked
+        </Text>
+        <RulesButton rules={cityRules(MIN_GAMES_FOR_RANK)} />
+      </View>
       <PagedList
         items={ranked}
         rowHeight={rowHeight}
@@ -74,16 +85,28 @@ export function CityBoard({ user, rowHeight }: CityBoardProps): ReactNode {
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    flex: 1,
-    minHeight: 0,
-    gap: spacing.sm,
-  },
-  chipsScroll: {
-    flexGrow: 0,
-  },
-  chips: {
-    gap: spacing.xs,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    wrap: {
+      flex: 1,
+      minHeight: 0,
+      gap: spacing.sm,
+    },
+    chipsScroll: {
+      flexGrow: 0,
+    },
+    chips: {
+      gap: spacing.xs,
+    },
+    hintRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    hint: {
+      flex: 1,
+      fontFamily: fonts.body,
+      fontSize: 12,
+      color: c.textMuted,
+    },
+  });

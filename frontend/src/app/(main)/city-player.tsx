@@ -21,6 +21,7 @@ import type { PlayerProfile } from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { notify } from '@/shared/ui/notify';
+import { confirmAction } from '@/shared/utils/confirm';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
 import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
 
@@ -74,6 +75,14 @@ export default function CityPlayerScreen(): ReactNode {
 
   async function challenge(): Promise<void> {
     if (!user?.cityId || !uid) {
+      return;
+    }
+    const ok = await confirmAction(
+      'Send a challenge?',
+      'Challenges are singles, best of 5 (first to 3 frames), against a player in your city. The result counts on the city board.',
+      'Send challenge',
+    );
+    if (!ok) {
       return;
     }
     setBusy(true);

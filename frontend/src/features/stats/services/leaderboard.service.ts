@@ -1,4 +1,4 @@
-import type { Match, Player, Race } from '@/shared/types/domain';
+import { matchPlayedAt, type Match, type Player, type Race } from '@/shared/types/domain';
 import {
   computeRatings,
   PROVISIONAL_GAMES,
@@ -179,23 +179,23 @@ function rankScored(ctx: ScoreContext): { qualified: Scored[]; waiting: Scored[]
   return { qualified, waiting };
 }
 
-function within<T extends { updatedAt: string }>(
-  list: T[],
-  from: string | null,
-  to: string | null,
-): T[] {
-  return list.filter(
-    (x) => (from == null || x.updatedAt >= from) && (to == null || x.updatedAt < to),
-  );
+/** Items whose time (`at`) falls in [from, to); either bound may be open. */
+function within<T>(list: T[], at: (x: T) => string, from: string | null, to: string | null): T[] {
+  return list.filter((x) => {
+    const t = at(x);
+    return (from == null || t >= from) && (to == null || t < to);
+  });
 }
+
+const raceAt = (race: Race): string => race.updatedAt;
 
 /** One leaderboard: who qualifies, in what order, and how ranks moved this week. */
 export function buildBoard(input: BoardInput): Board {
   const { key, period, players, ratings, now } = input;
   const periodStart =
     period === '30d' ? new Date(now.getTime() - PERIOD_DAYS * DAY_MS).toISOString() : null;
-  const matches = within(input.matches, periodStart, null);
-  const races = within(input.races, periodStart, null);
+  const matches = within(input.matches, matchPlayedAt, periodStart, null);
+  const races = within(input.races, raceAt, periodStart, null);
 
   const ctx: ScoreContext = {
     key,
@@ -217,8 +217,8 @@ export function buildBoard(input: BoardInput): Board {
     const cutoff = new Date(now.getTime() - MOVEMENT_DAYS * DAY_MS).toISOString();
     const before = rankScored({
       ...ctx,
-      matches: within(input.matches, null, cutoff),
-      races: within(input.races, null, cutoff),
+      matches: within(input.matches, matchPlayedAt, null, cutoff),
+      races: within(input.races, raceAt, null, cutoff),
       ratings:
         key === 'rating' ? computeRatings(input.matches, input.races, { before: cutoff }) : ratings,
     });

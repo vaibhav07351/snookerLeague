@@ -30,6 +30,8 @@ import {
   useMatchScreen,
 } from '@/features/match/hooks/use-match-screen';
 import { summarizeMatch } from '@/features/match/services/match-summary';
+import { RulesButton } from '@/features/rules/components/RulesButton';
+import { matchRules } from '@/features/rules/services/rules';
 import { TourTarget } from '@/features/tour/components/TourTarget';
 import { useAutoTour } from '@/features/tour/hooks/use-tour';
 import { notify } from '@/shared/ui/notify';
@@ -112,24 +114,34 @@ export default function MatchDetailScreen(): ReactNode {
     navigation.setOptions({
       title: match ? headerTitle(match) : 'Match',
       headerLeft: () => <HeaderBack fallback="/(main)" />,
-      headerRight:
-        inProgress && matchId
-          ? () => (
-              <MatchTimingHeader
-                enabled={timingOn}
-                pending={!match?.frameStartedAt}
-                elapsedSeconds={elapsed}
-                disabled={busy || !canScore}
-                onToggle={(next) =>
-                  void run('Could not change the timer', () =>
-                    matchService.setMatchTiming(matchId, next),
-                  )
-                }
+      headerRight: match
+        ? () => (
+            <View style={styles.headerRight}>
+              <RulesButton
+                iconOnly
+                rules={matchRules(
+                  matchService.oddBestOf(match.bestOf),
+                  matchService.matchFormatOf(match),
+                )}
               />
-            )
-          : undefined,
+              {inProgress && matchId ? (
+                <MatchTimingHeader
+                  enabled={timingOn}
+                  pending={!match.frameStartedAt}
+                  elapsedSeconds={elapsed}
+                  disabled={busy || !canScore}
+                  onToggle={(next) =>
+                    void run('Could not change the timer', () =>
+                      matchService.setMatchTiming(matchId, next),
+                    )
+                  }
+                />
+              ) : null}
+            </View>
+          )
+        : undefined,
     });
-  }, [navigation, match, matchId, inProgress, timingOn, elapsed, busy, canScore, run]);
+  }, [navigation, match, matchId, inProgress, timingOn, elapsed, busy, canScore, run, styles]);
 
   // Per-frame player lines and the live frame's per-player points (short names: first
   // names, surnames only when two players share a first name).
@@ -440,7 +452,7 @@ export default function MatchDetailScreen(): ReactNode {
             atTablePlayerId={open?.atTablePlayerId ?? null}
             currentBreak={open?.currentBreak ?? 0}
             frameNumber={m.frames.length + 1}
-            bestOf={m.bestOf}
+            bestOf={matchService.oddBestOf(m.bestOf)}
             canSelectPlayer={canScore}
             onSelectPlayer={s.actions.selectPlayer}
           />
@@ -633,6 +645,11 @@ export default function MatchDetailScreen(): ReactNode {
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
+    headerRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 2,
+    },
     content: {
       gap: spacing.md,
     },

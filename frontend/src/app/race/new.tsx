@@ -9,6 +9,8 @@ import { Screen } from '@/shared/ui/Screen';
 import { TextField } from '@/shared/ui/TextField';
 import * as playersService from '@/features/players/services/players.service';
 import * as raceService from '@/features/race/services/race.service';
+import { RulesButton } from '@/features/rules/components/RulesButton';
+import { raceRules } from '@/features/rules/services/rules';
 import { toUserMessage } from '@/shared/errors/app-error';
 import type { Player } from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
@@ -91,7 +93,12 @@ export default function NewRaceScreen(): ReactNode {
         />
       }
     >
-      <Text style={typography.subtitle}>Everyone plays alone. First to the target wins.</Text>
+      <View style={styles.intro}>
+        <Text style={[typography.subtitle, styles.introText]}>
+          Everyone plays alone. Fouls come off your own score. First to the target wins.
+        </Text>
+        <RulesButton rules={raceRules(Number(target) || league?.defaultRaceTarget || 50)} />
+      </View>
 
       <Text style={[styles.label, styles.gap]}>Players</Text>
       {players.length < 2 ? (
@@ -206,6 +213,14 @@ export default function NewRaceScreen(): ReactNode {
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
+    intro: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    introText: {
+      flex: 1,
+    },
     label: {
       fontFamily: fonts.bodyBold,
       fontSize: 11,

@@ -8,7 +8,12 @@ import type {
   RaceStats,
   StandardStats,
 } from '@/shared/types/domain';
-import { emptyGroupStats, emptyRaceStats, emptyStandardStats } from '@/shared/types/domain';
+import {
+  emptyGroupStats,
+  emptyRaceStats,
+  emptyStandardStats,
+  matchPlayedAt,
+} from '@/shared/types/domain';
 import { updateStore } from '@/shared/storage/local-store';
 import { playerShotTotals } from '@/features/match/services/frame-rank';
 import { visitBreaks } from '@/features/match/services/frame-engine';
@@ -32,7 +37,7 @@ export function recomputeStandardStats(playerId: string, matches: Match[]): Stan
   const relevant = matches
     .filter((m) => m.outcome.status !== 'in_progress')
     .filter((m) => m.teamA.includes(playerId) || m.teamB.includes(playerId))
-    .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
+    .sort((a, b) => matchPlayedAt(a).localeCompare(matchPlayedAt(b)));
 
   let wins = 0;
   let streak = 0;
@@ -83,7 +88,7 @@ export function recomputeStandardStats(playerId: string, matches: Match[]): Stan
     if (match.crownsChampion && won) {
       titles += 1;
     }
-    lastPlayedAt = match.updatedAt;
+    lastPlayedAt = matchPlayedAt(match);
 
     for (const frame of match.frames) {
       const shots = frame.shots ?? [];

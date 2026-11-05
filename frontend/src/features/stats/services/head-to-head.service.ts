@@ -1,4 +1,4 @@
-import type { Match, Race } from '@/shared/types/domain';
+import { matchPlayedAt, type Match, type Race } from '@/shared/types/domain';
 
 export type MeetingWinner = 'a' | 'b' | 'draw';
 
@@ -114,7 +114,7 @@ export function headToHead(aId: string, bId: string, matches: Match[], races: Ra
     meetings.push({
       kind: 'match',
       id: match.id,
-      at: match.updatedAt,
+      at: matchPlayedAt(match),
       winner: aWon ? 'a' : 'b',
       score: outcome.status === 'forfeited' ? 'W/O' : `${aFrames}-${bFrames}`,
     });

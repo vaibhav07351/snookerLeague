@@ -96,13 +96,34 @@ func mustPut(t *testing.T, s *Service, user string, k Kind, id, data string) {
 	}
 }
 
-func TestUserDocIsPrivateAndNeverStoresDateOfBirth(t *testing.T) {
+func TestUserDocKeepsDateOfBirthPrivately(t *testing.T) {
 	svc, repo := newSvc()
-	ctx := context.Background()
 	mustPut(t, svc, "u1", KindUser, "u1", `{"uid":"u1","cityId":"pune","dateOfBirth":"2000-01-01"}`)
-	if strings.Contains(string(repo.rows[key(KindUser, "u1")].Data), "dateOfBirth") {
-		t.Fatal("date of birth was stored")
+	if !strings.Contains(string(repo.rows[key(KindUser, "u1")].Data), `"dateOfBirth":"2000-01-01"`) {
+		t.Fatal("date of birth was not stored")
 	}
+	// A phone that has not restored it yet sends null: the saved date must survive.
+	mustPut(t, svc, "u1", KindUser, "u1", `{"uid":"u1","cityId":"pune","dateOfBirth":null}`)
+	if !strings.Contains(string(repo.rows[key(KindUser, "u1")].Data), `"dateOfBirth":"2000-01-01"`) {
+		t.Fatal("a write without a date of birth wiped the saved one")
+	}
+	for _, bad := range []string{`"01-01-2000"`, `"2999-01-01"`, `20000101`} {
+		err := put(t, svc, "u1", KindUser, "u1", `{"uid":"u1","dateOfBirth":`+bad+`}`)
+		if !errors.Is(err, ErrBadRequest) {
+			t.Fatalf("dateOfBirth %s must be rejected, got %v", bad, err)
+		}
+	}
+	// The public profile never carries it.
+	mustPut(t, svc, "u1", KindProfile, "u1", `{"uid":"u1","cityId":"pune","dateOfBirth":"2000-01-01"}`)
+	if strings.Contains(string(repo.rows[key(KindProfile, "u1")].Data), "dateOfBirth") {
+		t.Fatal("date of birth leaked onto the public profile")
+	}
+}
+
+func TestUserDocIsPrivate(t *testing.T) {
+	svc, _ := newSvc()
+	ctx := context.Background()
+	mustPut(t, svc, "u1", KindUser, "u1", `{"uid":"u1","cityId":"pune"}`)
 	if err := put(t, svc, "u2", KindUser, "u1", `{"uid":"u1"}`); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("writing someone else's user doc must be forbidden, got %v", err)
 	}

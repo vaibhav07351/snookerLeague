@@ -1,4 +1,4 @@
-import type { Match, Race } from '@/shared/types/domain';
+import { matchPlayedAt, type Match, type Race } from '@/shared/types/domain';
 
 /**
  * League rating (Elo). Ratings are never stored: they are rebuilt by replaying every
@@ -159,7 +159,7 @@ export function computeRatings(
   const events: RatedEvent[] = [];
   for (const match of matches) {
     if (match.outcome.status !== 'in_progress') {
-      events.push({ at: match.updatedAt, kind: 'match', match });
+      events.push({ at: matchPlayedAt(match), kind: 'match', match });
     }
   }
   for (const race of races) {

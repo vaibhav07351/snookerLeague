@@ -7,6 +7,9 @@ import { Button } from '@/shared/ui/Button';
 import { Screen } from '@/shared/ui/Screen';
 import { TextField } from '@/shared/ui/TextField';
 import * as playersService from '@/features/players/services/players.service';
+import { framesToWin } from '@/features/match/services/match.service';
+import { RulesButton } from '@/features/rules/components/RulesButton';
+import { tournamentRules } from '@/features/rules/services/rules';
 import * as tournamentService from '@/features/tournament/services/tournament.service';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { useStoreReload } from '@/shared/hooks/use-store-reload';
@@ -95,6 +98,12 @@ export default function NewTournamentScreen(): ReactNode {
         step={2}
         onChange={setBestOf}
       />
+      <View style={styles.rulesRow}>
+        <Text style={[styles.hint, styles.rulesHint]}>
+          Every match: first to {framesToWin(bestOf)} frames wins.
+        </Text>
+        <RulesButton rules={tournamentRules(format, bestOf)} />
+      </View>
       <Text style={styles.heading}>Players, in seed order</Text>
       <Text style={styles.hint}>Tap in order of strength: first tap is the top seed.</Text>
       <View style={styles.chips}>
@@ -124,6 +133,15 @@ const makeStyles = (c: Palette) =>
       fontSize: 16,
       color: c.text,
       marginTop: spacing.lg,
+    },
+    rulesRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginTop: spacing.sm,
+    },
+    rulesHint: {
+      flex: 1,
     },
     hint: {
       fontFamily: fonts.body,

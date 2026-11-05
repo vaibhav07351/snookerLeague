@@ -175,6 +175,75 @@
           }
         }
       ]
+    },
+    {
+      "tournament": {
+        "id": "t-stale",
+        "name": "Edited Cup",
+        "format": "knockout",
+        "entrants": [
+          "p1",
+          "p2",
+          "p3",
+          "p4"
+        ]
+      },
+      "matches": [
+        {
+          "id": "s1",
+          "tournamentId": "t-stale",
+          "round": 0,
+          "slot": 0,
+          "teamA": [
+            "p1"
+          ],
+          "teamB": [
+            "p4"
+          ],
+          "outcome": {
+            "status": "completed",
+            "framesA": 1,
+            "framesB": 2,
+            "winner": "b"
+          }
+        },
+        {
+          "id": "s2",
+          "tournamentId": "t-stale",
+          "round": 0,
+          "slot": 1,
+          "teamA": [
+            "p2"
+          ],
+          "teamB": [
+            "p3"
+          ],
+          "outcome": {
+            "status": "completed",
+            "framesA": 2,
+            "framesB": 0,
+            "winner": "a"
+          }
+        },
+        {
+          "id": "s3",
+          "tournamentId": "t-stale",
+          "round": 1,
+          "slot": 0,
+          "teamA": [
+            "p1"
+          ],
+          "teamB": [
+            "p2"
+          ],
+          "outcome": {
+            "status": "completed",
+            "framesA": 2,
+            "framesB": 1,
+            "winner": "a"
+          }
+        }
+      ]
     }
   ],
   "expected": [
@@ -344,6 +413,47 @@
           "framesAgainst": 2,
           "points": 0
         }
+      ],
+      "champion": "",
+      "completed": false
+    },
+    {
+      "format": "knockout",
+      "rounds": [
+        [
+          {
+            "round": 0,
+            "slot": 0,
+            "a": "p1",
+            "b": "p4",
+            "winner": "p4",
+            "matchId": "s1",
+            "framesA": 1,
+            "framesB": 2
+          },
+          {
+            "round": 0,
+            "slot": 1,
+            "a": "p2",
+            "b": "p3",
+            "winner": "p2",
+            "matchId": "s2",
+            "framesA": 2,
+            "framesB": 0
+          }
+        ],
+        [
+          {
+            "round": 1,
+            "slot": 0,
+            "a": "p4",
+            "b": "p2",
+            "winner": "",
+            "matchId": "",
+            "framesA": 0,
+            "framesB": 0
+          }
+        ]
       ],
       "champion": "",
       "completed": false

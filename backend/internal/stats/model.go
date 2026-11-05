@@ -30,13 +30,24 @@ type Outcome struct {
 
 // Match is the part of a match document the numbers depend on.
 type Match struct {
-	ID             string   `json:"id"`
-	UpdatedAt      string   `json:"updatedAt"`
+	ID        string `json:"id"`
+	UpdatedAt string `json:"updatedAt"`
+	// FinishedAt is when the result was decided; later edits only move UpdatedAt.
+	FinishedAt     string   `json:"finishedAt"`
 	TeamA          []string `json:"teamA"`
 	TeamB          []string `json:"teamB"`
 	CrownsChampion bool     `json:"crownsChampion"`
 	Frames         []Frame  `json:"frames"`
 	Outcome        Outcome  `json:"outcome"`
+}
+
+// PlayedAt is when the match was played: its finish time, or the last edit for matches saved
+// before finish times existed (playedAt / matchPlayedAt in the app).
+func (m Match) PlayedAt() string {
+	if m.FinishedAt != "" {
+		return m.FinishedAt
+	}
+	return m.UpdatedAt
 }
 
 // Place is a race finishing place: a number, "dnf", or nothing yet.

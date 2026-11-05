@@ -26,7 +26,8 @@ import {
 import { nowIso } from '@/shared/utils/id';
 
 const CITY_PAGE = 20;
-const MIN_GAMES_FOR_RANK = 3;
+/** Games in the city before a player is ranked on the board. */
+export const MIN_GAMES_FOR_RANK = 3;
 
 const patchSchema = z.object({
   cityId: z.string().nullable().optional(),
@@ -127,6 +128,26 @@ export async function setOwnDateOfBirth(iso: string): Promise<void> {
   await scheduleUserProfileSync();
   await upsertOwnProfile({ division });
   logger.info('profile.service', 'Date of birth saved', { uid: user.uid, division });
+}
+
+/**
+ * Age bands move with birthdays (16, 18, 21, 40, 50), but the saved band only changed when
+ * the date of birth was entered. Called on app start: when today's band differs from the
+ * public profile's, the profile is updated, so a player who turns 18 appears on public boards.
+ */
+export async function refreshOwnDivision(): Promise<void> {
+  await loadStore();
+  const user = getStore().user;
+  if (!user?.dateOfBirth) {
+    return;
+  }
+  const division = divisionFromDob(user.dateOfBirth);
+  const saved = profileFromStore(user.uid)?.division ?? null;
+  if (division === null || division === saved) {
+    return;
+  }
+  await upsertOwnProfile({ division });
+  logger.info('profile.service', 'Age band moved on', { uid: user.uid, from: saved, to: division });
 }
 
 /**

@@ -291,7 +291,7 @@ func divisionLabel(d *string) string {
 	if d == nil {
 		return ""
 	}
-	return map[string]string{"u21": "Under 21", "open": "Open", "masters": "Masters", "seniors": "Seniors"}[*d]
+	return map[string]string{"u21": "Under 21", "open": "Open 21-39", "masters": "Masters 40+", "seniors": "Seniors 50+"}[*d]
 }
 
 type cityRow struct {
@@ -383,7 +383,7 @@ func (h *Handler) privacy(w http.ResponseWriter, _ *http.Request) {
 		Heading: "Privacy policy",
 		Paragraphs: append([]string{
 			"What we collect: your Google account name, email and photo when you sign in; your city if you set one; the leagues, players, matches, races and posts you create; and a push notification token for your phone if you allow notifications.",
-			"What stays on your phone: your date of birth. Only your age band (for example Open or Masters) is shared, and only if you choose to.",
+			"Your date of birth is saved privately with your account settings, so you are not asked again when you sign in on another phone. Nobody else can see it. Only your age band (for example Open or Masters) is shown to others.",
 			"Why: to sync your leagues between phones, show scores and rankings, and let other players find, follow and challenge you.",
 			"Who sees it: members of your leagues see that league's data. City boards and public pages show shortened names and stats, never emails, photos or anyone under 18. We do not sell your data or show ads.",
 			"Where: on our server in India-region cloud hosting, with nightly backups kept for 7 days. Error reports (without your personal details) go to our error tracking service.",

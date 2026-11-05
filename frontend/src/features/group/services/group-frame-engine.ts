@@ -140,7 +140,10 @@ export interface GroupStandingRow {
   points: number;
 }
 
-/** Frames won and total points per player, best first. */
+/**
+ * Frames won and total points per player, best first. Players still level on both are
+ * ordered by who won a frame most recently, so the order is always decided.
+ */
 export function groupStandings(
   frames: readonly GroupFrame[],
   playerIds: readonly string[],
@@ -148,10 +151,12 @@ export function groupStandings(
   const rows = new Map<string, GroupStandingRow>(
     playerIds.map((id) => [id, { playerId: id, framesWon: 0, points: 0 }]),
   );
-  for (const frame of frames) {
+  const lastWin = new Map<string, number>();
+  frames.forEach((frame, index) => {
     const winner = rows.get(frame.winnerId);
     if (winner) {
       winner.framesWon += 1;
+      lastWin.set(frame.winnerId, index);
     }
     for (const [id, pts] of Object.entries(frame.points)) {
       const row = rows.get(id);
@@ -159,14 +164,44 @@ export function groupStandings(
         row.points += pts;
       }
     }
+  });
+  return [...rows.values()].sort(
+    (a, b) =>
+      b.framesWon - a.framesWon ||
+      b.points - a.points ||
+      (lastWin.get(b.playerId) ?? -1) - (lastWin.get(a.playerId) ?? -1),
+  );
+}
+
+/** What separated the winner from the runner-up, in the order the standings are decided. */
+export type GroupWinReason =
+  | { kind: 'frames'; won: number; runnerUp: number }
+  | { kind: 'points'; won: number; runnerUp: number }
+  | { kind: 'latest_frame' };
+
+/** Why `winnerId` tops the table, or null when they are not in it or play alone. */
+export function groupWinReason(
+  standings: readonly GroupStandingRow[],
+  winnerId: string,
+): GroupWinReason | null {
+  const winner = standings.find((r) => r.playerId === winnerId);
+  const runnerUp = standings.find((r) => r.playerId !== winnerId);
+  if (!winner || !runnerUp) {
+    return null;
   }
-  return [...rows.values()].sort((a, b) => b.framesWon - a.framesWon || b.points - a.points);
+  if (winner.framesWon !== runnerUp.framesWon) {
+    return { kind: 'frames', won: winner.framesWon, runnerUp: runnerUp.framesWon };
+  }
+  if (winner.points !== runnerUp.points) {
+    return { kind: 'points', won: winner.points, runnerUp: runnerUp.points };
+  }
+  return { kind: 'latest_frame' };
 }
 
 /**
  * The match winner once decided, else null. A player wins as soon as nobody can catch them in
- * the frames left. If the planned frames are used up with players level on frames, deciders
- * are played until one player is ahead on their own.
+ * the frames left. The match never goes past the planned frames: when they are used up, the
+ * top of the standings wins (frames won, then total points, then the latest frame win).
  */
 export function groupMatchWinner(
   frames: readonly GroupFrame[],
@@ -178,6 +213,9 @@ export function groupMatchWinner(
     return null;
   }
   const remaining = Math.max(0, bestOf - frames.length);
+  if (remaining === 0) {
+    return first.playerId;
+  }
   const chaser = second?.framesWon ?? 0;
   return first.framesWon > chaser + remaining ? first.playerId : null;
 }

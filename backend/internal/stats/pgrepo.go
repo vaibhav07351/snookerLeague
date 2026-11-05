@@ -66,12 +66,13 @@ func (r *PGRepository) Load(ctx context.Context, leagueID string) (LeagueData, b
 			d.Kind, d.CityID, found = l.Kind, l.CityID, true
 		case "player":
 			var p struct {
-				AuthUID *string `json:"authUid"`
+				AuthUID   *string `json:"authUid"`
+				UpdatedAt string  `json:"updatedAt"`
 			}
 			if err := json.Unmarshal(raw, &p); err != nil {
 				return LeagueData{}, false, fmt.Errorf("decode player %s: %w", id, err)
 			}
-			c := Card{ID: id}
+			c := Card{ID: id, UpdatedAt: p.UpdatedAt}
 			if p.AuthUID != nil {
 				c.AuthUID = *p.AuthUID
 			}

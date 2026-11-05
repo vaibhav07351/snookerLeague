@@ -29,13 +29,13 @@ export const TOUR_SCRIPTS: Record<TourId, TourScript> = {
         targetId: 'home.start-match',
         icon: 'play',
         title: 'Start a match',
-        body: 'Singles or doubles. Pick the players and score it live, ball by ball. The app does the maths.',
+        body: 'Singles, doubles, 1 vs 2, or a free-for-all for 3 to 8 players. Score it live, ball by ball. The app does the maths.',
       },
       {
         targetId: 'home.log-race',
         icon: 'flag-outline',
         title: 'Log a race',
-        body: 'Race: everyone plays to a target score. Great for a group night with more than four players.',
+        body: 'Race: everyone plays to a target score, and fouls come off your own score. Great for a group night.',
       },
       {
         targetId: 'home.feed',
@@ -64,8 +64,8 @@ export const TOUR_SCRIPTS: Record<TourId, TourScript> = {
       {
         targetId: 'match-new.format',
         icon: 'people-outline',
-        title: 'Singles or doubles',
-        body: 'Choose 1 v 1 or 2 v 2 first. It sets how many players each side needs.',
+        title: 'Pick the format',
+        body: 'Choose 1 v 1, 2 v 2, 1 v 2 or free-for-all first. It sets how many players you need. "How it works" explains the rules of each.',
       },
       {
         targetId: 'match-new.sides',
@@ -113,7 +113,7 @@ export const TOUR_SCRIPTS: Record<TourId, TourScript> = {
         targetId: 'live.fouls',
         icon: 'warning-outline',
         title: 'Fouls',
-        body: 'Tap the foul value and the points go to the other side.',
+        body: 'Tap the foul value and the points go to the other side. In a free-for-all or race, fouls work differently: see "How it works".',
       },
       {
         targetId: 'live.frame',

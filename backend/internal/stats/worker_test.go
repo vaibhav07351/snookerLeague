@@ -103,3 +103,34 @@ func TestRankScoreNeedsThreeGames(t *testing.T) {
 		t.Fatalf("RankScore(3, 100) = %v, want 138.63 (100 * ln 4, 2 decimals)", got)
 	}
 }
+
+func TestCityRankPrefersTheStableCardLikeTheApp(t *testing.T) {
+	stable := memberCardID("hub", "u1")
+	d := LeagueData{Cards: []Card{
+		{ID: "old-claimed", AuthUID: "u1", UpdatedAt: "2026-01-01T00:00:00Z"},
+		{ID: stable, AuthUID: "u1", UpdatedAt: "2026-02-01T00:00:00Z"},
+	}}
+	rows := []Standing{
+		{PlayerID: "old-claimed", Standard: StandardStats{Played: 9}},
+		{PlayerID: stable, Standard: StandardStats{Played: 2}},
+	}
+	if got := cityRanks("hub", d, rows)["u1"].Played; got != 2 {
+		t.Fatalf("rank must come from the stable card (2 games), got %v", got)
+	}
+}
+
+func TestCityRankFallsBackToMostGamesThenLatest(t *testing.T) {
+	d := LeagueData{Cards: []Card{
+		{ID: "a", AuthUID: "u1", UpdatedAt: "2026-01-01T00:00:00Z"},
+		{ID: "b", AuthUID: "u1", UpdatedAt: "2026-03-01T00:00:00Z"},
+		{ID: "c", AuthUID: "u1", UpdatedAt: "2026-02-01T00:00:00Z"},
+	}}
+	rows := []Standing{
+		{PlayerID: "a", Standard: StandardStats{Played: 4, WinPct: 10}},
+		{PlayerID: "b", Standard: StandardStats{Played: 4, WinPct: 50}},
+		{PlayerID: "c", Standard: StandardStats{Played: 3, WinPct: 90}},
+	}
+	if got := cityRanks("hub", d, rows)["u1"].WinPct; got != 50 {
+		t.Fatalf("expected the most-played, latest card (b), got win %% %v", got)
+	}
+}

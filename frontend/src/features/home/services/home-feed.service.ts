@@ -4,7 +4,8 @@ import { getCityHubForUser } from '@/features/league/services/city-hub.service';
 import { listLiveMatches } from '@/features/match/services/match.service';
 import { getStore } from '@/shared/storage/local-store';
 import type { FeedEvent, GroupMatch, Match, Race } from '@/shared/types/domain';
-import { cityHubId } from '@/shared/types/domain';
+import { cityHubId, matchPlayedAt } from '@/shared/types/domain';
+import { visibleEvents } from '@/shared/utils/result-event';
 
 export type HomeFilter = 'your' | 'played' | 'network' | 'all';
 
@@ -62,7 +63,7 @@ export function listHomeActivity(input: {
   );
 
   if (input.filter === 'all') {
-    return input.events
+    return visibleEvents(input.events)
       .filter((e) => e.leagueId === input.leagueId)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, 20)
@@ -70,7 +71,7 @@ export function listHomeActivity(input: {
   }
 
   if (input.filter === 'your') {
-    return input.events
+    return visibleEvents(input.events)
       .filter(
         (e) =>
           e.leagueId === input.leagueId &&
@@ -91,7 +92,7 @@ export function listHomeActivity(input: {
       )
       .map((m) => ({
         id: m.id,
-        at: m.updatedAt,
+        at: matchPlayedAt(m),
         title: m.namedLabel ?? 'Match',
         body: `${m.outcome.framesA}–${m.outcome.framesB}`,
         href: `/match/${m.id}`,
