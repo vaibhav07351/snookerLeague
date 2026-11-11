@@ -15,7 +15,7 @@ import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { MatchFormat, Player } from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
 import { EmptyState } from '@/shared/ui/EmptyState';
-import { formatDateTimeSubtle } from '@/shared/utils/datetime';
+import { formatGameStart, withDuration } from '@/shared/utils/datetime';
 import { useStyles } from '@/theme/ThemeProvider';
 import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
 
@@ -107,14 +107,16 @@ export default function ChampionsHistoryScreen(): ReactNode {
                   {row.isCurrent ? 'CURRENT' : FORMAT_TAGS[row.format]}
                   {row.viaForfeit ? ' · FORFEIT' : ''}
                 </Text>
-                <Text style={styles.when}>{formatDateTimeSubtle(row.crownedAt)}</Text>
+                <Text style={styles.when}>{formatGameStart(row.startedAt, row.crownedAt)}</Text>
               </View>
               <Text style={styles.names} numberOfLines={2}>
                 {row.playerIds.map((id) => nameOf(id)).join(' & ')}
               </Text>
               <Text style={styles.meta}>
-                {row.namedLabel ? `${row.namedLabel} · ` : ''}
-                {row.scoreLine}
+                {withDuration(
+                  `${row.namedLabel ? `${row.namedLabel} · ` : ''}${row.scoreLine}`,
+                  row.durationSeconds,
+                )}
               </Text>
             </Card>
           ))
@@ -139,14 +141,16 @@ export default function ChampionsHistoryScreen(): ReactNode {
               <Text style={[styles.kind, row.isCurrent && styles.kindCurrent]}>
                 {row.isCurrent ? 'CURRENT KING' : 'RACE'}
               </Text>
-              <Text style={styles.when}>{formatDateTimeSubtle(row.crownedAt)}</Text>
+              <Text style={styles.when}>{formatGameStart(row.startedAt, row.crownedAt)}</Text>
             </View>
             <Text style={styles.names} numberOfLines={2}>
               {nameOf(row.playerId)}
             </Text>
             <Text style={styles.meta}>
-              {row.namedLabel ? `${row.namedLabel} · ` : ''}
-              Race to {row.targetScore}
+              {withDuration(
+                `${row.namedLabel ? `${row.namedLabel} · ` : ''}Race to ${row.targetScore}`,
+                row.durationSeconds,
+              )}
             </Text>
           </Card>
         ))

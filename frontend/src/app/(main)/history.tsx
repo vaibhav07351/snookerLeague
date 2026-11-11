@@ -20,19 +20,40 @@ import {
 } from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
 import { EmptyState } from '@/shared/ui/EmptyState';
-import { formatDateTimeSubtle } from '@/shared/utils/datetime';
+import { formatGameStart, withDuration } from '@/shared/utils/datetime';
+import { totalFrameSeconds } from '@/shared/utils/frame-time';
 import { useStyles } from '@/theme/ThemeProvider';
 import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
 
 type Filter = 'all' | 'match' | 'race';
-/** Free-for-all matches list under "Matches" too: they are matches, just not two-sided. */
+
+/**
+ * Free-for-all matches list under "Matches" too: they are matches, just not two-sided.
+ * `at` is when the game was last played, a fallback when its start time is unreadable.
+ */
 type HistoryItem =
   | { kind: 'match'; at: string; match: Match }
   | { kind: 'group'; at: string; group: GroupMatch }
   | { kind: 'race'; at: string; race: Race };
 
+function startedAtOf(item: HistoryItem): string {
+  switch (item.kind) {
+    case 'match':
+      return item.match.createdAt;
+    case 'group':
+      return item.group.createdAt;
+    case 'race':
+      return item.race.createdAt;
+  }
+}
+
 function filterOf(item: HistoryItem): Filter {
   return item.kind === 'race' ? 'race' : 'match';
+}
+
+/** Date and start time; the result line under it says how long the game took. */
+function whenOf(item: HistoryItem): string {
+  return formatGameStart(startedAtOf(item), item.at);
 }
 
 function idOf(item: HistoryItem): string {
@@ -67,9 +88,9 @@ export default function HistoryScreen(): ReactNode {
       return;
     }
     const [matches, groups, races, roster] = await Promise.all([
-      matchService.listMatches(leagueId, { limit: pageSize }),
-      groupService.listGroupMatches(leagueId, { limit: pageSize }),
-      raceService.listRaces(leagueId, { limit: pageSize }),
+      matchService.listMatches(leagueId, { limit: pageSize, order: 'started' }),
+      groupService.listGroupMatches(leagueId, { limit: pageSize, order: 'started' }),
+      raceService.listRaces(leagueId, { limit: pageSize, order: 'started' }),
       playersService.listPlayers(leagueId),
     ]);
     setPlayers(roster);
@@ -82,7 +103,8 @@ export default function HistoryScreen(): ReactNode {
       ...races.map((race) => ({ kind: 'race' as const, at: race.updatedAt, race })),
     ]
       .filter((row) => filter === 'all' || filterOf(row) === filter)
-      .sort((a, b) => b.at.localeCompare(a.at));
+      // Newest start first, matching the start time each row shows.
+      .sort((a, b) => startedAtOf(b).localeCompare(startedAtOf(a)));
     setItems(combined);
   }, [leagueId, filter, pageSize]);
 
@@ -147,7 +169,7 @@ export default function HistoryScreen(): ReactNode {
           />
         }
         renderItem={({ item }) => {
-          const when = formatDateTimeSubtle(item.at);
+          const when = whenOf(item);
           if (item.kind === 'match') {
             const m = item.match;
             const labels = matchService.playerNamesForMatch(m, nameOf);
@@ -180,7 +202,11 @@ export default function HistoryScreen(): ReactNode {
                 <Text style={styles.title} numberOfLines={2}>
                   {m.namedLabel ?? `${labels.teamA} vs ${labels.teamB}`}
                 </Text>
-                <Text style={styles.meta}>{forfeitLine ?? score}</Text>
+                <Text style={styles.meta}>
+                  {live
+                    ? (forfeitLine ?? score)
+                    : withDuration(forfeitLine ?? score, totalFrameSeconds(m.frames))}
+                </Text>
               </Card>
             );
           }
@@ -201,7 +227,10 @@ export default function HistoryScreen(): ReactNode {
                 </Text>
                 <Text style={styles.meta}>
                   {done
-                    ? `Winner: ${g.winnerId ? nameOf(g.winnerId) : '-'}`
+                    ? withDuration(
+                        `Winner: ${g.winnerId ? nameOf(g.winnerId) : '-'}`,
+                        totalFrameSeconds(g.frames),
+                      )
                     : leader && leader.framesWon > 0
                       ? `${nameOf(leader.playerId)} leads on ${leader.framesWon} frame${leader.framesWon === 1 ? '' : 's'}`
                       : `Frame ${g.frames.length + 1} in progress`}
@@ -224,7 +253,12 @@ export default function HistoryScreen(): ReactNode {
                 {r.namedLabel ?? `Race to ${r.targetScore}`}
               </Text>
               <Text style={styles.meta}>
-                {done ? `1st: ${winner ? nameOf(winner.playerId) : '-'}` : 'In progress'}
+                {done
+                  ? withDuration(
+                      `1st: ${winner ? nameOf(winner.playerId) : '-'}`,
+                      raceService.raceDurationSeconds(r),
+                    )
+                  : 'In progress'}
               </Text>
             </Card>
           );

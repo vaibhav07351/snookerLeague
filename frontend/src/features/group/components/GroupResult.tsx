@@ -9,6 +9,8 @@ import {
 } from '@/features/group/services/group-frame-engine';
 import type { GroupFrame } from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
+import { formatDuration } from '@/shared/utils/datetime';
+import { totalFrameSeconds } from '@/shared/utils/frame-time';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
 import { fonts, spacing, type Palette } from '@/theme/tokens';
 
@@ -35,6 +37,8 @@ export function GroupResult({ winnerId, standings, frames, nameOf }: GroupResult
   const styles = useStyles(makeStyles);
   const palette = usePalette();
   const reason = winnerId ? groupWinReason(standings, winnerId) : null;
+  // Total of the timed frames, as in a two-sided match; null when no frame was timed.
+  const totalSeconds = totalFrameSeconds(frames);
 
   return (
     <View style={styles.wrap}>
@@ -78,7 +82,12 @@ export function GroupResult({ winnerId, standings, frames, nameOf }: GroupResult
         <Card style={styles.table}>
           {frames.map((frame, i) => (
             <View key={i} style={styles.frameRow}>
-              <Text style={styles.frameNo}>Frame {i + 1}</Text>
+              <Text style={styles.frameNo}>
+                Frame {i + 1}
+                {typeof frame.durationSeconds === 'number'
+                  ? ` · ${formatDuration(frame.durationSeconds)}`
+                  : ''}
+              </Text>
               <Text style={styles.frameLine} numberOfLines={2}>
                 {Object.entries(frame.points)
                   .sort(([, a], [, b]) => b - a)
@@ -87,6 +96,9 @@ export function GroupResult({ winnerId, standings, frames, nameOf }: GroupResult
               </Text>
             </View>
           ))}
+          {totalSeconds !== null ? (
+            <Text style={styles.meta}>Time at the table: {formatDuration(totalSeconds)}</Text>
+          ) : null}
         </Card>
       ) : null}
     </View>
@@ -175,6 +187,12 @@ const makeStyles = (c: Palette) =>
       fontSize: 11,
       letterSpacing: 1,
       textTransform: 'uppercase',
+      color: c.textMuted,
+    },
+    meta: {
+      marginTop: spacing.xs,
+      fontFamily: fonts.body,
+      fontSize: 13,
       color: c.textMuted,
     },
     frameLine: {

@@ -1,5 +1,5 @@
-import { router } from 'expo-router';
-import type { ReactNode } from 'react';
+import { router, useNavigation } from 'expo-router';
+import { useLayoutEffect, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { GroupFrameEndRow } from '@/features/group/components/GroupFrameEndRow';
@@ -11,7 +11,9 @@ import { freeForAllRules } from '@/features/rules/services/rules';
 import { LiveScoreboard } from '@/features/match/components/LiveScoreboard';
 import { haptic } from '@/shared/feedback/haptics';
 import { useLayout } from '@/shared/hooks/use-layout';
+import { useLiveElapsed } from '@/shared/hooks/use-live-elapsed';
 import { Button } from '@/shared/ui/Button';
+import { ClockPill } from '@/shared/ui/ClockPill';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { PlayingOrderTiles } from '@/shared/ui/PlayingOrderTiles';
 import { Screen } from '@/shared/ui/Screen';
@@ -27,6 +29,29 @@ export function GroupMatchScreen({ groupId }: { groupId: string | undefined }): 
   const { scale } = useLayout();
   const { group, shortName, fullName, standings, live, canManage, busy, actions } =
     useGroupMatch(groupId);
+
+  // Rules and the frame clock sit on the right of the screen header, as in a two-sided match.
+  // The clock starts on the frame's first shot.
+  const navigation = useNavigation();
+  const frameLive = group?.status === 'in_progress' && group.openFrame != null;
+  const frameStart = group?.openFrame?.startedAt ?? null;
+  const elapsed = useLiveElapsed(frameStart, frameLive);
+  const bestOf = group?.bestOf ?? null;
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight:
+        bestOf === null
+          ? undefined
+          : () => (
+              <View style={styles.headerRight}>
+                <RulesButton iconOnly rules={freeForAllRules(bestOf)} />
+                {frameLive ? (
+                  <ClockPill seconds={elapsed} pending={frameStart === null} label="Frame time" />
+                ) : null}
+              </View>
+            ),
+    });
+  }, [navigation, bestOf, frameLive, elapsed, frameStart, styles]);
 
   if (group === undefined) {
     return (
@@ -117,7 +142,6 @@ export function GroupMatchScreen({ groupId }: { groupId: string | undefined }): 
               : 'Final'}
           </Text>
         </View>
-        <RulesButton iconOnly rules={freeForAllRules(group.bestOf)} />
         <View style={[styles.statusPill, !inProgress && styles.statusPillDone]}>
           {inProgress ? <View style={styles.liveDot} /> : null}
           <Text style={[styles.statusText, !inProgress && styles.statusTextDone]}>
@@ -195,6 +219,11 @@ export function GroupMatchScreen({ groupId }: { groupId: string | undefined }): 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     // Playing order on top, ranked leaderboard below, as in the two-sided match.
+    headerRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 2,
+    },
     tables: {
       gap: spacing.sm,
       marginBottom: spacing.md,

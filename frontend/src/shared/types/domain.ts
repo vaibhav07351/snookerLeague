@@ -59,6 +59,18 @@ export interface GroupStats {
   pointsScored: number;
   highestBreak: number;
   lastPlayedAt: string | null;
+  /*
+   * Frame clock, as in StandardStats but with exact win / loss sums so the stats screen can
+   * combine both. Missing on stats saved before free-for-all frames were timed in stats.
+   */
+  timedFrames?: number;
+  totalFrameSeconds?: number;
+  timedFramesWon?: number;
+  winFrameSeconds?: number;
+  timedFramesLost?: number;
+  lossFrameSeconds?: number;
+  fastestFrameSeconds?: number | null;
+  slowestFrameSeconds?: number | null;
 }
 
 export function emptyGroupStats(): GroupStats {
@@ -71,6 +83,14 @@ export function emptyGroupStats(): GroupStats {
     pointsScored: 0,
     highestBreak: 0,
     lastPlayedAt: null,
+    timedFrames: 0,
+    totalFrameSeconds: 0,
+    timedFramesWon: 0,
+    winFrameSeconds: 0,
+    timedFramesLost: 0,
+    lossFrameSeconds: 0,
+    fastestFrameSeconds: null,
+    slowestFrameSeconds: null,
   };
 }
 
@@ -374,6 +394,18 @@ export const MATCH_SETTINGS_FIELDS = [
 ] as const;
 
 export type ScoringPolicy = 'anyone' | 'chosen';
+
+/**
+ * Order of a game list: 'recent' puts the most recently played first (the default);
+ * 'started' puts the most recently started first, newest createdAt first.
+ */
+export type GameListOrder = 'recent' | 'started';
+
+export interface GameListOptions {
+  limit?: number;
+  offset?: number;
+  order?: GameListOrder;
+}
 
 export type RacePlace = number | 'dnf';
 

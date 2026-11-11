@@ -40,6 +40,7 @@ import { Button } from '@/shared/ui/Button';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { haptic } from '@/shared/feedback/haptics';
 import { EmptyState } from '@/shared/ui/EmptyState';
+import { useLiveElapsed } from '@/shared/hooks/use-live-elapsed';
 import { HeaderBack, useSafeBack } from '@/shared/ui/HeaderBack';
 import { BottomSheet } from '@/shared/ui/BottomSheet';
 import { confirmAction } from '@/shared/utils/confirm';
@@ -50,24 +51,6 @@ import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
 
 /** Time for a bottom sheet's slide-out before another dialog can safely open. */
 const SHEET_CLOSE_MS = 400;
-
-function useLiveElapsed(startedAt: string | null | undefined, enabled: boolean): number {
-  const [elapsed, setElapsed] = useState(0);
-  useEffect(() => {
-    if (!enabled || !startedAt) {
-      setElapsed(0);
-      return undefined;
-    }
-    const start = Date.parse(startedAt);
-    const tick = (): void => {
-      setElapsed(Number.isNaN(start) ? 0 : Math.max(0, Math.floor((Date.now() - start) / 1000)));
-    };
-    tick();
-    const timer = setInterval(tick, 1000);
-    return () => clearInterval(timer);
-  }, [startedAt, enabled]);
-  return elapsed;
-}
 
 function headerTitle(match: Match): string {
   if (match.namedLabel) {

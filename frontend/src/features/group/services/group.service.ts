@@ -5,7 +5,7 @@ import { AppError } from '@/shared/errors/app-error';
 import { logger } from '@/shared/logging/logger';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { scheduleSync, type ScheduleItem } from '@/shared/sync';
-import type { FeedEvent, GroupMatch } from '@/shared/types/domain';
+import type { FeedEvent, GameListOptions, GroupMatch } from '@/shared/types/domain';
 import { createId, nowIso } from '@/shared/utils/id';
 import { applyResultEvent } from '@/shared/utils/result-event';
 import { serializeWrite } from '@/shared/utils/serialize-write';
@@ -30,14 +30,18 @@ export function serializeGroupWrite<T>(groupId: string, write: () => Promise<T>)
 
 export async function listGroupMatches(
   leagueId: string,
-  opts?: { limit?: number; offset?: number },
+  opts?: GameListOptions,
 ): Promise<GroupMatch[]> {
   await loadStore();
   const limit = opts?.limit ?? 50;
   const offset = opts?.offset ?? 0;
   return getStore()
     .groupMatches.filter((g) => g.leagueId === leagueId)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .sort((a, b) =>
+      opts?.order === 'started'
+        ? b.createdAt.localeCompare(a.createdAt)
+        : b.updatedAt.localeCompare(a.updatedAt),
+    )
     .slice(offset, offset + limit);
 }
 

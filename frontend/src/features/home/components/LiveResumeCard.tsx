@@ -9,6 +9,8 @@ interface LiveResumeCardProps {
   eyebrow: string;
   title: string;
   meta: string;
+  /** Optional quiet line under the meta, e.g. when the game was started. */
+  note?: string;
   onPress: () => void;
   /** Idle for 12+ hours: toned down (grey dot, quiet card) with "Open" instead of "Resume". */
   stale?: boolean;
@@ -19,6 +21,7 @@ export function LiveResumeCard({
   eyebrow,
   title,
   meta,
+  note,
   onPress,
   stale = false,
 }: LiveResumeCardProps): ReactNode {
@@ -28,7 +31,7 @@ export function LiveResumeCard({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${action} ${eyebrow}: ${title}`}
+      accessibilityLabel={`${action} ${eyebrow}: ${title}${note ? `. ${note}` : ''}`}
       onPress={onPress}
       style={({ pressed }) => [styles.card, stale && styles.cardStale, pressed && styles.pressed]}
     >
@@ -45,6 +48,11 @@ export function LiveResumeCard({
         <Text style={styles.meta} numberOfLines={1}>
           {meta}
         </Text>
+        {note ? (
+          <Text style={styles.meta} numberOfLines={1}>
+            {note}
+          </Text>
+        ) : null}
       </View>
       <View style={[styles.cta, stale && styles.ctaStale]}>
         <Ionicons

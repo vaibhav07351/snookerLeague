@@ -15,6 +15,37 @@ export function formatDateTimeSubtle(iso: string): string {
   return `${date} · ${time}`;
 }
 
+function parseIso(iso: string | null | undefined): Date | null {
+  if (!iso) {
+    return null;
+  }
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function clockTime(d: Date): string {
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+/**
+ * When a game started, for game rows: its date, then start time, e.g. "19 Sep · 1:42 pm".
+ * Uses `fallbackIso` (e.g. the finish time) when the start time is unreadable.
+ */
+export function formatGameStart(startIso: string, fallbackIso: string): string {
+  return formatDateTimeSubtle(startIso) || formatDateTimeSubtle(fallbackIso);
+}
+
+/** A game's result line with how long it took, e.g. "1st: Aman · 2m 16s"; unchanged if untimed. */
+export function withDuration(text: string, seconds: number | null): string {
+  return seconds === null ? text : `${text} · ${formatDurationCompact(seconds)}`;
+}
+
+/** "Today, 1:42 pm" / "Yesterday, 1:42 pm" / "Sat 19 Sep, 1:42 pm"; '' when unreadable. */
+export function formatDayAndTime(iso: string | null | undefined): string {
+  const d = parseIso(iso);
+  return d ? `${formatLastMatchDay(d.toISOString())}, ${clockTime(d)}` : '';
+}
+
 /**
  * Friendly "last match day" for home.
  * e.g. "Today", "Yesterday", "Sat 19 Sep", "No matches yet".

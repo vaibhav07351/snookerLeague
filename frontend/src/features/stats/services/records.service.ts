@@ -1,4 +1,5 @@
 import type { Player } from '@/shared/types/domain';
+import { combinedFramePace } from '@/features/stats/services/frame-pace';
 import { ratingOf, type RatingTable } from '@/features/stats/services/rating.service';
 import { formatDurationCompact } from '@/shared/utils/datetime';
 
@@ -52,7 +53,10 @@ export function leagueRecords(players: Player[], ratings: RatingTable): LeagueRe
     players.map((player) => ({ player, score: score(player) })).filter((c) => c.score > 0);
 
   const fastest = players
-    .map((player) => ({ player, score: player.stats.standard.fastestFrameSeconds ?? 0 }))
+    .map((player) => ({
+      player,
+      score: combinedFramePace(player.stats.standard, player.stats.group).fastestFrameSeconds ?? 0,
+    }))
     .filter((c) => c.score > 0);
 
   return [

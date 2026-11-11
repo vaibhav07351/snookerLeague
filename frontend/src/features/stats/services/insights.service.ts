@@ -1,3 +1,4 @@
+import { combinedFramePace } from '@/features/stats/services/frame-pace';
 import { emptyGroupStats, type Match, type Player } from '@/shared/types/domain';
 
 /**
@@ -51,7 +52,7 @@ export interface PlayerInsights {
   /** Pots per frame, so heavy and light players compare fairly. Null with no frames. */
   pointsPerFrame: number | null;
   foulsPerFrame: number | null;
-  /** Timed frame pace (doubles share the frame clock). */
+  /** Timed frame pace across matches and free-for-all (doubles share the frame clock). */
   timedFrames: number;
   totalFrameSeconds: number;
   avgFrameSeconds: number | null;
@@ -116,9 +117,9 @@ export function buildPlayerInsights(player: Player, matches: Match[]): PlayerIns
   const lastPlayedAt = lastCandidates.length > 0 ? (lastCandidates.sort().at(-1) ?? null) : null;
   const framesPlayed = countFramesPlayed(player, matches);
 
-  const avgWinFrameSeconds = s.avgWinFrameSeconds ?? null;
-  const avgLossFrameSeconds = s.avgLossFrameSeconds ?? null;
-  const avgFrameSeconds = s.avgFrameSeconds ?? null;
+  // Frame times count two-sided matches and free-for-all frames alike.
+  const pace = combinedFramePace(s, player.stats.group);
+  const { avgWinFrameSeconds, avgLossFrameSeconds, avgFrameSeconds } = pace;
   const paceBars: ChartDatum[] = [];
   if (avgWinFrameSeconds != null) {
     paceBars.push({
@@ -168,13 +169,13 @@ export function buildPlayerInsights(player: Player, matches: Match[]): PlayerIns
     framesPlayed,
     pointsPerFrame: perFrame(s.pointsScored ?? 0, framesPlayed),
     foulsPerFrame: perFrame(s.fouls ?? 0, framesPlayed),
-    timedFrames: s.timedFrames ?? 0,
-    totalFrameSeconds: s.totalFrameSeconds ?? 0,
+    timedFrames: pace.timedFrames,
+    totalFrameSeconds: pace.totalFrameSeconds,
     avgFrameSeconds,
     avgWinFrameSeconds,
     avgLossFrameSeconds,
-    fastestFrameSeconds: s.fastestFrameSeconds ?? null,
-    slowestFrameSeconds: s.slowestFrameSeconds ?? null,
+    fastestFrameSeconds: pace.fastestFrameSeconds,
+    slowestFrameSeconds: pace.slowestFrameSeconds,
     winPaceDeltaSeconds:
       avgWinFrameSeconds != null && avgLossFrameSeconds != null
         ? avgLossFrameSeconds - avgWinFrameSeconds

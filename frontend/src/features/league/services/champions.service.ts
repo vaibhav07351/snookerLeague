@@ -1,11 +1,17 @@
 import { getStore, loadStore } from '@/shared/storage/local-store';
 import { matchPlayedAt, type Match, type MatchFormat, type Race } from '@/shared/types/domain';
 import { matchFormatOf } from '@/features/match/services/match.service';
+import { raceDurationSeconds } from '@/features/race/services/race.service';
+import { totalFrameSeconds } from '@/shared/utils/frame-time';
 
 export interface TeamChampionRecord {
   kind: 'team';
   matchId: string;
+  /** When the title match was started. */
+  startedAt: string;
   crownedAt: string;
+  /** Total of the timed frames; null when no frame was timed. */
+  durationSeconds: number | null;
   playerIds: string[];
   namedLabel: string | null;
   scoreLine: string;
@@ -17,7 +23,10 @@ export interface TeamChampionRecord {
 export interface RaceChampionRecord {
   kind: 'race';
   raceId: string;
+  /** When the crowning race was started. */
+  startedAt: string;
   crownedAt: string;
+  durationSeconds: number | null;
   playerId: string;
   namedLabel: string | null;
   targetScore: number;
@@ -47,7 +56,9 @@ export async function listTeamChampionHistory(leagueId: string): Promise<TeamCha
       return {
         kind: 'team' as const,
         matchId: m.id,
+        startedAt: m.createdAt,
         crownedAt: matchPlayedAt(m),
+        durationSeconds: totalFrameSeconds(m.frames),
         playerIds: winnerIds,
         namedLabel: m.namedLabel,
         scoreLine: scoreLineFor(m),
@@ -75,7 +86,9 @@ export async function listRaceChampionHistory(leagueId: string): Promise<RaceCha
       return {
         kind: 'race' as const,
         raceId: r.id,
+        startedAt: r.createdAt,
         crownedAt,
+        durationSeconds: raceDurationSeconds(r),
         playerId: first?.playerId ?? '',
         namedLabel: r.namedLabel,
         targetScore: r.targetScore,

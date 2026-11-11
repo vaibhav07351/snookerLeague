@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams } from 'expo-router';
-import { useCallback, useState, type ReactNode } from 'react';
+import { useLocalSearchParams, useNavigation } from 'expo-router';
+import { useCallback, useLayoutEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/shared/ui/Button';
@@ -14,6 +14,8 @@ import {
   currentRaceBreak,
   foulPointsOf,
   netRaceScore,
+  raceDurationSeconds,
+  raceStartedAt,
   withRaceDefaults,
 } from '@/features/race/services/race-helpers';
 import * as raceLive from '@/features/race/services/race-live.service';
@@ -22,13 +24,16 @@ import { raceRules } from '@/features/rules/services/rules';
 import * as raceService from '@/features/race/services/race.service';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { useLayout } from '@/shared/hooks/use-layout';
+import { useLiveElapsed } from '@/shared/hooks/use-live-elapsed';
 import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { Player, Race, RacePlace } from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
+import { ClockPill } from '@/shared/ui/ClockPill';
 import { PlayingOrderTiles } from '@/shared/ui/PlayingOrderTiles';
 import { notify } from '@/shared/ui/notify';
 import { SectionTitle } from '@/shared/ui/SectionTitle';
 import { confirmAction } from '@/shared/utils/confirm';
+import { formatDuration } from '@/shared/utils/datetime';
 import { shortNames } from '@/shared/utils/names';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
 import { fonts, makeTypography, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
@@ -92,6 +97,29 @@ export default function RaceDetailScreen(): ReactNode {
 
   useStoreReload(reload, id ?? null);
 
+  // The race clock starts on the first shot, like a match frame.
+  const clockStart = race ? raceStartedAt(race) : null;
+  const racing = race?.status === 'in_progress';
+  const elapsed = useLiveElapsed(clockStart, racing);
+  const navigation = useNavigation();
+  const targetScore = race?.targetScore ?? null;
+  // Rules and the live clock sit on the right of the screen header, as in a two-sided match.
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight:
+        targetScore === null
+          ? undefined
+          : () => (
+              <View style={styles.headerRight}>
+                <RulesButton iconOnly rules={raceRules(targetScore)} />
+                {racing ? (
+                  <ClockPill seconds={elapsed} pending={clockStart === null} label="Race time" />
+                ) : null}
+              </View>
+            ),
+    });
+  }, [navigation, targetScore, racing, elapsed, clockStart, styles]);
+
   if (!race) {
     return (
       <Screen>
@@ -111,6 +139,7 @@ export default function RaceDetailScreen(): ReactNode {
   );
   const shortNameOf = (pid: string): string => compactNames[pid] ?? nameOf(pid);
   const inProgress = race.status === 'in_progress';
+  const finishedSeconds = raceDurationSeconds(race);
 
   const activeIds = race.entrants.filter((e) => e.place === null).map((e) => e.playerId);
   const scoringId =
@@ -212,9 +241,13 @@ export default function RaceDetailScreen(): ReactNode {
           <Text style={[styles.target, { fontSize: scale(26) }]} numberOfLines={1}>
             Race to {race.targetScore}
           </Text>
+          {finishedSeconds !== null ? (
+            <Text style={styles.timeMeta}>
+              Time at the table: {formatDuration(finishedSeconds)}
+            </Text>
+          ) : null}
         </View>
         <View style={styles.metaRow}>
-          <RulesButton iconOnly rules={raceRules(race.targetScore)} />
           {race.crownsRaceChampion ? (
             <View style={styles.crownPill} accessibilityLabel="Crowns race king">
               <Ionicons name="trophy" size={12} color={palette.primary} />
@@ -358,6 +391,11 @@ export default function RaceDetailScreen(): ReactNode {
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
+    headerRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 2,
+    },
     tables: {
       gap: spacing.sm,
       marginBottom: spacing.lg,
@@ -509,6 +547,11 @@ const makeStyles = (c: Palette) =>
       fontFamily: fonts.bodyBold,
       color: c.info,
       fontSize: 14,
+    },
+    timeMeta: {
+      fontFamily: fonts.body,
+      fontSize: 13,
+      color: c.textMuted,
     },
     finalScore: {
       fontFamily: fonts.body,

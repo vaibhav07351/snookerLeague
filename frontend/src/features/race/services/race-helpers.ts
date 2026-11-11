@@ -117,3 +117,35 @@ export function currentRaceBreak(
   }
   return n;
 }
+
+/** When the race clock started: the first logged shot, or null before any shot. */
+export function raceStartedAt(race: Pick<Race, 'liveShots'>): string | null {
+  return race.liveShots?.[0]?.at ?? null;
+}
+
+/** When a finished race ended: the latest finish time of any entrant. */
+function raceEndedAt(race: Pick<Race, 'entrants' | 'updatedAt'>): string {
+  let latest: string | null = null;
+  for (const e of race.entrants) {
+    if (e.finishedAt && (latest === null || e.finishedAt > latest)) {
+      latest = e.finishedAt;
+    }
+  }
+  return latest ?? race.updatedAt;
+}
+
+/**
+ * Seconds a finished race took, or null while it is still in progress or the times are bad.
+ * Races scored only by typing totals have no shots, so their creation time is the start.
+ */
+export function raceDurationSeconds(race: Race): number | null {
+  if (race.status !== 'completed') {
+    return null;
+  }
+  const start = Date.parse(raceStartedAt(race) ?? race.createdAt);
+  const end = Date.parse(raceEndedAt(race));
+  if (Number.isNaN(start) || Number.isNaN(end)) {
+    return null;
+  }
+  return Math.max(0, Math.floor((end - start) / 1000));
+}

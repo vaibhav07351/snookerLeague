@@ -12,7 +12,14 @@ import { logger } from '@/shared/logging/logger';
 import { createId, nowIso } from '@/shared/utils/id';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { scheduleSync, type ScheduleItem } from '@/shared/sync';
-import type { FeedEvent, Race, RaceEntrant, RaceKing, RacePlace } from '@/shared/types/domain';
+import type {
+  FeedEvent,
+  GameListOptions,
+  Race,
+  RaceEntrant,
+  RaceKing,
+  RacePlace,
+} from '@/shared/types/domain';
 
 const createRaceSchema = z.object({
   leagueId: z.string().min(1),
@@ -23,16 +30,20 @@ const createRaceSchema = z.object({
   crownsRaceChampion: z.boolean(),
 });
 
-export async function listRaces(
-  leagueId: string,
-  opts?: { limit?: number; offset?: number },
-): Promise<Race[]> {
+/** How long a finished race took (see race-helpers), part of this feature's public surface. */
+export { raceDurationSeconds } from '@/features/race/services/race-helpers';
+
+export async function listRaces(leagueId: string, opts?: GameListOptions): Promise<Race[]> {
   await loadStore();
   const limit = opts?.limit ?? 50;
   const offset = opts?.offset ?? 0;
   return getStore()
     .races.filter((r) => r.leagueId === leagueId)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .sort((a, b) =>
+      opts?.order === 'started'
+        ? b.createdAt.localeCompare(a.createdAt)
+        : b.updatedAt.localeCompare(a.updatedAt),
+    )
     .slice(offset, offset + limit);
 }
 

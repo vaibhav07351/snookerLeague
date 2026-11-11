@@ -29,6 +29,7 @@ import {
   matchPlayedAt,
   type FeedEvent,
   type FrameScore,
+  type GameListOptions,
   type Match,
   type MatchFormat,
   type MatchOutcome,
@@ -124,16 +125,17 @@ export function matchFormatOf(match: Match): MatchFormat {
   return match.teamA.length === 1 && match.teamB.length === 1 ? 'singles' : 'doubles';
 }
 
-export async function listMatches(
-  leagueId: string,
-  opts?: { limit?: number; offset?: number },
-): Promise<Match[]> {
+export async function listMatches(leagueId: string, opts?: GameListOptions): Promise<Match[]> {
   await loadStore();
   const limit = opts?.limit ?? 50;
   const offset = opts?.offset ?? 0;
   return getStore()
     .matches.filter((m) => m.leagueId === leagueId)
-    .sort((a, b) => matchPlayedAt(b).localeCompare(matchPlayedAt(a)))
+    .sort((a, b) =>
+      opts?.order === 'started'
+        ? b.createdAt.localeCompare(a.createdAt)
+        : matchPlayedAt(b).localeCompare(matchPlayedAt(a)),
+    )
     .slice(offset, offset + limit);
 }
 

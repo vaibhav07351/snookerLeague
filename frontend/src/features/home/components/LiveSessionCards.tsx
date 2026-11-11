@@ -8,12 +8,12 @@ import {
   raceResumeCopy,
   type LiveSessionSet,
 } from '@/features/home/hooks/use-live-sessions';
-import { formatLastMatchDay } from '@/shared/utils/datetime';
+import { formatDayAndTime } from '@/shared/utils/datetime';
 
 interface LiveSessionCardsProps {
   sessions: LiveSessionSet;
   nameOf: (id: string) => string;
-  /** Idle games: quiet cards whose label says when they were last played. */
+  /** Idle games: quiet cards with a line saying when they were started. */
   stale?: boolean;
   /** Runs before navigating, e.g. to close the drawer. */
   onBeforeOpen?: () => void;
@@ -30,8 +30,12 @@ export function LiveSessionCards({
     onBeforeOpen?.();
     router.push(href);
   };
-  const eyebrow = (kind: string, updatedAt: string): string =>
-    stale ? `Unfinished ${kind} · ${formatLastMatchDay(updatedAt)}` : `Live ${kind}`;
+  const eyebrow = (kind: string): string => (stale ? `Unfinished ${kind}` : `Live ${kind}`);
+  // Idle games can be days old, so say when they were started (own line: the eyebrow is short).
+  const startedNote = (createdAt: string): string | undefined => {
+    const started = stale ? formatDayAndTime(createdAt) : '';
+    return started ? `Started ${started}` : undefined;
+  };
 
   return (
     <>
@@ -40,9 +44,10 @@ export function LiveSessionCards({
         return (
           <LiveResumeCard
             key={m.id}
-            eyebrow={eyebrow('match', m.updatedAt)}
+            eyebrow={eyebrow('match')}
             title={copy.title}
             meta={copy.meta}
+            note={startedNote(m.createdAt)}
             stale={stale}
             onPress={() => open(`/match/${m.id}`)}
           />
@@ -53,9 +58,10 @@ export function LiveSessionCards({
         return (
           <LiveResumeCard
             key={r.id}
-            eyebrow={eyebrow('race', r.updatedAt)}
+            eyebrow={eyebrow('race')}
             title={copy.title}
             meta={copy.meta}
+            note={startedNote(r.createdAt)}
             stale={stale}
             onPress={() => open(`/race/${r.id}`)}
           />
@@ -66,9 +72,10 @@ export function LiveSessionCards({
         return (
           <LiveResumeCard
             key={g.id}
-            eyebrow={eyebrow('free-for-all', g.updatedAt)}
+            eyebrow={eyebrow('free-for-all')}
             title={copy.title}
             meta={copy.meta}
+            note={startedNote(g.createdAt)}
             stale={stale}
             onPress={() => open(`/group/${g.id}`)}
           />

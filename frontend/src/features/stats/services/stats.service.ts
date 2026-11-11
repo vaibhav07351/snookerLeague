@@ -15,6 +15,7 @@ import {
   matchPlayedAt,
 } from '@/shared/types/domain';
 import { updateStore } from '@/shared/storage/local-store';
+import { frameSecondsOf } from '@/shared/utils/frame-time';
 import { playerShotTotals } from '@/features/match/services/frame-rank';
 import { visitBreaks } from '@/features/match/services/frame-engine';
 import { highestBreaksOf } from '@/features/group/services/group-frame-engine';
@@ -235,6 +236,14 @@ export function recomputeGroupStats(playerId: string, groupMatches: GroupMatch[]
     .filter((g) => g.status === 'completed' && g.playerIds.includes(playerId))
     .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
   const stats = emptyGroupStats();
+  let timedFrames = 0;
+  let totalFrameSeconds = 0;
+  let timedFramesWon = 0;
+  let winFrameSeconds = 0;
+  let timedFramesLost = 0;
+  let lossFrameSeconds = 0;
+  let fastestFrameSeconds: number | null = null;
+  let slowestFrameSeconds: number | null = null;
   for (const match of relevant) {
     stats.played += 1;
     if (match.winnerId === playerId) {
@@ -248,11 +257,36 @@ export function recomputeGroupStats(playerId: string, groupMatches: GroupMatch[]
       stats.pointsScored += frame.points[playerId] ?? 0;
       const best = highestBreaksOf(frame.shots ?? [])[playerId] ?? 0;
       stats.highestBreak = Math.max(stats.highestBreak, best);
+      const dur = frameSecondsOf(frame);
+      if (dur === null) {
+        continue;
+      }
+      timedFrames += 1;
+      totalFrameSeconds += dur;
+      fastestFrameSeconds = fastestFrameSeconds === null ? dur : Math.min(fastestFrameSeconds, dur);
+      slowestFrameSeconds = slowestFrameSeconds === null ? dur : Math.max(slowestFrameSeconds, dur);
+      if (frame.winnerId === playerId) {
+        timedFramesWon += 1;
+        winFrameSeconds += dur;
+      } else {
+        timedFramesLost += 1;
+        lossFrameSeconds += dur;
+      }
     }
     stats.lastPlayedAt = match.finishedAt ?? match.updatedAt;
   }
   stats.winPct = pct(stats.wins, stats.played);
-  return stats;
+  return {
+    ...stats,
+    timedFrames,
+    totalFrameSeconds,
+    timedFramesWon,
+    winFrameSeconds,
+    timedFramesLost,
+    lossFrameSeconds,
+    fastestFrameSeconds,
+    slowestFrameSeconds,
+  };
 }
 
 /** Results a league's player stats are computed from. */
