@@ -41,8 +41,8 @@ export function RankedList({ rows, accessibilityLabel }: RankedListProps): React
     return null;
   }
   const hasExtra = rows.some((r) => r.extra != null);
-  // Longer labels ("1st", "OUT") get one fixed width so every row's name starts in line.
-  const widePlace = rows.some((r) => r.place.length > 2);
+  // Longer labels ("#1", "1st", "OUT") get one fixed width so every row's name starts in line.
+  const widePlace = rows.some((r) => r.place.length > 1);
 
   return (
     <View style={styles.list} accessibilityRole="summary" accessibilityLabel={accessibilityLabel}>

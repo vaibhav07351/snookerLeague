@@ -13,10 +13,12 @@ export interface PlayerShotTotals {
   fouls: number;
   foulPoints: number;
   net: number;
+  misses: number;
+  safeties: number;
 }
 
 function emptyTotals(): PlayerShotTotals {
-  return { scored: 0, fouls: 0, foulPoints: 0, net: 0 };
+  return { scored: 0, fouls: 0, foulPoints: 0, net: 0, misses: 0, safeties: 0 };
 }
 
 export function playerShotTotals(
@@ -47,6 +49,10 @@ export function playerShotTotals(
     } else if (shot.kind === 'foul') {
       totals[pid].fouls += 1;
       totals[pid].foulPoints += shot.points;
+    } else if (shot.kind === 'miss') {
+      totals[pid].misses += 1;
+    } else if (shot.kind === 'safety') {
+      totals[pid].safeties += 1;
     }
   }
 
@@ -116,8 +122,8 @@ function totalsForManualSingles(
     return null;
   }
   return {
-    [a]: { scored: frame.teamAPoints, fouls: 0, foulPoints: 0, net: frame.teamAPoints },
-    [b]: { scored: frame.teamBPoints, fouls: 0, foulPoints: 0, net: frame.teamBPoints },
+    [a]: { ...emptyTotals(), scored: frame.teamAPoints, net: frame.teamAPoints },
+    [b]: { ...emptyTotals(), scored: frame.teamBPoints, net: frame.teamBPoints },
   };
 }
 

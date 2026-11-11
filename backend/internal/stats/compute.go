@@ -105,7 +105,10 @@ func visitBreaks(shots []Shot) []visit {
 	return out
 }
 
-type shotTotals struct{ scored, fouls, foulPoints float64 }
+type shotTotals struct {
+	scored, fouls, foulPoints float64
+	misses, safeties          int
+}
 
 // playerShotTotals mirrors frame-rank.ts: untagged shots count for the side's last player.
 func playerShotTotals(shots []Shot, teamA, teamB []string) map[string]*shotTotals {
@@ -145,6 +148,10 @@ func playerShotTotals(shots []Shot, teamA, teamB []string) map[string]*shotTotal
 		case "foul":
 			t.fouls++
 			t.foulPoints += s.Points
+		case "miss":
+			t.misses++
+		case "safety":
+			t.safeties++
 		}
 	}
 	return totals
@@ -202,8 +209,19 @@ func Standard(playerID string, matches []Match) StandardStats {
 					break
 				}
 			}
+			// Untagged singles shots still belong to the side's one player, so misses and
+			// safeties count there too; untagged doubles shots have no owner and are skipped.
+			singles := len(m.TeamA) == 1 && len(m.TeamB) == 1
+			var mine *shotTotals
+			if len(f.Shots) > 0 && (tagged || singles) {
+				mine = playerShotTotals(f.Shots, m.TeamA, m.TeamB)[playerID]
+			}
+			if mine != nil {
+				s.Misses += mine.misses
+				s.Safeties += mine.safeties
+			}
 			if tagged {
-				if mine, ok := playerShotTotals(f.Shots, m.TeamA, m.TeamB)[playerID]; ok {
+				if mine != nil {
 					s.PointsScored += mine.scored
 					s.Fouls += int(mine.fouls)
 					s.FoulPoints += mine.foulPoints
@@ -262,6 +280,48 @@ func Standard(playerID string, matches []Match) StandardStats {
 	return s
 }
 
+type raceShots struct {
+	reds, misses, safeties int
+	bestBreak              float64
+}
+
+// raceShotSummary mirrors race-helpers.ts raceShotSummary: a visit is consecutive pots by one
+// player and any other shot ends it.
+func raceShotSummary(shots []RaceShot) map[string]*raceShots {
+	out := map[string]*raceShots{}
+	visitPlayer := ""
+	var visit float64
+	for _, sh := range shots {
+		row, ok := out[sh.PlayerID]
+		if !ok {
+			row = &raceShots{}
+			out[sh.PlayerID] = row
+		}
+		switch sh.Kind {
+		case "pot":
+			if sh.Ball == 1 {
+				row.reds++
+			}
+			if visitPlayer == sh.PlayerID {
+				visit += sh.Points
+			} else {
+				visit = sh.Points
+			}
+			visitPlayer = sh.PlayerID
+			if visit > row.bestBreak {
+				row.bestBreak = visit
+			}
+			continue
+		case "miss":
+			row.misses++
+		case "safety":
+			row.safeties++
+		}
+		visitPlayer, visit = "", 0
+	}
+	return out
+}
+
 // RaceStatsFor computes one player's race statistics (recomputeRaceStats in the app).
 func RaceStatsFor(playerID string, races []Race) RaceStats {
 	ordered := append([]Race(nil), races...)
@@ -281,6 +341,18 @@ func RaceStatsFor(playerID string, races []Race) RaceStats {
 		}
 		if entrant == nil {
 			continue
+		}
+		// Shot numbers count for everyone who played, finished or not.
+		if shots, ok := raceShotSummary(r.LiveShots)[playerID]; ok {
+			s.Reds += shots.reds
+			if shots.reds > s.MostRedsInRace {
+				s.MostRedsInRace = shots.reds
+			}
+			if shots.bestBreak > s.HighestBreak {
+				s.HighestBreak = shots.bestBreak
+			}
+			s.Misses += shots.misses
+			s.Safeties += shots.safeties
 		}
 		s.Played++
 		at := r.UpdatedAt

@@ -161,17 +161,26 @@ export async function recordFoul(raceId: string, points: number): Promise<Race> 
   );
 }
 
-export async function recordMiss(raceId: string): Promise<Race> {
+/** A miss or a safety: no points, and the table passes to the next player. */
+async function recordTurnEnd(raceId: string, kind: 'miss' | 'safety'): Promise<Race> {
   const race = await requireLiveRace(raceId);
   const playerId = atTableId(race);
   const shot: RaceLiveShot = {
     id: createId('rs'),
     at: nowIso(),
     playerId,
-    kind: 'miss',
+    kind,
     points: 0,
   };
   return appendShot(race, shot, nextActivePlayerId(race.entrants, playerId, raceTurnOrder(race)));
+}
+
+export function recordMiss(raceId: string): Promise<Race> {
+  return recordTurnEnd(raceId, 'miss');
+}
+
+export function recordSafety(raceId: string): Promise<Race> {
+  return recordTurnEnd(raceId, 'safety');
 }
 
 export async function undoLast(raceId: string): Promise<Race> {

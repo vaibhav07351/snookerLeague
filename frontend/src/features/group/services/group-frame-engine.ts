@@ -1,5 +1,6 @@
-import type { GroupFrame, GroupShot } from '@/shared/types/domain';
+import { emptyTurnEndTally, tallyTurnEnds, type TurnEndTally } from '@/shared/utils/shot-tally';
 import { nextInTurn } from '@/shared/utils/turn-order';
+import type { GroupFrame, GroupShot } from '@/shared/types/domain';
 
 /** Points per player id. */
 export type PointsByPlayer = Record<string, number>;
@@ -118,6 +119,37 @@ export function highestBreaksOf(shots: readonly GroupShot[]): PointsByPlayer {
     best[visit.playerId] = Math.max(best[visit.playerId] ?? 0, visit.value);
   }
   return best;
+}
+
+/** One player's shot numbers over a whole free-for-all match. */
+export interface GroupPlayerShots extends TurnEndTally {
+  highestBreak: number;
+}
+
+/**
+ * Highest break, misses and safeties per player over finished frames. Players with no logged
+ * shots are absent (frames ended without a shot log add nothing).
+ */
+export function groupMatchShots(frames: readonly GroupFrame[]): Record<string, GroupPlayerShots> {
+  const byPlayer: Record<string, GroupPlayerShots> = {};
+  const rowOf = (playerId: string): GroupPlayerShots => {
+    const row = byPlayer[playerId] ?? { highestBreak: 0, ...emptyTurnEndTally() };
+    byPlayer[playerId] = row;
+    return row;
+  };
+  for (const frame of frames) {
+    const shots = frame.shots ?? [];
+    for (const [playerId, value] of Object.entries(highestBreaksOf(shots))) {
+      const row = rowOf(playerId);
+      row.highestBreak = Math.max(row.highestBreak, value);
+    }
+    for (const [playerId, ends] of Object.entries(tallyTurnEnds(shots))) {
+      const row = rowOf(playerId);
+      row.misses += ends.misses;
+      row.safeties += ends.safeties;
+    }
+  }
+  return byPlayer;
 }
 
 /** Breaks rotate round the table: the next frame is broken by the player after the last breaker. */

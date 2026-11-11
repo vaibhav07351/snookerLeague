@@ -1,19 +1,28 @@
 import type { PlayerCard } from '@/features/stats/hooks/use-player-card';
 import type { RivalRow } from '@/features/stats/services/head-to-head.service';
-import type { ChartTone } from '@/features/stats/services/insights.service';
+import type { ChartTone, TurnEnds } from '@/features/stats/services/insights.service';
 import type { LeagueRecord } from '@/features/stats/services/records.service';
 import { formatDurationCompact } from '@/shared/utils/datetime';
 
-export type DashboardTab = 'overview' | 'breaks' | 'pace' | 'rivals' | 'records';
+/** Main tabs. 'shots' is not a main tab: it sits under Scoring, next to 'breaks'. */
+export type DashboardTab = 'overview' | 'breaks' | 'shots' | 'pace' | 'rivals' | 'records';
 export type DetailKey = 'rating' | 'results' | 'races' | 'pace' | 'scoring';
 
 export const DASHBOARD_TAB_LABELS: Record<DashboardTab, string> = {
   overview: 'Overview',
-  breaks: 'Breaks',
+  breaks: 'Scoring',
+  shots: 'Shots',
   pace: 'Pace',
   rivals: 'Rivals',
   records: 'Records',
 };
+
+/** Second row under the Scoring tab: five main tabs fit a phone, six do not. */
+export const SCORING_VIEWS = [
+  { key: 'breaks', label: 'Breaks' },
+  { key: 'shots', label: 'Shots' },
+] as const satisfies ReadonlyArray<{ key: DashboardTab; label: string }>;
+export type ScoringView = (typeof SCORING_VIEWS)[number]['key'];
 
 /** A tile before it is painted: what it says and what tapping it does. */
 export interface DashboardTile {
@@ -37,6 +46,20 @@ export function duration(seconds: number | null | undefined): string {
 
 function orDash(n: number | null | undefined): string {
   return n == null ? '-' : String(n);
+}
+
+/** "4 in matches · 2 in races", one part per mode that has any; null when none do. */
+function byMode(
+  ends: { matches: TurnEnds; group: TurnEnds; races: TurnEnds },
+  pick: (t: TurnEnds) => number,
+): string | null {
+  const parts = [
+    [pick(ends.matches), 'matches'],
+    [pick(ends.group), 'free-for-all'],
+    [pick(ends.races), 'races'],
+  ] as const;
+  const used = parts.filter(([n]) => n > 0).map(([n, label]) => `${n} in ${label}`);
+  return used.length > 0 ? used.join(' · ') : null;
 }
 
 function rivalTile(
@@ -148,6 +171,51 @@ export function dashboardTiles(
           hint: `${i.foulPoints} pts given away`,
           tone: 'danger',
           detail: 'scoring',
+        },
+      ];
+    case 'shots':
+      return [
+        {
+          key: 'reds',
+          label: 'Reds in races',
+          value: String(i.raceReds),
+          hint: i.raceReds > 0 ? `${i.raceReds * 10} pts from reds` : 'Worth 10 in a race',
+          tone: 'danger',
+        },
+        {
+          key: 'mostReds',
+          label: 'Most reds, one race',
+          value: i.mostRedsInRace > 0 ? String(i.mostRedsInRace) : '-',
+          hint: i.mostRedsInRace > 0 ? 'In a single race' : 'Score races live to count',
+          tone: 'accent',
+        },
+        {
+          key: 'raceBreak',
+          label: 'Best race break',
+          value: i.raceHighestBreak > 0 ? String(i.raceHighestBreak) : '-',
+          hint: 'Red counts 10',
+          tone: 'primary',
+        },
+        {
+          key: 'misses',
+          label: 'Misses',
+          value: String(i.misses),
+          hint: byMode(i.turnEnds, (t) => t.misses) ?? 'Tap Miss when scoring',
+          tone: 'warning',
+        },
+        {
+          key: 'safeties',
+          label: 'Safeties',
+          value: String(i.safeties),
+          hint: byMode(i.turnEnds, (t) => t.safeties) ?? 'Tap Safety when scoring',
+          tone: 'info',
+        },
+        {
+          key: 'safetyPct',
+          label: 'Safe vs miss',
+          value: i.safetyPct == null ? '-' : `${i.safetyPct}%`,
+          hint: 'Safe out of safe + miss',
+          tone: 'success',
         },
       ];
     case 'pace':

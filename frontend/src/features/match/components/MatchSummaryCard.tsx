@@ -35,6 +35,8 @@ export function MatchSummaryCard({
     scored: p.scored,
     foulPoints: p.foulPoints,
     highestBreak: p.highestBreak,
+    misses: p.misses,
+    safeties: p.safeties,
   }));
   const top = summary.topBreak;
   const topName = top

@@ -1,6 +1,10 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { raceDurationSeconds, raceStartedAt } from '@/features/race/services/race-helpers';
+import {
+  raceDurationSeconds,
+  raceShotSummary,
+  raceStartedAt,
+} from '@/features/race/services/race-helpers';
 import type { Race, RaceLiveShot } from '@/shared/types/domain';
 
 function race(overrides: Partial<Race> = {}): Race {
@@ -73,5 +77,49 @@ describe('raceDurationSeconds', () => {
 
   it('is null when a stored time cannot be read', () => {
     expect(raceDurationSeconds(race({ status: 'completed', createdAt: 'bad' }))).toBeNull();
+  });
+});
+
+describe('raceShotSummary', () => {
+  const at = '2026-11-11T10:05:00.000Z';
+  const log = (
+    playerId: string,
+    kind: RaceLiveShot['kind'],
+    ball?: RaceLiveShot['ball'],
+  ): RaceLiveShot => ({
+    id: `${playerId}-${kind}-${ball ?? 0}`,
+    at,
+    playerId,
+    kind,
+    points: kind === 'pot' ? (ball === 1 ? 10 : (ball ?? 0)) : kind === 'foul' ? 4 : 0,
+    ...(ball ? { ball } : {}),
+  });
+
+  it('is empty without shots', () => {
+    expect(raceShotSummary(undefined)).toEqual({});
+  });
+
+  it('counts reds, misses, safeties and the best visit per player', () => {
+    const summary = raceShotSummary([
+      log('a', 'pot', 1),
+      log('a', 'pot', 7),
+      log('a', 'pot', 1),
+      log('a', 'safety'),
+      log('b', 'pot', 2),
+      log('b', 'miss'),
+      log('a', 'pot', 1),
+      log('a', 'foul'),
+      log('b', 'safety'),
+    ]);
+    expect(summary).toEqual({
+      a: { reds: 3, bestBreak: 27, misses: 0, safeties: 1 },
+      b: { reds: 0, bestBreak: 2, misses: 1, safeties: 1 },
+    });
+  });
+
+  it('starts a new visit when another player pots', () => {
+    const summary = raceShotSummary([log('a', 'pot', 5), log('b', 'pot', 6), log('a', 'pot', 5)]);
+    expect(summary.a?.bestBreak).toBe(5);
+    expect(summary.b?.bestBreak).toBe(6);
   });
 });

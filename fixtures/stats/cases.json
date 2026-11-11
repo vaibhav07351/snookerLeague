@@ -1,21 +1,12 @@
 {
   "about": "Shared stats and rating cases. Inputs are app documents; expected is produced by the app's TypeScript (frontend/src/features/stats/services/shared-fixtures.test.ts, run with WRITE_FIXTURES=1) and checked by both Jest and go test (backend/internal/stats).",
-  "players": [
-    "p1",
-    "p2",
-    "p3",
-    "p4"
-  ],
+  "players": ["p1", "p2", "p3", "p4"],
   "matches": [
     {
       "id": "m1",
       "updatedAt": "2026-01-02T10:00:00.000Z",
-      "teamA": [
-        "p1"
-      ],
-      "teamB": [
-        "p2"
-      ],
+      "teamA": ["p1"],
+      "teamB": ["p2"],
       "crownsChampion": true,
       "frames": [
         {
@@ -95,14 +86,8 @@
     {
       "id": "m2",
       "updatedAt": "2026-01-03T10:00:00.000Z",
-      "teamA": [
-        "p1",
-        "p3"
-      ],
-      "teamB": [
-        "p2",
-        "p4"
-      ],
+      "teamA": ["p1", "p3"],
+      "teamB": ["p2", "p4"],
       "crownsChampion": false,
       "frames": [
         {
@@ -149,6 +134,18 @@
               "kind": "pot",
               "points": 4,
               "playerId": "p1"
+            },
+            {
+              "side": "a",
+              "kind": "safety",
+              "points": 0,
+              "playerId": "p3"
+            },
+            {
+              "side": "b",
+              "kind": "miss",
+              "points": 0,
+              "playerId": "p4"
             }
           ]
         }
@@ -163,12 +160,8 @@
     {
       "id": "m3",
       "updatedAt": "2026-01-04T10:00:00.000Z",
-      "teamA": [
-        "p3"
-      ],
-      "teamB": [
-        "p1"
-      ],
+      "teamA": ["p3"],
+      "teamB": ["p1"],
       "crownsChampion": true,
       "frames": [],
       "outcome": {
@@ -182,12 +175,8 @@
     {
       "id": "m4",
       "updatedAt": "2026-01-05T10:00:00.000Z",
-      "teamA": [
-        "p2"
-      ],
-      "teamB": [
-        "p4"
-      ],
+      "teamA": ["p2"],
+      "teamB": ["p4"],
       "crownsChampion": false,
       "frames": [],
       "outcome": {
@@ -199,12 +188,8 @@
     {
       "id": "m5",
       "updatedAt": "2026-01-06T10:00:00.000Z",
-      "teamA": [
-        "p4"
-      ],
-      "teamB": [
-        "p1"
-      ],
+      "teamA": ["p4"],
+      "teamB": ["p1"],
       "crownsChampion": false,
       "frames": [
         {
@@ -257,6 +242,92 @@
           "playerId": "p4",
           "place": 3
         }
+      ],
+      "liveShots": [
+        {
+          "id": "p2-pot-0",
+          "at": "2026-01-02T11:00:00.000Z",
+          "playerId": "p2",
+          "kind": "pot",
+          "points": 10,
+          "ball": 1
+        },
+        {
+          "id": "p2-pot-1",
+          "at": "2026-01-02T11:00:00.000Z",
+          "playerId": "p2",
+          "kind": "pot",
+          "points": 7,
+          "ball": 7
+        },
+        {
+          "id": "p2-pot-2",
+          "at": "2026-01-02T11:00:00.000Z",
+          "playerId": "p2",
+          "kind": "pot",
+          "points": 10,
+          "ball": 1
+        },
+        {
+          "id": "p2-safety-3",
+          "at": "2026-01-02T11:00:00.000Z",
+          "playerId": "p2",
+          "kind": "safety",
+          "points": 0
+        },
+        {
+          "id": "p1-pot-4",
+          "at": "2026-01-02T11:00:00.000Z",
+          "playerId": "p1",
+          "kind": "pot",
+          "points": 10,
+          "ball": 1
+        },
+        {
+          "id": "p1-miss-5",
+          "at": "2026-01-02T11:00:00.000Z",
+          "playerId": "p1",
+          "kind": "miss",
+          "points": 0
+        },
+        {
+          "id": "p3-pot-6",
+          "at": "2026-01-02T11:00:00.000Z",
+          "playerId": "p3",
+          "kind": "pot",
+          "points": 10,
+          "ball": 1
+        },
+        {
+          "id": "p3-safety-7",
+          "at": "2026-01-02T11:00:00.000Z",
+          "playerId": "p3",
+          "kind": "safety",
+          "points": 0
+        },
+        {
+          "id": "p4-pot-8",
+          "at": "2026-01-02T11:00:00.000Z",
+          "playerId": "p4",
+          "kind": "pot",
+          "points": 2,
+          "ball": 2
+        },
+        {
+          "id": "p4-foul-9",
+          "at": "2026-01-02T11:00:00.000Z",
+          "playerId": "p4",
+          "kind": "foul",
+          "points": 4
+        },
+        {
+          "id": "p2-pot-10",
+          "at": "2026-01-02T11:00:00.000Z",
+          "playerId": "p2",
+          "kind": "pot",
+          "points": 10,
+          "ball": 1
+        }
       ]
     },
     {
@@ -293,6 +364,23 @@
           "playerId": "p4",
           "place": null
         }
+      ],
+      "liveShots": [
+        {
+          "id": "p1-pot-0",
+          "at": "2026-01-02T11:00:00.000Z",
+          "playerId": "p1",
+          "kind": "pot",
+          "points": 10,
+          "ball": 1
+        },
+        {
+          "id": "p1-safety-1",
+          "at": "2026-01-02T11:00:00.000Z",
+          "playerId": "p1",
+          "kind": "safety",
+          "points": 0
+        }
       ]
     }
   ],
@@ -323,7 +411,9 @@
         "pointsScored": 160,
         "fouls": 0,
         "foulPoints": 0,
-        "netPoints": 160
+        "netPoints": 160,
+        "misses": 1,
+        "safeties": 0
       },
       "p2": {
         "played": 2,
@@ -350,7 +440,9 @@
         "pointsScored": 109,
         "fouls": 0,
         "foulPoints": 0,
-        "netPoints": 109
+        "netPoints": 109,
+        "misses": 0,
+        "safeties": 0
       },
       "p3": {
         "played": 2,
@@ -377,7 +469,9 @@
         "pointsScored": 1,
         "fouls": 1,
         "foulPoints": 5,
-        "netPoints": -4
+        "netPoints": -4,
+        "misses": 0,
+        "safeties": 1
       },
       "p4": {
         "played": 2,
@@ -404,7 +498,9 @@
         "pointsScored": 102,
         "fouls": 0,
         "foulPoints": 0,
-        "netPoints": 102
+        "netPoints": 102,
+        "misses": 1,
+        "safeties": 1
       }
     },
     "race": {
@@ -418,7 +514,12 @@
         "firstPct": 50,
         "lastPlayedAt": "2026-01-05T12:00:00.000Z",
         "firstStreak": 1,
-        "titles": 0
+        "titles": 0,
+        "reds": 1,
+        "mostRedsInRace": 1,
+        "highestBreak": 10,
+        "misses": 1,
+        "safeties": 0
       },
       "p2": {
         "played": 2,
@@ -430,7 +531,12 @@
         "firstPct": 50,
         "lastPlayedAt": "2026-01-05T12:00:00.000Z",
         "firstStreak": 0,
-        "titles": 1
+        "titles": 1,
+        "reds": 3,
+        "mostRedsInRace": 3,
+        "highestBreak": 27,
+        "misses": 0,
+        "safeties": 1
       },
       "p3": {
         "played": 2,
@@ -442,7 +548,12 @@
         "firstPct": 50,
         "lastPlayedAt": "2026-01-05T12:00:00.000Z",
         "firstStreak": 1,
-        "titles": 0
+        "titles": 0,
+        "reds": 1,
+        "mostRedsInRace": 1,
+        "highestBreak": 10,
+        "misses": 0,
+        "safeties": 1
       },
       "p4": {
         "played": 1,
@@ -454,7 +565,12 @@
         "firstPct": 0,
         "lastPlayedAt": "2026-01-02T12:00:00.000Z",
         "firstStreak": 0,
-        "titles": 0
+        "titles": 0,
+        "reds": 0,
+        "mostRedsInRace": 0,
+        "highestBreak": 2,
+        "misses": 0,
+        "safeties": 0
       }
     },
     "ratings": {
@@ -464,22 +580,8 @@
         "peak": 1019,
         "games": 6,
         "provisional": false,
-        "history": [
-          1016,
-          1019,
-          1003,
-          1010,
-          1015,
-          999
-        ],
-        "form": [
-          1,
-          0,
-          0,
-          1,
-          1,
-          0
-        ],
+        "history": [1016, 1019, 1003, 1010, 1015, 999],
+        "form": [1, 0, 0, 1, 1, 0],
         "currentStreak": 0,
         "bestStreak": 1
       },
@@ -489,18 +591,8 @@
         "peak": 1013,
         "games": 4,
         "provisional": true,
-        "history": [
-          984,
-          997,
-          1013,
-          1000
-        ],
-        "form": [
-          0,
-          1,
-          1,
-          0
-        ],
+        "history": [984, 997, 1013, 1000],
+        "form": [0, 1, 1, 0],
         "currentStreak": 1,
         "bestStreak": 1
       },
@@ -510,18 +602,8 @@
         "peak": 1000,
         "games": 4,
         "provisional": true,
-        "history": [
-          988,
-          972,
-          957,
-          965
-        ],
-        "form": [
-          0,
-          0,
-          -1,
-          1
-        ],
+        "history": [988, 972, 957, 965],
+        "form": [0, 0, -1, 1],
         "currentStreak": 0,
         "bestStreak": 0
       },
@@ -531,16 +613,8 @@
         "peak": 1028,
         "games": 3,
         "provisional": true,
-        "history": [
-          996,
-          1012,
-          1028
-        ],
-        "form": [
-          0,
-          1,
-          1
-        ],
+        "history": [996, 1012, 1028],
+        "form": [0, 1, 1],
         "currentStreak": 2,
         "bestStreak": 2
       }

@@ -28,6 +28,7 @@ interface RaceBallPadProps {
   onPot: (ball: BallValue) => void;
   onFoul: (points: RaceFoulPoints) => void;
   onMiss: () => void;
+  onSafety: () => void;
   onUndo: () => void;
 }
 
@@ -38,6 +39,7 @@ export function RaceBallPad({
   onPot,
   onFoul,
   onMiss,
+  onSafety,
   onUndo,
 }: RaceBallPadProps): ReactNode {
   const styles = useStyles(makeStyles);
@@ -65,7 +67,7 @@ export function RaceBallPad({
       {/* Teaching line only until the first shot; after that it is noise above the pad. */}
       {!canUndo ? (
         <Text style={styles.hint}>
-          A miss or a foul passes the table. Tap a name to pick who scores.
+          A miss, safety or foul passes the table. Tap a name to pick who scores.
         </Text>
       ) : null}
       <View style={styles.cloth}>
@@ -91,9 +93,19 @@ export function RaceBallPad({
           onPress={onMiss}
           style={({ pressed }) => [styles.action, pressed && styles.pressed]}
           accessibilityRole="button"
+          accessibilityLabel={`Miss by ${playerName}`}
         >
           <Ionicons name="swap-horizontal" size={16} color={palette.text} />
           <Text style={styles.actionText}>Miss</Text>
+        </Pressable>
+        <Pressable
+          onPress={onSafety}
+          style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={`Safety by ${playerName}`}
+        >
+          <Ionicons name="shield-outline" size={16} color={palette.text} />
+          <Text style={styles.actionText}>Safety</Text>
         </Pressable>
         <Pressable
           onPress={onUndo}

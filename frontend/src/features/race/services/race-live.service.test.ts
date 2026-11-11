@@ -161,6 +161,17 @@ describe('race ball and foul values', () => {
     await expect(live.recordFoul(id, 5)).rejects.toMatchObject({ code: 'VALIDATION' });
     await expect(live.recordFoul(id, 7)).rejects.toMatchObject({ code: 'VALIDATION' });
   });
+
+  it('logs a safety with no points, passes the table, and undo gives it back', async () => {
+    const { live, id } = await twoPlayerRace(50);
+    let r = await live.recordSafety(id);
+    expect(r.liveShots?.at(-1)).toMatchObject({ playerId: 'ravi', kind: 'safety', points: 0 });
+    expect(r.atTablePlayerId).toBe('amit');
+    expect(r.entrants.every((e) => e.score === 0 && (e.foulPoints ?? 0) === 0)).toBe(true);
+    r = await live.undoLast(id);
+    expect(r.liveShots).toHaveLength(0);
+    expect(r.atTablePlayerId).toBe('ravi');
+  });
 });
 
 describe('placesForUnfinished', () => {

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import {
+  groupMatchShots,
   groupWinReason,
   type GroupStandingRow,
   type GroupWinReason,
@@ -39,6 +40,13 @@ export function GroupResult({ winnerId, standings, frames, nameOf }: GroupResult
   const reason = winnerId ? groupWinReason(standings, winnerId) : null;
   // Total of the timed frames, as in a two-sided match; null when no frame was timed.
   const totalSeconds = totalFrameSeconds(frames);
+  // Best break, misses and safeties: each column only when someone has one.
+  const shots = groupMatchShots(frames);
+  const rows = Object.values(shots);
+  const showBest = rows.some((r) => r.highestBreak > 0);
+  const showMisses = rows.some((r) => r.misses > 0);
+  const showSafeties = rows.some((r) => r.safeties > 0);
+  const count = (n: number | undefined): string => (n && n > 0 ? String(n) : '-');
 
   return (
     <View style={styles.wrap}>
@@ -65,6 +73,9 @@ export function GroupResult({ winnerId, standings, frames, nameOf }: GroupResult
           <Text style={[styles.name, styles.head]}>Player</Text>
           <Text style={[styles.num, styles.head]}>Frames</Text>
           <Text style={[styles.num, styles.head]}>Pts</Text>
+          {showBest ? <Text style={[styles.small, styles.head]}>Best</Text> : null}
+          {showMisses ? <Text style={[styles.small, styles.head]}>Miss</Text> : null}
+          {showSafeties ? <Text style={[styles.small, styles.head]}>Safe</Text> : null}
         </View>
         {standings.map((row, i) => (
           <View key={row.playerId} style={styles.row}>
@@ -74,6 +85,15 @@ export function GroupResult({ winnerId, standings, frames, nameOf }: GroupResult
             </Text>
             <Text style={styles.num}>{row.framesWon}</Text>
             <Text style={styles.num}>{row.points}</Text>
+            {showBest ? (
+              <Text style={styles.small}>{count(shots[row.playerId]?.highestBreak)}</Text>
+            ) : null}
+            {showMisses ? (
+              <Text style={styles.small}>{count(shots[row.playerId]?.misses)}</Text>
+            ) : null}
+            {showSafeties ? (
+              <Text style={styles.small}>{count(shots[row.playerId]?.safeties)}</Text>
+            ) : null}
           </View>
         ))}
       </Card>
@@ -141,10 +161,11 @@ const makeStyles = (c: Palette) =>
     table: {
       gap: spacing.xs,
     },
+    // Tighter gap so names keep room when Best, Miss and Safe are all shown.
     row: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.sm,
+      gap: 6,
       minHeight: 32,
     },
     head: {
@@ -172,11 +193,20 @@ const makeStyles = (c: Palette) =>
       color: c.primary,
     },
     num: {
-      minWidth: 48,
+      minWidth: 44,
       textAlign: 'right',
       fontFamily: fonts.bodyBold,
       fontSize: 15,
       color: c.text,
+    },
+    // Secondary counts: narrower and quieter than frames and points.
+    small: {
+      width: 30,
+      textAlign: 'right',
+      fontFamily: fonts.bodyMedium,
+      fontSize: 13,
+      color: c.textMuted,
+      fontVariant: ['tabular-nums'],
     },
     frameRow: {
       gap: 2,

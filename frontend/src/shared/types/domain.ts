@@ -34,6 +34,9 @@ export interface StandardStats {
   foulPoints: number;
   /** pointsScored minus foulPoints. */
   netPoints: number;
+  /** Misses / safeties this player played (from shot log). Missing on stats saved before. */
+  misses?: number;
+  safeties?: number;
 }
 
 export interface RaceStats {
@@ -47,6 +50,18 @@ export interface RaceStats {
   lastPlayedAt: string | null;
   firstStreak: number;
   titles: number;
+  /*
+   * From the live shot log (races scored by typing totals add nothing). Missing on stats
+   * saved before these were counted.
+   */
+  /** Reds (10 points each in a race) potted over all races. */
+  reds?: number;
+  /** Most reds potted in a single race. */
+  mostRedsInRace?: number;
+  /** Highest race break, in race points (red = 10), so not comparable to a frame break. */
+  highestBreak?: number;
+  misses?: number;
+  safeties?: number;
 }
 
 /** Free-for-all matches (each player for themselves). */
@@ -71,6 +86,9 @@ export interface GroupStats {
   lossFrameSeconds?: number;
   fastestFrameSeconds?: number | null;
   slowestFrameSeconds?: number | null;
+  /** Misses / safeties from the shot log. Missing on stats saved before they were counted. */
+  misses?: number;
+  safeties?: number;
 }
 
 export function emptyGroupStats(): GroupStats {
@@ -91,6 +109,8 @@ export function emptyGroupStats(): GroupStats {
     lossFrameSeconds: 0,
     fastestFrameSeconds: null,
     slowestFrameSeconds: null,
+    misses: 0,
+    safeties: 0,
   };
 }
 
@@ -121,6 +141,8 @@ export function emptyStandardStats(): StandardStats {
     fouls: 0,
     foulPoints: 0,
     netPoints: 0,
+    misses: 0,
+    safeties: 0,
   };
 }
 
@@ -136,6 +158,11 @@ export function emptyRaceStats(): RaceStats {
     lastPlayedAt: null,
     firstStreak: 0,
     titles: 0,
+    reds: 0,
+    mostRedsInRace: 0,
+    highestBreak: 0,
+    misses: 0,
+    safeties: 0,
   };
 }
 
@@ -409,7 +436,7 @@ export interface GameListOptions {
 
 export type RacePlace = number | 'dnf';
 
-export type RaceLiveShotKind = 'pot' | 'foul' | 'miss';
+export type RaceLiveShotKind = 'pot' | 'foul' | 'miss' | 'safety';
 
 export interface RaceLiveShot {
   id: string;

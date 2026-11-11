@@ -141,6 +141,8 @@ export default function MatchDetailScreen(): ReactNode {
         scored: p.scored,
         foulPoints: p.foulPoints,
         highestBreak: p.highestBreak,
+        misses: p.misses,
+        safeties: p.safeties,
       })),
     );
   }, [match, shortName]);

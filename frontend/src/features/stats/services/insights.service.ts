@@ -70,10 +70,31 @@ export interface PlayerInsights {
   fouls: number;
   foulPoints: number;
   netPoints: number;
+  /** Reds potted in races (10 points each there), and the most in one race. */
+  raceReds: number;
+  mostRedsInRace: number;
+  /** Highest race break in race points (red = 10). */
+  raceHighestBreak: number;
+  /** Misses and safeties over every mode, then split by mode for hints. */
+  misses: number;
+  safeties: number;
+  turnEnds: { matches: TurnEnds; group: TurnEnds; races: TurnEnds };
+  /** Safeties as a share of misses plus safeties; null before either. */
+  safetyPct: number | null;
   placeBars: ChartDatum[];
   resultDonut: ChartDatum[];
   /** Avg win vs avg loss frame length (minutes, for bar chart). */
   paceBars: ChartDatum[];
+}
+
+/** Misses and safeties in one mode. */
+export interface TurnEnds {
+  misses: number;
+  safeties: number;
+}
+
+function turnEndsOf(stats: { misses?: number; safeties?: number }): TurnEnds {
+  return { misses: stats.misses ?? 0, safeties: stats.safeties ?? 0 };
 }
 
 function perFrame(total: number, frames: number): number | null {
@@ -116,6 +137,9 @@ export function buildPlayerInsights(player: Player, matches: Match[]): PlayerIns
   );
   const lastPlayedAt = lastCandidates.length > 0 ? (lastCandidates.sort().at(-1) ?? null) : null;
   const framesPlayed = countFramesPlayed(player, matches);
+  const turnEnds = { matches: turnEndsOf(s), group: turnEndsOf(g), races: turnEndsOf(r) };
+  const misses = turnEnds.matches.misses + turnEnds.group.misses + turnEnds.races.misses;
+  const safeties = turnEnds.matches.safeties + turnEnds.group.safeties + turnEnds.races.safeties;
 
   // Frame times count two-sided matches and free-for-all frames alike.
   const pace = combinedFramePace(s, player.stats.group);
@@ -188,6 +212,13 @@ export function buildPlayerInsights(player: Player, matches: Match[]): PlayerIns
     fouls: s.fouls ?? 0,
     foulPoints: s.foulPoints ?? 0,
     netPoints: s.netPoints ?? (s.pointsScored ?? 0) - (s.foulPoints ?? 0),
+    raceReds: r.reds ?? 0,
+    mostRedsInRace: r.mostRedsInRace ?? 0,
+    raceHighestBreak: r.highestBreak ?? 0,
+    misses,
+    safeties,
+    turnEnds,
+    safetyPct: misses + safeties > 0 ? Math.round((safeties / (misses + safeties)) * 100) : null,
     placeBars: [
       { label: '1st', value: r.firsts, colorKey: tone('primary') },
       { label: '2nd', value: r.seconds, colorKey: tone('info') },

@@ -1,3 +1,4 @@
+import { tallyTurnEnds, type TurnEndTally } from '@/shared/utils/shot-tally';
 import { nextInTurn, resolveTurnOrder } from '@/shared/utils/turn-order';
 import type { BallValue, Race, RaceEntrant, RaceLiveShot } from '@/shared/types/domain';
 
@@ -116,6 +117,55 @@ export function currentRaceBreak(
     n += shot.points;
   }
   return n;
+}
+
+/** What one player did in a race, from the live shot log. */
+export interface RacePlayerShots extends TurnEndTally {
+  reds: number;
+  /** Highest visit in race points (red = 10). */
+  bestBreak: number;
+}
+
+function emptyRacePlayerShots(): RacePlayerShots {
+  return { reds: 0, bestBreak: 0, misses: 0, safeties: 0 };
+}
+
+/**
+ * Reds, best break, misses and safeties per player, in one pass. A visit is consecutive pots
+ * by one player; any other shot ends it. Players with no shots are absent.
+ */
+export function raceShotSummary(
+  shots: readonly RaceLiveShot[] | undefined,
+): Record<string, RacePlayerShots> {
+  const list = shots ?? [];
+  const byPlayer: Record<string, RacePlayerShots> = {};
+  const rowOf = (playerId: string): RacePlayerShots => {
+    const row = byPlayer[playerId] ?? emptyRacePlayerShots();
+    byPlayer[playerId] = row;
+    return row;
+  };
+  let visitPlayer: string | null = null;
+  let visit = 0;
+  for (const shot of list) {
+    const row = rowOf(shot.playerId);
+    if (shot.kind !== 'pot') {
+      visitPlayer = null;
+      visit = 0;
+      continue;
+    }
+    if (shot.ball === 1) {
+      row.reds += 1;
+    }
+    visit = visitPlayer === shot.playerId ? visit + shot.points : shot.points;
+    visitPlayer = shot.playerId;
+    row.bestBreak = Math.max(row.bestBreak, visit);
+  }
+  for (const [playerId, ends] of Object.entries(tallyTurnEnds(list))) {
+    const row = rowOf(playerId);
+    row.misses = ends.misses;
+    row.safeties = ends.safeties;
+  }
+  return byPlayer;
 }
 
 /** When the race clock started: the first logged shot, or null before any shot. */

@@ -5,8 +5,10 @@ import { StyleSheet, View } from 'react-native';
 import {
   DASHBOARD_TAB_LABELS,
   dashboardTiles,
+  SCORING_VIEWS,
   type DashboardTab,
   type DetailKey,
+  type ScoringView,
 } from '@/features/stats/components/dashboard-tiles';
 import type { GridTileData } from '@/features/stats/components/GridTile';
 import { PlayerHero } from '@/features/stats/components/PlayerHero';
@@ -51,6 +53,7 @@ export function PlayerDashboard({
   const records = useLeagueRecords(stats);
   const [tab, setTab] = useState<DashboardTab>(tabs[0] ?? 'overview');
   const [detail, setDetail] = useState<DetailKey | null>(null);
+  const [scoringView, setScoringView] = useState<ScoringView>('breaks');
 
   if (!card || !playerId) {
     return (
@@ -65,8 +68,11 @@ export function PlayerDashboard({
   }
 
   const activeTab = tabs.includes(tab) ? tab : (tabs[0] ?? 'overview');
+  // Scoring holds two views (Breaks, Shots) behind a lighter second row of tabs.
+  const scoring = activeTab === 'breaks';
+  const tileTab: DashboardTab = scoring ? scoringView : activeTab;
   const nameOf = (id: string): string => stats.playerById.get(id)?.displayName ?? 'Player';
-  const tiles: GridTileData[] = dashboardTiles(activeTab, card, nameOf, records).map((t) => ({
+  const tiles: GridTileData[] = dashboardTiles(tileTab, card, nameOf, records).map((t) => ({
     key: t.key,
     label: t.label,
     value: t.value,
@@ -98,6 +104,14 @@ export function PlayerDashboard({
           items={tabs.map((key) => ({ key, label: DASHBOARD_TAB_LABELS[key] }))}
           value={activeTab}
           onChange={setTab}
+        />
+      ) : null}
+      {scoring ? (
+        <SegmentedTabs
+          items={SCORING_VIEWS}
+          value={scoringView}
+          onChange={setScoringView}
+          size="sm"
         />
       ) : null}
       <FitContent>

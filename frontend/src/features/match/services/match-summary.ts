@@ -10,6 +10,8 @@ export interface PlayerMatchLine {
   fouls: number;
   foulPoints: number;
   highestBreak: number;
+  misses: number;
+  safeties: number;
 }
 
 export interface TopBreak {
@@ -56,6 +58,8 @@ function addShots(
     line.scored += t.scored;
     line.fouls += t.fouls;
     line.foulPoints += t.foulPoints;
+    line.misses += t.misses;
+    line.safeties += t.safeties;
   }
   for (const visit of visitBreaks(shots)) {
     const owner = visitOwner(teams, visit.side, visit.playerId);
@@ -105,6 +109,8 @@ export function summarizeMatch(match: Match, includeOpenFrame = false): MatchSum
       fouls: 0,
       foulPoints: 0,
       highestBreak: 0,
+      misses: 0,
+      safeties: 0,
     });
   }
 

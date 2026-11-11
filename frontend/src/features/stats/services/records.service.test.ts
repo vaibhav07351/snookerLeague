@@ -13,6 +13,8 @@ describe('leagueRecords', () => {
     b.stats.standard.centuries = 1;
     a.stats.standard.fastestFrameSeconds = 600;
     b.stats.standard.fastestFrameSeconds = 420;
+    a.stats.race.mostRedsInRace = 2;
+    b.stats.race.mostRedsInRace = 4;
     const ratings = computeRatings(
       [match(['a'], ['b'], { day: 1 }), match(['a'], ['b'], { day: 2 })],
       [],
@@ -22,6 +24,8 @@ describe('leagueRecords', () => {
     expect(byKey.get('highestBreak')?.value).toBe('87');
     expect(byKey.get('centuries')?.holderName).toBe('Bina');
     expect(byKey.get('fastestFrame')?.holderName).toBe('Bina');
+    expect(byKey.get('mostRedsInRace')?.holderName).toBe('Bina');
+    expect(byKey.get('mostRedsInRace')?.value).toBe('4 reds');
     expect(byKey.get('bestStreak')?.value).toBe('2 wins');
     expect(byKey.get('peakRating')?.holderName).toBe('Aman');
   });

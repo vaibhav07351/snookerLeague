@@ -4,7 +4,13 @@ import { ratingOf, type RatingTable } from '@/features/stats/services/rating.ser
 import { formatDurationCompact } from '@/shared/utils/datetime';
 
 export type RecordKey =
-  'highestBreak' | 'centuries' | 'bestStreak' | 'peakRating' | 'titles' | 'fastestFrame';
+  | 'highestBreak'
+  | 'centuries'
+  | 'mostRedsInRace'
+  | 'bestStreak'
+  | 'peakRating'
+  | 'titles'
+  | 'fastestFrame';
 
 export interface LeagueRecord {
   key: RecordKey;
@@ -67,6 +73,12 @@ export function leagueRecords(players: Player[], ratings: RatingTable): LeagueRe
       String,
     ),
     record('centuries', 'Most centuries', best(each((p) => p.stats.standard.centuries)), String),
+    record(
+      'mostRedsInRace',
+      'Most reds in a race',
+      best(each((p) => p.stats.race.mostRedsInRace ?? 0)),
+      (n) => `${n} ${n === 1 ? 'red' : 'reds'}`,
+    ),
     record(
       'bestStreak',
       'Longest win streak',

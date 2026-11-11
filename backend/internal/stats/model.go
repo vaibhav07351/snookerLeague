@@ -63,13 +63,22 @@ type Entrant struct {
 	Place    Place  `json:"place"`
 }
 
+// RaceShot is one live-scored race shot. Ball 1 is a red (10 points in a race).
+type RaceShot struct {
+	PlayerID string  `json:"playerId"`
+	Kind     string  `json:"kind"`
+	Points   float64 `json:"points"`
+	Ball     int     `json:"ball,omitempty"`
+}
+
 // Race is the part of a race document the numbers depend on.
 type Race struct {
-	ID                 string    `json:"id"`
-	UpdatedAt          string    `json:"updatedAt"`
-	Status             string    `json:"status"`
-	CrownsRaceChampion bool      `json:"crownsRaceChampion"`
-	Entrants           []Entrant `json:"entrants"`
+	ID                 string     `json:"id"`
+	UpdatedAt          string     `json:"updatedAt"`
+	Status             string     `json:"status"`
+	CrownsRaceChampion bool       `json:"crownsRaceChampion"`
+	Entrants           []Entrant  `json:"entrants"`
+	LiveShots          []RaceShot `json:"liveShots,omitempty"`
 }
 
 // StandardStats are a player's match statistics (same fields as the app's StandardStats).
@@ -99,6 +108,8 @@ type StandardStats struct {
 	Fouls               int      `json:"fouls"`
 	FoulPoints          float64  `json:"foulPoints"`
 	NetPoints           float64  `json:"netPoints"`
+	Misses              int      `json:"misses"`
+	Safeties            int      `json:"safeties"`
 }
 
 // RaceStats are a player's race statistics (same fields as the app's RaceStats).
@@ -113,6 +124,12 @@ type RaceStats struct {
 	LastPlayedAt *string  `json:"lastPlayedAt"`
 	FirstStreak  int      `json:"firstStreak"`
 	Titles       int      `json:"titles"`
+	// From the live shot log; races scored by typing totals add nothing.
+	Reds           int     `json:"reds"`
+	MostRedsInRace int     `json:"mostRedsInRace"`
+	HighestBreak   float64 `json:"highestBreak"`
+	Misses         int     `json:"misses"`
+	Safeties       int     `json:"safeties"`
 }
 
 // Rating is one player's league rating after replaying every result.

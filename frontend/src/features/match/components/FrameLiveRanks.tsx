@@ -14,6 +14,9 @@ export interface FrameRankView {
   /** Points this player gave away in fouls. */
   foulPoints: number;
   highestBreak: number;
+  /** Misses / safeties played; a column shows only when someone has one. */
+  misses?: number;
+  safeties?: number;
 }
 
 interface FrameLiveRanksProps {
@@ -31,9 +34,14 @@ export function sortFrameRanks(ranks: FrameRankView[]): FrameRankView[] {
   );
 }
 
+/** A count column cell: the number, or a hyphen for none. */
+function countText(n: number | undefined): string {
+  return n && n > 0 ? String(n) : '-';
+}
+
 /**
  * Players ranked by points potted, one compact line each. A header row labels the number
- * columns (Pts, Fouls) once.
+ * columns (Best, Pts, Foul, Miss, Safe) once; Miss and Safe appear only when used.
  */
 export function FrameLiveRanks({
   ranks,
@@ -47,6 +55,8 @@ export function FrameLiveRanks({
   }
   const sorted = sortFrameRanks(ranks);
   const top = sorted[0]?.scored ?? 0;
+  const showMisses = ranks.some((r) => (r.misses ?? 0) > 0);
+  const showSafeties = ranks.some((r) => (r.safeties ?? 0) > 0);
 
   return (
     <View style={styles.list}>
@@ -57,6 +67,8 @@ export function FrameLiveRanks({
         {showBreaks ? <Text style={[styles.colLabel, styles.statCol]}>Best</Text> : null}
         <Text style={[styles.colLabel, styles.pointsCol]}>Pts</Text>
         <Text style={[styles.colLabel, styles.statCol]}>Foul</Text>
+        {showMisses ? <Text style={[styles.colLabel, styles.countCol]}>Miss</Text> : null}
+        {showSafeties ? <Text style={[styles.colLabel, styles.countCol]}>Safe</Text> : null}
       </View>
       {sorted.map((r, i) => {
         const leading = top > 0 && r.scored === top;
@@ -81,6 +93,16 @@ export function FrameLiveRanks({
             >
               {r.foulPoints > 0 ? r.foulPoints : '-'}
             </Text>
+            {showMisses ? (
+              <Text style={[styles.stat, styles.countCol]} numberOfLines={1}>
+                {countText(r.misses)}
+              </Text>
+            ) : null}
+            {showSafeties ? (
+              <Text style={[styles.stat, styles.countCol]} numberOfLines={1}>
+                {countText(r.safeties)}
+              </Text>
+            ) : null}
           </View>
         );
       })}
@@ -88,15 +110,19 @@ export function FrameLiveRanks({
   );
 }
 
+const COL_GAP = 6;
+
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     list: {
       gap: 2,
     },
+    // Header and rows share one gap so the number columns line up; kept tight so names keep
+    // room when Miss and Safe are shown.
     headerRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.sm,
+      gap: COL_GAP,
       paddingHorizontal: spacing.sm,
     },
     title: {
@@ -111,21 +137,24 @@ const makeStyles = (c: Palette) =>
     colLabel: {
       fontFamily: fonts.bodyBold,
       fontSize: 10,
-      letterSpacing: 0.6,
+      letterSpacing: 0.3,
       textTransform: 'uppercase',
       color: c.textMuted,
       textAlign: 'right',
     },
     pointsCol: {
-      width: 36,
+      width: 32,
     },
     statCol: {
-      width: 40,
+      width: 34,
+    },
+    countCol: {
+      width: 30,
     },
     row: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.sm,
+      gap: COL_GAP,
       minHeight: 26,
       paddingHorizontal: spacing.sm,
       borderRadius: radii.sm,

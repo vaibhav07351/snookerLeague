@@ -18,6 +18,8 @@ export interface FramePlayerLine {
   scored: number;
   foulPoints: number;
   highestBreak: number;
+  misses: number;
+  safeties: number;
 }
 
 export interface MatchFrameListProps {
@@ -35,7 +37,10 @@ export interface MatchFrameListProps {
   onClearTime: (index: number) => Promise<boolean>;
 }
 
-/** Finished frames, newest first, each with a per-player table (best break, points, fouls). */
+/**
+ * Finished frames, newest first, each with a per-player table (best break, points, fouls,
+ * misses, safeties).
+ */
 export function MatchFrameList({
   frames,
   playerPoints,
@@ -132,7 +137,9 @@ function FrameCard({
       ? `scoring started at ${frame.carriedPoints.a}-${frame.carriedPoints.b}`
       : null,
   ].filter(Boolean);
-  const hasPlayerStats = lines.some((l) => l.scored > 0 || l.foulPoints > 0);
+  const hasPlayerStats = lines.some(
+    (l) => l.scored > 0 || l.foulPoints > 0 || l.misses > 0 || l.safeties > 0,
+  );
 
   return (
     <View style={styles.card}>

@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useNavigation } from 'expo-router';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useCallback, useLayoutEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/shared/ui/Button';
 import { Screen } from '@/shared/ui/Screen';
 import { TextField } from '@/shared/ui/TextField';
+import { useSession } from '@/features/auth/hooks/use-session';
 import * as playersService from '@/features/players/services/players.service';
 import { RaceBallPad } from '@/features/race/components/RaceBallPad';
 import { RaceLiveBoard } from '@/features/race/components/RaceLiveBoard';
@@ -15,9 +16,12 @@ import {
   foulPointsOf,
   netRaceScore,
   raceDurationSeconds,
+  raceShotSummary,
   raceStartedAt,
   withRaceDefaults,
+  type RacePlayerShots,
 } from '@/features/race/services/race-helpers';
+import * as raceAdmin from '@/features/race/services/race-admin.service';
 import * as raceLive from '@/features/race/services/race-live.service';
 import { RulesButton } from '@/features/rules/components/RulesButton';
 import { raceRules } from '@/features/rules/services/rules';
@@ -48,6 +52,21 @@ function formatRacePlace(place: RacePlace | null): string {
   return `#${place}`;
 }
 
+/** "Best 40 · 3 reds · 2 misses · 4 safeties", leaving out what is zero; null when all are. */
+function shotLine(shots: RacePlayerShots | undefined): string | null {
+  if (!shots) {
+    return null;
+  }
+  const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+  const parts = [
+    shots.bestBreak > 0 ? `Best ${shots.bestBreak}` : null,
+    shots.reds > 0 ? plural(shots.reds, 'red', 'reds') : null,
+    shots.misses > 0 ? plural(shots.misses, 'miss', 'misses') : null,
+    shots.safeties > 0 ? plural(shots.safeties, 'safety', 'safeties') : null,
+  ].filter((p): p is string => p !== null);
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
 export default function RaceDetailScreen(): ReactNode {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [race, setRace] = useState<Race | null>(null);
@@ -55,6 +74,8 @@ export default function RaceDetailScreen(): ReactNode {
   const [draftScores, setDraftScores] = useState<Record<string, string>>({});
   const [busyPlayerId, setBusyPlayerId] = useState<string | null>(null);
   const [scoresOpen, setScoresOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const { user } = useSession();
   const styles = useStyles(makeStyles);
   const typography = useStyles(makeTypography);
   const palette = usePalette();
@@ -139,6 +160,7 @@ export default function RaceDetailScreen(): ReactNode {
   );
   const shortNameOf = (pid: string): string => compactNames[pid] ?? nameOf(pid);
   const inProgress = race.status === 'in_progress';
+  const canManage = raceAdmin.canManageRace(race, user?.uid);
   const finishedSeconds = raceDurationSeconds(race);
 
   const activeIds = race.entrants.filter((e) => e.place === null).map((e) => e.playerId);
@@ -149,6 +171,7 @@ export default function RaceDetailScreen(): ReactNode {
   const visitBreak = currentRaceBreak(race.liveShots, scoringId);
 
   const sorted = [...race.entrants].sort(compareRaceBoard);
+  const shotsByPlayer = raceShotSummary(race.liveShots);
   // Table order learned from the scorer's picks; anyone not in it yet follows in entry order.
   const seats = race.turnOrder ?? [];
   const playingOrder = [
@@ -218,6 +241,25 @@ export default function RaceDetailScreen(): ReactNode {
       notify.error('Could not undo', toUserMessage(error));
     } finally {
       setBusyPlayerId(null);
+    }
+  }
+
+  async function removeRace(): Promise<void> {
+    const ok = await confirmAction(
+      inProgress ? 'Abandon and delete this race?' : 'Delete this race?',
+      'It is removed for everyone, and stats and the race king are worked out again without it. This cannot be undone.',
+      'Delete',
+    );
+    if (!ok) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await raceAdmin.deleteRace(race!.id);
+      router.replace('/');
+    } catch (error) {
+      notify.error('Could not delete the race', toUserMessage(error));
+      setDeleting(false);
     }
   }
 
@@ -296,6 +338,9 @@ export default function RaceDetailScreen(): ReactNode {
           onMiss={() => {
             void raceLive.recordMiss(race.id).catch(alertLive);
           }}
+          onSafety={() => {
+            void raceLive.recordSafety(race.id).catch(alertLive);
+          }}
           onUndo={() => {
             void raceLive.undoLast(race.id).catch(alertLive);
           }}
@@ -325,6 +370,7 @@ export default function RaceDetailScreen(): ReactNode {
           {sorted.map((e, index) => {
             const playerName = nameOf(e.playerId);
             const busy = busyPlayerId === e.playerId;
+            const shots = inProgress ? null : shotLine(shotsByPlayer[e.playerId]);
             return (
               <View key={e.playerId} style={[styles.row, index > 0 && styles.rowDivider]}>
                 <View style={styles.rowHead}>
@@ -380,10 +426,25 @@ export default function RaceDetailScreen(): ReactNode {
                 ) : (
                   <Text style={styles.finalScore}>{scoreLine(e)}</Text>
                 )}
+                {shots ? <Text style={styles.shotLine}>{shots}</Text> : null}
               </View>
             );
           })}
         </Card>
+      ) : null}
+
+      {/* Live races keep it behind the expander, so a stray tap mid-race cannot reach it. */}
+      {canManage && showStandings ? (
+        <Pressable
+          onPress={() => void removeRace()}
+          disabled={deleting}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.deleteLink, pressed && styles.deletePressed]}
+        >
+          <Text style={styles.deleteText}>
+            {deleting ? 'Deleting...' : inProgress ? 'Abandon and delete race' : 'Delete race'}
+          </Text>
+        </Pressable>
       ) : null}
     </Screen>
   );
@@ -556,5 +617,26 @@ const makeStyles = (c: Palette) =>
     finalScore: {
       fontFamily: fonts.body,
       color: c.textMuted,
+    },
+    deleteLink: {
+      alignSelf: 'center',
+      minHeight: TOUCH_TARGET,
+      justifyContent: 'center',
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      marginTop: spacing.sm,
+    },
+    deleteText: {
+      fontFamily: fonts.bodyMedium,
+      fontSize: 13,
+      color: c.danger,
+    },
+    deletePressed: {
+      opacity: 0.7,
+    },
+    shotLine: {
+      fontFamily: fonts.body,
+      fontSize: 13,
+      color: c.textFaint,
     },
   });

@@ -4,6 +4,7 @@ import {
   applyFoul,
   atTableAfter,
   frameLeaders,
+  groupMatchShots,
   groupMatchWinner,
   groupStandings,
   groupWinReason,
@@ -219,5 +220,25 @@ describe('groupStandings', () => {
     );
     expect(rows.map((r) => r.playerId)).toEqual(['ravi', 'sunil', 'amit']);
     expect(rows[0]).toEqual({ playerId: 'ravi', framesWon: 1, points: 92 });
+  });
+});
+
+describe('groupMatchShots', () => {
+  it('keeps the best break and adds misses and safeties over frames', () => {
+    const frames: GroupFrame[] = [
+      {
+        ...frame('ravi', { ravi: 12, amit: 1 }),
+        shots: [pot('ravi', 5), pot('ravi', 7), miss('ravi'), pot('amit', 1), miss('amit')],
+      },
+      {
+        ...frame('amit', { ravi: 2, amit: 9 }),
+        shots: [shot('ravi', 'safety', 0), pot('amit', 2), pot('amit', 7), miss('ravi')],
+      },
+      frame('ravi', { ravi: 30, amit: 0 }),
+    ];
+    expect(groupMatchShots(frames)).toEqual({
+      ravi: { highestBreak: 12, misses: 2, safeties: 1 },
+      amit: { highestBreak: 9, misses: 1, safeties: 0 },
+    });
   });
 });

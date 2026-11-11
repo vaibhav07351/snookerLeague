@@ -18,7 +18,8 @@ import { updateStore } from '@/shared/storage/local-store';
 import { frameSecondsOf } from '@/shared/utils/frame-time';
 import { playerShotTotals } from '@/features/match/services/frame-rank';
 import { visitBreaks } from '@/features/match/services/frame-engine';
-import { highestBreaksOf } from '@/features/group/services/group-frame-engine';
+import { groupMatchShots, highestBreaksOf } from '@/features/group/services/group-frame-engine';
+import { raceShotSummary } from '@/features/race/services/race-helpers';
 
 function pct(part: number, whole: number): number {
   if (whole <= 0) {
@@ -62,6 +63,8 @@ export function recomputeStandardStats(playerId: string, matches: Match[]): Stan
   let pointsScored = 0;
   let fouls = 0;
   let foulPoints = 0;
+  let misses = 0;
+  let safeties = 0;
 
   for (const match of relevant) {
     const side: 'a' | 'b' = match.teamA.includes(playerId) ? 'a' : 'b';
@@ -94,9 +97,19 @@ export function recomputeStandardStats(playerId: string, matches: Match[]): Stan
     for (const frame of match.frames) {
       const shots = frame.shots ?? [];
       const tagged = shots.some((s) => Boolean(s.playerId));
+      // Untagged singles shots still belong to the side's one player, so misses and
+      // safeties count there too; untagged doubles shots have no owner and are skipped.
+      // Points keep the frame score when untagged.
+      const singles = match.teamA.length === 1 && match.teamB.length === 1;
+      const mine =
+        shots.length > 0 && (tagged || singles)
+          ? playerShotTotals(shots, { a: match.teamA, b: match.teamB })[playerId]
+          : undefined;
+      if (mine) {
+        misses += mine.misses;
+        safeties += mine.safeties;
+      }
       if (tagged) {
-        const totals = playerShotTotals(shots, { a: match.teamA, b: match.teamB });
-        const mine = totals[playerId];
         if (mine) {
           pointsScored += mine.scored;
           fouls += mine.fouls;
@@ -170,6 +183,8 @@ export function recomputeStandardStats(playerId: string, matches: Match[]): Stan
     fouls,
     foulPoints,
     netPoints: pointsScored - foulPoints,
+    misses,
+    safeties,
   };
 }
 
@@ -187,8 +202,22 @@ export function recomputeRaceStats(playerId: string, races: Race[]): RaceStats {
   let firstStreak = 0;
   let titles = 0;
   let lastPlayedAt: string | null = null;
+  let reds = 0;
+  let mostRedsInRace = 0;
+  let highestBreak = 0;
+  let misses = 0;
+  let safeties = 0;
 
   for (const race of relevant) {
+    // Shot numbers count for everyone who played, finished or not.
+    const shots = raceShotSummary(race.liveShots)[playerId];
+    if (shots) {
+      reds += shots.reds;
+      mostRedsInRace = Math.max(mostRedsInRace, shots.reds);
+      highestBreak = Math.max(highestBreak, shots.bestBreak);
+      misses += shots.misses;
+      safeties += shots.safeties;
+    }
     const entrant = race.entrants.find((e) => e.playerId === playerId);
     if (!entrant || entrant.place === null || entrant.place === 'dnf') {
       firstStreak = 0;
@@ -228,6 +257,11 @@ export function recomputeRaceStats(playerId: string, races: Race[]): RaceStats {
     lastPlayedAt,
     firstStreak,
     titles,
+    reds,
+    mostRedsInRace,
+    highestBreak,
+    misses,
+    safeties,
   };
 }
 
@@ -244,7 +278,12 @@ export function recomputeGroupStats(playerId: string, groupMatches: GroupMatch[]
   let lossFrameSeconds = 0;
   let fastestFrameSeconds: number | null = null;
   let slowestFrameSeconds: number | null = null;
+  let misses = 0;
+  let safeties = 0;
   for (const match of relevant) {
+    const mine = groupMatchShots(match.frames)[playerId];
+    misses += mine?.misses ?? 0;
+    safeties += mine?.safeties ?? 0;
     stats.played += 1;
     if (match.winnerId === playerId) {
       stats.wins += 1;
@@ -286,6 +325,8 @@ export function recomputeGroupStats(playerId: string, groupMatches: GroupMatch[]
     lossFrameSeconds,
     fastestFrameSeconds,
     slowestFrameSeconds,
+    misses,
+    safeties,
   };
 }
 
