@@ -13,6 +13,7 @@ import { haptic } from '@/shared/feedback/haptics';
 import { useLayout } from '@/shared/hooks/use-layout';
 import { Button } from '@/shared/ui/Button';
 import { EmptyState } from '@/shared/ui/EmptyState';
+import { PlayingOrderTiles } from '@/shared/ui/PlayingOrderTiles';
 import { Screen } from '@/shared/ui/Screen';
 import { confirmAction } from '@/shared/utils/confirm';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
@@ -127,17 +128,25 @@ export function GroupMatchScreen({ groupId }: { groupId: string | undefined }): 
 
       {live ? (
         <>
-          <GroupLiveBoard
-            seatOrder={group.turnOrder}
-            points={live.points}
-            foulPoints={live.foulPoints}
-            standings={standings}
-            leaders={live.leaders}
-            atTablePlayerId={live.atTablePlayerId}
-            currentBreak={live.currentBreak}
-            nameOf={shortName}
-            onSelectPlayer={actions.selectPlayer}
-          />
+          <View style={styles.tables}>
+            <PlayingOrderTiles
+              tiles={group.turnOrder.map((id) => ({
+                id,
+                name: shortName(id),
+                points: live.points[id] ?? 0,
+              }))}
+              atTableId={live.atTablePlayerId}
+              currentBreak={live.currentBreak}
+              onSelect={actions.selectPlayer}
+            />
+            <GroupLiveBoard
+              seatOrder={group.turnOrder}
+              points={live.points}
+              foulPoints={live.foulPoints}
+              standings={standings}
+              nameOf={shortName}
+            />
+          </View>
           <LiveScoreboard
             table={live.table}
             deficit={live.deficit}
@@ -185,6 +194,11 @@ export function GroupMatchScreen({ groupId }: { groupId: string | undefined }): 
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
+    // Playing order on top, ranked leaderboard below, as in the two-sided match.
+    tables: {
+      gap: spacing.sm,
+      marginBottom: spacing.md,
+    },
     loading: {
       flex: 1,
       alignItems: 'center',

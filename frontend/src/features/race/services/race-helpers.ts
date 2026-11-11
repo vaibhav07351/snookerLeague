@@ -1,5 +1,20 @@
 import { nextInTurn, resolveTurnOrder } from '@/shared/utils/turn-order';
-import type { Race, RaceEntrant, RaceLiveShot } from '@/shared/types/domain';
+import type { BallValue, Race, RaceEntrant, RaceLiveShot } from '@/shared/types/domain';
+
+/** In a race the red is worth 10, not 1; the colours keep their usual values. */
+const RACE_RED_POINTS = 10;
+
+/** Pad order in a race: lowest to highest value, so the red (10) sits last. */
+export const RACE_BALL_ORDER: readonly BallValue[] = [2, 3, 4, 5, 6, 7, 1];
+
+/** The only fouls a race has. */
+export const RACE_FOUL_POINTS = [4, 10] as const;
+export type RaceFoulPoints = (typeof RACE_FOUL_POINTS)[number];
+
+/** Points a pot of this ball is worth in a race. */
+export function racePotPoints(ball: BallValue): number {
+  return ball === 1 ? RACE_RED_POINTS : ball;
+}
 
 export function foulPointsOf(entrant: RaceEntrant): number {
   return entrant.foulPoints ?? 0;

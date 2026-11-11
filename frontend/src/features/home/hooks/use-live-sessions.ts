@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 
 import { replayGroupFrame } from '@/features/group/services/group-frame-engine';
 import * as groupService from '@/features/group/services/group.service';
+import { splitByStaleness } from '@/features/home/services/live-staleness';
 import * as matchService from '@/features/match/services/match.service';
 import { listPlayers } from '@/features/players/services/players.service';
 import { compareRaceBoard, netRaceScore } from '@/features/race/services/race-helpers';
@@ -50,22 +51,37 @@ export function groupResumeCopy(
   };
 }
 
-export function useLiveSessions(leagueId: string | null | undefined): {
+/** In-progress games of one league, by kind. */
+export interface LiveSessionSet {
   matches: Match[];
   races: Race[];
   groups: GroupMatch[];
+}
+
+const EMPTY_SET: LiveSessionSet = { matches: [], races: [], groups: [] };
+
+export function sessionCount(set: LiveSessionSet): number {
+  return set.matches.length + set.races.length + set.groups.length;
+}
+
+/**
+ * Unfinished games of the league, split into `live` (changed in the last 12 hours) and
+ * `stale` (idle longer, e.g. someone hit back and walked away). The split is taken on each
+ * reload (screen focus, store change), not on a timer.
+ */
+export function useLiveSessions(leagueId: string | null | undefined): {
+  live: LiveSessionSet;
+  stale: LiveSessionSet;
   nameOf: (id: string) => string;
 } {
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [races, setRaces] = useState<Race[]>([]);
-  const [groups, setGroups] = useState<GroupMatch[]>([]);
+  const [live, setLive] = useState<LiveSessionSet>(EMPTY_SET);
+  const [stale, setStale] = useState<LiveSessionSet>(EMPTY_SET);
   const [players, setPlayers] = useState<Player[]>([]);
 
   const reload = useCallback(async () => {
     if (!leagueId) {
-      setMatches([]);
-      setRaces([]);
-      setGroups([]);
+      setLive(EMPTY_SET);
+      setStale(EMPTY_SET);
       setPlayers([]);
       return;
     }
@@ -75,9 +91,12 @@ export function useLiveSessions(leagueId: string | null | undefined): {
       groupService.listLiveGroupMatches(leagueId),
       listPlayers(leagueId),
     ]);
-    setMatches(liveMatches);
-    setRaces(liveRaces);
-    setGroups(liveGroups);
+    const now = Date.now();
+    const matches = splitByStaleness(liveMatches, now);
+    const races = splitByStaleness(liveRaces, now);
+    const groups = splitByStaleness(liveGroups, now);
+    setLive({ matches: matches.live, races: races.live, groups: groups.live });
+    setStale({ matches: matches.stale, races: races.stale, groups: groups.stale });
     setPlayers(roster);
   }, [leagueId]);
 
@@ -85,5 +104,5 @@ export function useLiveSessions(leagueId: string | null | undefined): {
 
   const nameOf = (id: string): string => players.find((p) => p.id === id)?.displayName ?? 'Player';
 
-  return { matches, races, groups, nameOf };
+  return { live, stale, nameOf };
 }

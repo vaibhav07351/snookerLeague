@@ -11,13 +11,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSession } from '@/features/auth/hooks/use-session';
 import { BrandLogo } from '@/features/home/components/BrandLogo';
 import { BrandWordmark } from '@/features/home/components/BrandWordmark';
-import { LiveResumeCard } from '@/features/home/components/LiveResumeCard';
-import {
-  groupResumeCopy,
-  matchResumeCopy,
-  raceResumeCopy,
-  useLiveSessions,
-} from '@/features/home/hooks/use-live-sessions';
+import { LiveSessionCards } from '@/features/home/components/LiveSessionCards';
+import { sessionCount, useLiveSessions } from '@/features/home/hooks/use-live-sessions';
 import { useLayout } from '@/shared/hooks/use-layout';
 import { HeaderBack } from '@/shared/ui/HeaderBack';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
@@ -44,12 +39,8 @@ function CustomDrawer(props: DrawerContentComponentProps): ReactNode {
   const palette = usePalette();
   const { league, user } = useSession();
   const active = props.state.routes[props.state.index]?.name;
-  const {
-    matches: liveMatches,
-    races: liveRaces,
-    groups: liveGroups,
-    nameOf,
-  } = useLiveSessions(league?.id);
+  // Live games only: ones idle for 12+ hours are listed under "Unfinished games" on home.
+  const { live, nameOf } = useLiveSessions(league?.id);
 
   const items: Array<{ label: string; route: string; hint: string }> = [
     { label: 'Home', route: '(tabs)', hint: 'Tabs · city & club' },
@@ -75,54 +66,15 @@ function CustomDrawer(props: DrawerContentComponentProps): ReactNode {
         <Text style={styles.drawerHint}>Club tools</Text>
       </View>
 
-      {liveMatches.map((m) => {
-        const copy = matchResumeCopy(m, nameOf);
-        return (
-          <View key={m.id} style={styles.resumeWrap}>
-            <LiveResumeCard
-              eyebrow="Live match"
-              title={copy.title}
-              meta={copy.meta}
-              onPress={() => {
-                props.navigation.closeDrawer();
-                router.push(`/match/${m.id}`);
-              }}
-            />
-          </View>
-        );
-      })}
-      {liveRaces.map((r) => {
-        const copy = raceResumeCopy(r, nameOf);
-        return (
-          <View key={r.id} style={styles.resumeWrap}>
-            <LiveResumeCard
-              eyebrow="Live race"
-              title={copy.title}
-              meta={copy.meta}
-              onPress={() => {
-                props.navigation.closeDrawer();
-                router.push(`/race/${r.id}`);
-              }}
-            />
-          </View>
-        );
-      })}
-      {liveGroups.map((g) => {
-        const copy = groupResumeCopy(g, nameOf);
-        return (
-          <View key={g.id} style={styles.resumeWrap}>
-            <LiveResumeCard
-              eyebrow="Live free-for-all"
-              title={copy.title}
-              meta={copy.meta}
-              onPress={() => {
-                props.navigation.closeDrawer();
-                router.push(`/group/${g.id}`);
-              }}
-            />
-          </View>
-        );
-      })}
+      {sessionCount(live) > 0 ? (
+        <View style={styles.resumeWrap}>
+          <LiveSessionCards
+            sessions={live}
+            nameOf={nameOf}
+            onBeforeOpen={() => props.navigation.closeDrawer()}
+          />
+        </View>
+      ) : null}
 
       {items.map((item) => {
         const focused = active === item.route;

@@ -2,15 +2,19 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { SnookerBall } from '@/features/match/components/SnookerBall';
+import { SnookerBall, SNOOKER_BALLS } from '@/features/match/components/SnookerBall';
+import {
+  RACE_BALL_ORDER as BALL_ORDER,
+  RACE_FOUL_POINTS as FOUL_POINTS,
+  racePotPoints,
+  type RaceFoulPoints,
+} from '@/features/race/services/race-helpers';
 import { haptic } from '@/shared/feedback/haptics';
 import { useLayout } from '@/shared/hooks/use-layout';
 import type { BallValue } from '@/shared/types/domain';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
 import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
 
-const BALL_ORDER: BallValue[] = [1, 2, 3, 4, 5, 6, 7];
-const FOUL_POINTS = [4, 5, 6, 7] as const;
 /** Screen gutters (2 x 16) plus the cloth panel's own padding (2 x 8). */
 const HORIZONTAL_CHROME = spacing.md * 2 + spacing.sm * 2;
 const BALL_GAP = 2;
@@ -22,7 +26,7 @@ interface RaceBallPadProps {
   currentBreak: number;
   canUndo: boolean;
   onPot: (ball: BallValue) => void;
-  onFoul: (points: number) => void;
+  onFoul: (points: RaceFoulPoints) => void;
   onMiss: () => void;
   onUndo: () => void;
 }
@@ -75,7 +79,7 @@ export function RaceBallPad({
               }}
               style={({ pressed }) => [styles.ballHit, pressed && styles.ballPressed]}
               accessibilityRole="button"
-              accessibilityLabel={`Pot ${value} for ${playerName}`}
+              accessibilityLabel={`Pot ${SNOOKER_BALLS[value].name}, ${racePotPoints(value)} points, for ${playerName}`}
             >
               <SnookerBall value={value} size={ballSize} />
             </Pressable>

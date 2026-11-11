@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {
   compareRaceBoard,
@@ -8,9 +7,7 @@ import {
   netRaceScore,
 } from '@/features/race/services/race-helpers';
 import type { Race, RacePlace } from '@/shared/types/domain';
-import { Card } from '@/shared/ui/Card';
-import { useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import { RankedList, type RankedListRow } from '@/shared/ui/RankedList';
 
 function formatPlace(place: RacePlace | null, livePlace: number): string {
   if (place === 'dnf') {
@@ -35,17 +32,14 @@ interface RaceLiveBoardProps {
   race: Race;
   /** Compact display name (the caller passes short names, see `shortNames`). */
   nameOf: (playerId: string) => string;
-  selectedPlayerId?: string | null;
-  onSelectPlayer?: (playerId: string) => void;
 }
 
-export function RaceLiveBoard({
-  race,
-  nameOf,
-  selectedPlayerId,
-  onSelectPlayer,
-}: RaceLiveBoardProps): ReactNode {
-  const styles = useStyles(makeStyles);
+/**
+ * The race leaderboard, read-only and ranked, matching the two-sided match's list: finishers
+ * first, then players still racing by score after fouls, then anyone out. Picking who is at the
+ * table happens on the playing order tiles above it.
+ */
+export function RaceLiveBoard({ race, nameOf }: RaceLiveBoardProps): ReactNode {
   const live = [...race.entrants].sort(compareRaceBoard);
 
   const livePlaces = new Map<string, number>();
@@ -63,168 +57,29 @@ export function RaceLiveBoard({
     leader?.place === null &&
     live.filter((e) => e.place === null && compareUnfinished(e, leader) === 0).length > 1;
   const hasScore = live.some((e) => e.score > 0 || foulPointsOf(e) > 0);
-  let leadLabel = 'Level at the top';
-  if (leader && typeof leader.place === 'number') {
-    leadLabel = `${nameOf(leader.playerId)} finished first`;
-  } else if (leader && hasScore) {
-    leadLabel = tied ? 'Tied at the top' : `${nameOf(leader.playerId)} leading`;
-  }
+
+  const rows: RankedListRow[] = live.map((e) => {
+    const place = formatPlace(e.place, livePlaces.get(e.playerId) ?? 0);
+    const score = netRaceScore(e);
+    const fouls = foulPointsOf(e);
+    return {
+      id: e.playerId,
+      place: hasScore || e.place !== null ? place : '-',
+      name: nameOf(e.playerId),
+      points: score,
+      foulPoints: fouls,
+      leading: leader?.playerId === e.playerId && hasScore && !tied,
+      muted: e.place === 'dnf',
+      accessibilityLabel: `${place}, ${nameOf(e.playerId)}, score ${score}, ${e.score} potted${
+        fouls > 0 ? `, ${fouls} in fouls` : ''
+      }`,
+    };
+  });
 
   return (
-    <Card tone="raised" style={styles.wrap}>
-      <View style={styles.head}>
-        <View style={styles.kickerRow}>
-          {race.status === 'in_progress' ? <View style={styles.liveDot} /> : null}
-          <Text style={styles.kicker}>
-            {race.status === 'in_progress' ? 'Live score' : 'Final score'}
-          </Text>
-        </View>
-        <Text style={styles.leadLine} numberOfLines={1}>
-          {leadLabel}
-        </Text>
-      </View>
-      <View style={styles.legend}>
-        <Text style={styles.legendPts}>Score</Text>
-        <Text style={styles.legendFoul}>Fouls</Text>
-      </View>
-      {live.map((e) => {
-        const leading = leader?.playerId === e.playerId && hasScore && !tied;
-        const selected = selectedPlayerId === e.playerId;
-        const canPick = e.place === null && onSelectPlayer != null;
-        const livePlace = livePlaces.get(e.playerId) ?? 0;
-        return (
-          <Pressable
-            key={e.playerId}
-            disabled={!canPick}
-            onPress={() => onSelectPlayer?.(e.playerId)}
-            accessibilityRole={canPick ? 'button' : undefined}
-            accessibilityState={canPick ? { selected } : undefined}
-            accessibilityLabel={canPick ? `${nameOf(e.playerId)} to play` : undefined}
-            style={[styles.row, selected && styles.rowOn]}
-          >
-            <Text style={[styles.place, leading && styles.lead]}>
-              {formatPlace(e.place, livePlace)}
-            </Text>
-            <Text style={[styles.name, leading && styles.lead]} numberOfLines={1}>
-              {nameOf(e.playerId)}
-            </Text>
-            <Text
-              style={[styles.pts, leading && styles.ptsLead]}
-              accessibilityLabel={`Score ${netRaceScore(e)}, ${e.score} potted, ${foulPointsOf(e)} in fouls`}
-            >
-              {netRaceScore(e)}
-            </Text>
-            <Text style={[styles.fouls, foulPointsOf(e) > 0 && styles.foulsOn]}>
-              {foulPointsOf(e)}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </Card>
+    <RankedList
+      rows={rows}
+      accessibilityLabel={race.status === 'in_progress' ? 'Live race leaderboard' : 'Final score'}
+    />
   );
 }
-
-const makeStyles = (c: Palette) =>
-  StyleSheet.create({
-    wrap: {
-      marginBottom: spacing.lg,
-    },
-    head: {
-      gap: 2,
-    },
-    kickerRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-    },
-    liveDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: c.live,
-    },
-    kicker: {
-      fontFamily: fonts.bodyBold,
-      color: c.textMuted,
-      fontSize: 12,
-      letterSpacing: 1,
-      textTransform: 'uppercase',
-    },
-    leadLine: {
-      fontFamily: fonts.bodyBold,
-      color: c.text,
-      fontSize: 15,
-    },
-    legend: {
-      flexDirection: 'row',
-      justifyContent: 'flex-end',
-      gap: spacing.sm,
-      paddingHorizontal: 6,
-    },
-    legendPts: {
-      fontFamily: fonts.bodyBold,
-      color: c.textFaint,
-      fontSize: 10,
-      minWidth: 44,
-      textAlign: 'right',
-    },
-    legendFoul: {
-      fontFamily: fonts.bodyBold,
-      color: c.textFaint,
-      fontSize: 10,
-      minWidth: 44,
-      textAlign: 'right',
-    },
-    row: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-      minHeight: TOUCH_TARGET,
-      paddingHorizontal: 6,
-      marginHorizontal: -6,
-      borderRadius: radii.xs,
-      borderWidth: 1,
-      borderColor: 'transparent',
-    },
-    rowOn: {
-      backgroundColor: c.cardHighlight,
-      borderColor: c.borderStrong,
-    },
-    place: {
-      width: 36,
-      fontFamily: fonts.bodyBold,
-      color: c.textMuted,
-      fontSize: 13,
-    },
-    name: {
-      flex: 1,
-      minWidth: 0,
-      fontFamily: fonts.bodyMedium,
-      color: c.text,
-      fontSize: 16,
-    },
-    lead: {
-      color: c.primary,
-      fontFamily: fonts.bodyBold,
-    },
-    pts: {
-      minWidth: 44,
-      textAlign: 'right',
-      fontFamily: fonts.display,
-      fontSize: 20,
-      color: c.text,
-    },
-    ptsLead: {
-      color: c.primary,
-    },
-    fouls: {
-      minWidth: 44,
-      textAlign: 'right',
-      fontFamily: fonts.bodyBold,
-      fontSize: 14,
-      color: c.textFaint,
-    },
-    foulsOn: {
-      color: c.danger,
-    },
-  });

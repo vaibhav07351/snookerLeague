@@ -9,14 +9,10 @@ import { GettingStartedCard } from '@/features/home/components/GettingStartedCar
 import { Button } from '@/shared/ui/Button';
 import { HomeActivityList } from '@/features/home/components/HomeActivityList';
 import { HomeFilterChips } from '@/features/home/components/HomeFilterChips';
-import { LiveResumeCard } from '@/features/home/components/LiveResumeCard';
+import { LiveSessionCards } from '@/features/home/components/LiveSessionCards';
+import { UnfinishedGames } from '@/features/home/components/UnfinishedGames';
 import { Screen } from '@/shared/ui/Screen';
-import {
-  groupResumeCopy,
-  matchResumeCopy,
-  raceResumeCopy,
-  useLiveSessions,
-} from '@/features/home/hooks/use-live-sessions';
+import { sessionCount, useLiveSessions } from '@/features/home/hooks/use-live-sessions';
 import {
   homeActivityEmptyCopy,
   listHomeActivity,
@@ -165,46 +161,13 @@ export default function HomeScreen(): ReactNode {
       </TourTarget>
 
       {/* Live games sit with the actions, not under the feed chips, so a filter never hides them. */}
-      {live.matches.length > 0 || live.races.length > 0 || live.groups.length > 0 ? (
+      {sessionCount(live.live) > 0 ? (
         <View style={styles.liveBlock}>
-          {live.matches.map((m) => {
-            const copy = matchResumeCopy(m, nameOf);
-            return (
-              <LiveResumeCard
-                key={m.id}
-                eyebrow="Live match"
-                title={copy.title}
-                meta={copy.meta}
-                onPress={() => router.push(`/match/${m.id}`)}
-              />
-            );
-          })}
-          {live.races.map((r) => {
-            const copy = raceResumeCopy(r, nameOf);
-            return (
-              <LiveResumeCard
-                key={r.id}
-                eyebrow="Live race"
-                title={copy.title}
-                meta={copy.meta}
-                onPress={() => router.push(`/race/${r.id}`)}
-              />
-            );
-          })}
-          {live.groups.map((g) => {
-            const copy = groupResumeCopy(g, nameOf);
-            return (
-              <LiveResumeCard
-                key={g.id}
-                eyebrow="Live free-for-all"
-                title={copy.title}
-                meta={copy.meta}
-                onPress={() => router.push(`/group/${g.id}`)}
-              />
-            );
-          })}
+          <LiveSessionCards sessions={live.live} nameOf={nameOf} />
         </View>
       ) : null}
+      {/* Games idle for 12+ hours stay reachable but collapsed, so they never crowd home. */}
+      <UnfinishedGames sessions={live.stale} nameOf={nameOf} />
 
       <View style={styles.actions}>
         <TourTarget id="home.start-match" style={styles.actionMain}>

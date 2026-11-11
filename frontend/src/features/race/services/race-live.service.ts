@@ -5,7 +5,9 @@ import {
   hasReachedTarget,
   netRaceScore,
   nextActivePlayerId,
+  racePotPoints,
   raceTurnOrder,
+  RACE_FOUL_POINTS,
   withRaceDefaults,
 } from '@/features/race/services/race-helpers';
 import { nextPlace, persistRace } from '@/features/race/services/race.service';
@@ -26,7 +28,7 @@ const ballSchema = z.union([
   z.literal(7),
 ]);
 
-const foulSchema = z.number().int().min(4).max(7);
+const foulSchema = z.union([z.literal(RACE_FOUL_POINTS[0]), z.literal(RACE_FOUL_POINTS[1])]);
 
 async function requireLiveRace(raceId: string): Promise<Race> {
   await loadStore();
@@ -115,9 +117,10 @@ export async function recordPot(raceId: string, ball: BallValue): Promise<Race> 
   }
   const race = await requireLiveRace(raceId);
   const playerId = atTableId(race);
+  const points = racePotPoints(parsed.data);
   let entrants = mapEntrant(race.entrants, playerId, (e) => ({
     ...e,
-    score: e.score + parsed.data,
+    score: e.score + points,
   }));
   entrants = applyTarget(entrants, playerId, race.targetScore);
   const stillIn = entrants.find((e) => e.playerId === playerId)?.place === null;
@@ -127,7 +130,7 @@ export async function recordPot(raceId: string, ball: BallValue): Promise<Race> 
     at: nowIso(),
     playerId,
     kind: 'pot',
-    points: parsed.data,
+    points,
     ball: parsed.data,
   };
   return appendShot({ ...race, entrants }, shot, nextId);
@@ -136,7 +139,7 @@ export async function recordPot(raceId: string, ball: BallValue): Promise<Race> 
 export async function recordFoul(raceId: string, points: number): Promise<Race> {
   const parsed = foulSchema.safeParse(points);
   if (!parsed.success) {
-    throw new AppError('VALIDATION', 'Foul must be 4–7 points');
+    throw new AppError('VALIDATION', 'Foul must be 4 or 10 points');
   }
   const race = await requireLiveRace(raceId);
   const playerId = atTableId(race);

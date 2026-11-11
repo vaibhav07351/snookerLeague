@@ -25,6 +25,7 @@ import { useLayout } from '@/shared/hooks/use-layout';
 import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { Player, Race, RacePlace } from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
+import { PlayingOrderTiles } from '@/shared/ui/PlayingOrderTiles';
 import { notify } from '@/shared/ui/notify';
 import { SectionTitle } from '@/shared/ui/SectionTitle';
 import { confirmAction } from '@/shared/utils/confirm';
@@ -119,6 +120,12 @@ export default function RaceDetailScreen(): ReactNode {
   const visitBreak = currentRaceBreak(race.liveShots, scoringId);
 
   const sorted = [...race.entrants].sort(compareRaceBoard);
+  // Table order learned from the scorer's picks; anyone not in it yet follows in entry order.
+  const seats = race.turnOrder ?? [];
+  const playingOrder = [
+    ...seats.flatMap((pid) => race.entrants.filter((e) => e.playerId === pid)),
+    ...race.entrants.filter((e) => !seats.includes(e.playerId)),
+  ];
   const scoreLine = (e: Race['entrants'][number]): string =>
     foulPointsOf(e) > 0
       ? `Score ${netRaceScore(e)} (${e.score} potted, ${foulPointsOf(e)} in fouls)`
@@ -222,18 +229,25 @@ export default function RaceDetailScreen(): ReactNode {
         </View>
       </View>
 
-      <RaceLiveBoard
-        race={race}
-        nameOf={shortNameOf}
-        selectedPlayerId={race.status === 'in_progress' ? scoringId : null}
-        onSelectPlayer={
-          race.status === 'in_progress'
-            ? (playerId) => {
-                void raceLive.setAtTablePlayer(race.id, playerId).catch(alertLive);
-              }
-            : undefined
-        }
-      />
+      {/* Playing order on top, ranked leaderboard below, as in the two-sided match. */}
+      <View style={styles.tables}>
+        {race.status === 'in_progress' ? (
+          <PlayingOrderTiles
+            tiles={playingOrder.map((e) => ({
+              id: e.playerId,
+              name: shortNameOf(e.playerId),
+              points: netRaceScore(e),
+              disabled: e.place !== null,
+            }))}
+            atTableId={scoringId}
+            currentBreak={visitBreak}
+            onSelect={(playerId) => {
+              void raceLive.setAtTablePlayer(race.id, playerId).catch(alertLive);
+            }}
+          />
+        ) : null}
+        <RaceLiveBoard race={race} nameOf={shortNameOf} />
+      </View>
 
       {race.status === 'in_progress' ? (
         <RaceBallPad
@@ -344,6 +358,10 @@ export default function RaceDetailScreen(): ReactNode {
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
+    tables: {
+      gap: spacing.sm,
+      marginBottom: spacing.lg,
+    },
     loading: {
       flexDirection: 'row',
       alignItems: 'center',

@@ -52,6 +52,8 @@ export function raceRules(target: number): RuleSet {
     title: 'How a race works',
     lines: [
       `Race to ${target}: you finish when your score reaches ${target}. The first to get there takes 1st, the next 2nd, and so on.`,
+      'A red is worth 10 in a race. The colours keep their usual values (yellow 2 up to black 7).',
+      'Fouls are 4 or 10 points.',
       'Your score is points potted minus your fouls, so it can go below zero. The Fouls column shows how much you have given away.',
       'A foul only costs you. No one else gains points.',
       'Complete race: players still playing are placed by score. If level, fewer fouls goes ahead.',

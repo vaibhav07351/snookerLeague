@@ -1,5 +1,6 @@
 import { listFollowGraph } from '@/features/community/services/follow.service';
 import { listLookingPosts } from '@/features/community/services/looking.service';
+import { isStale } from '@/features/home/services/live-staleness';
 import { getCityHubForUser } from '@/features/league/services/city-hub.service';
 import { listLiveMatches } from '@/features/match/services/match.service';
 import { getStore } from '@/shared/storage/local-store';
@@ -56,6 +57,8 @@ export function listHomeActivity(input: {
   matches: Match[];
   races: Race[];
   groupMatches: GroupMatch[];
+  /** Current time in ms; defaults to Date.now(), passed in tests. */
+  now?: number;
 }): HomeActivity[] {
   const store = getStore();
   const following = new Set(
@@ -133,8 +136,16 @@ export function listHomeActivity(input: {
   }
 
   const hubId = input.cityId ? cityHubId(input.cityId) : null;
+  // A city match nobody has scored for 12 hours is not "live" any more.
+  const now = input.now ?? Date.now();
   const cityMatches: HomeActivity[] = store.matches
-    .filter((m) => hubId && m.leagueId === hubId && m.outcome.status === 'in_progress')
+    .filter(
+      (m) =>
+        hubId &&
+        m.leagueId === hubId &&
+        m.outcome.status === 'in_progress' &&
+        !isStale(m.updatedAt, now),
+    )
     .map((m) => ({
       id: m.id,
       at: m.updatedAt,

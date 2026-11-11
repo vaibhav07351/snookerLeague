@@ -10,23 +10,32 @@ interface LiveResumeCardProps {
   title: string;
   meta: string;
   onPress: () => void;
+  /** Idle for 12+ hours: toned down (grey dot, quiet card) with "Open" instead of "Resume". */
+  stale?: boolean;
 }
 
-/** "Live now" card for an in-progress match or race; tapping it resumes scoring. */
-export function LiveResumeCard({ eyebrow, title, meta, onPress }: LiveResumeCardProps): ReactNode {
+/** "Live now" card for an in-progress game; tapping it resumes scoring. */
+export function LiveResumeCard({
+  eyebrow,
+  title,
+  meta,
+  onPress,
+  stale = false,
+}: LiveResumeCardProps): ReactNode {
   const styles = useStyles(makeStyles);
   const palette = usePalette();
+  const action = stale ? 'Open' : 'Resume';
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Resume ${eyebrow}: ${title}`}
+      accessibilityLabel={`${action} ${eyebrow}: ${title}`}
       onPress={onPress}
-      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.card, stale && styles.cardStale, pressed && styles.pressed]}
     >
       <View style={styles.copy}>
         <View style={styles.eyebrowRow}>
-          <View style={styles.dot} />
-          <Text style={styles.eyebrow} numberOfLines={1}>
+          <View style={[styles.dot, stale && styles.dotStale]} />
+          <Text style={[styles.eyebrow, stale && styles.eyebrowStale]} numberOfLines={1}>
             {eyebrow}
           </Text>
         </View>
@@ -37,9 +46,13 @@ export function LiveResumeCard({ eyebrow, title, meta, onPress }: LiveResumeCard
           {meta}
         </Text>
       </View>
-      <View style={styles.cta}>
-        <Ionicons name="play" size={14} color={palette.onPrimary} />
-        <Text style={styles.ctaText}>Resume</Text>
+      <View style={[styles.cta, stale && styles.ctaStale]}>
+        <Ionicons
+          name={stale ? 'open-outline' : 'play'}
+          size={14}
+          color={stale ? palette.text : palette.onPrimary}
+        />
+        <Text style={[styles.ctaText, stale && styles.ctaTextStale]}>{action}</Text>
       </View>
     </Pressable>
   );
@@ -59,6 +72,10 @@ const makeStyles = (c: Palette) =>
       backgroundColor: c.cardHighlight,
       marginBottom: spacing.sm,
     },
+    cardStale: {
+      borderColor: c.border,
+      backgroundColor: c.card,
+    },
     pressed: {
       opacity: 0.85,
     },
@@ -77,6 +94,12 @@ const makeStyles = (c: Palette) =>
       height: 8,
       borderRadius: 4,
       backgroundColor: c.live,
+    },
+    dotStale: {
+      backgroundColor: c.textFaint,
+    },
+    eyebrowStale: {
+      color: c.textMuted,
     },
     eyebrow: {
       flexShrink: 1,
@@ -106,9 +129,17 @@ const makeStyles = (c: Palette) =>
       borderRadius: radii.pill,
       backgroundColor: c.primary,
     },
+    ctaStale: {
+      borderWidth: 1,
+      borderColor: c.borderStrong,
+      backgroundColor: 'transparent',
+    },
     ctaText: {
       fontFamily: fonts.bodyBold,
       color: c.onPrimary,
       fontSize: 13,
+    },
+    ctaTextStale: {
+      color: c.text,
     },
   });

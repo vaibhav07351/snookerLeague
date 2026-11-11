@@ -116,8 +116,7 @@ describe('race scoring after fouls', () => {
     await live.recordFoul(id, 4);
     await live.recordMiss(id);
     const r = await live.recordPot(id, 7);
-    await live.recordPot(id, 5);
-    const after = await live.recordPot(id, 1); // potted 13, live 9
+    const after = await live.recordPot(id, 3); // potted 10, live 6
     expect(r.entrants.find((e) => e.playerId === 'ravi')?.place).toBeNull();
     expect(after.entrants.find((e) => e.playerId === 'ravi')?.place).toBeNull();
   });
@@ -127,6 +126,40 @@ describe('race scoring after fouls', () => {
     await live.recordPot(id, 7);
     const r = await live.undoLast(id);
     expect(r.entrants.find((e) => e.playerId === 'ravi')?.place).toBeNull();
+  });
+});
+
+describe('race ball and foul values', () => {
+  async function twoPlayerRace(target: number) {
+    const { race, live, store } = fresh();
+    await store.loadStore();
+    const created = await race.createRace({
+      leagueId: 'lg1',
+      createdByUid: 'u1',
+      playerIds: ['ravi', 'amit'],
+      targetScore: target,
+      namedLabel: null,
+      crownsRaceChampion: false,
+    });
+    return { live, id: created.id };
+  }
+
+  it('counts a red as 10 and undo takes the full 10 back', async () => {
+    const { live, id } = await twoPlayerRace(50);
+    let r = await live.recordPot(id, 1);
+    const ravi = () => r.entrants.find((e) => e.playerId === 'ravi')!;
+    expect(ravi().score).toBe(10);
+    expect(r.liveShots?.at(-1)).toMatchObject({ ball: 1, points: 10 });
+    r = await live.undoLast(id);
+    expect(ravi().score).toBe(0);
+  });
+
+  it('accepts fouls of 4 and 10 only', async () => {
+    const { live, id } = await twoPlayerRace(50);
+    const r = await live.recordFoul(id, 10);
+    expect(r.entrants.find((e) => e.playerId === 'ravi')?.foulPoints).toBe(10);
+    await expect(live.recordFoul(id, 5)).rejects.toMatchObject({ code: 'VALIDATION' });
+    await expect(live.recordFoul(id, 7)).rejects.toMatchObject({ code: 'VALIDATION' });
   });
 });
 
