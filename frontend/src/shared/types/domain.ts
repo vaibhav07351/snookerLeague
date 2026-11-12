@@ -294,6 +294,18 @@ export interface OpenFrame {
   redsRemoved?: number;
   /** Points already on the board when ball-by-ball scoring started mid-frame. */
   carriedPoints?: { a: number; b: number };
+  /**
+   * Hand changes of who is at the table during the frame (after a foul, "put them back in"),
+   * in order. Replayed with the shots, so undo puts the right player back.
+   */
+  turns?: TurnChange[];
+}
+
+/** The scorer put `playerId` (on `side`) at the table after the first `afterShots` shots. */
+export interface TurnChange {
+  afterShots: number;
+  side: 'a' | 'b';
+  playerId: string | null;
 }
 
 export const FULL_RACK_REDS = 15;

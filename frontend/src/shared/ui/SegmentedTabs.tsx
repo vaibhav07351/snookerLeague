@@ -38,6 +38,8 @@ export function SegmentedTabs<K extends string>({
             accessibilityRole="tab"
             accessibilityState={{ selected: on }}
             onPress={() => onChange(item.key)}
+            // Up and down only, so side-by-side tabs never take each other's taps.
+            hitSlop={small ? SMALL_HIT_SLOP : TAB_HIT_SLOP}
             style={({ pressed }) => [
               styles.tab,
               small && styles.tabSmall,
@@ -63,6 +65,10 @@ export function SegmentedTabs<K extends string>({
     </View>
   );
 }
+
+/** Touch areas reach 44pt (TOUCH_TARGET) while the tabs keep their compact look. */
+const SMALL_HIT_SLOP = { top: 5, bottom: 5 } as const;
+const TAB_HIT_SLOP = { top: 2, bottom: 2 } as const;
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({

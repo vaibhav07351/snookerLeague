@@ -152,6 +152,59 @@ export async function getMatch(matchId: string): Promise<Match | null> {
   return getStore().matches.find((m) => m.id === matchId) ?? null;
 }
 
+/**
+ * Players this person played with or against most recently in the league, newest first
+ * (without themselves). With no card of their own, the league's most recent players. Used to
+ * put the likely opponents at the top of "New match".
+ */
+export async function recentCoPlayerIds(
+  leagueId: string,
+  myPlayerId: string | null,
+  limit = 8,
+): Promise<string[]> {
+  await loadStore();
+  const recent = getStore()
+    .matches.filter(
+      (m) =>
+        m.leagueId === leagueId &&
+        (!myPlayerId || m.teamA.includes(myPlayerId) || m.teamB.includes(myPlayerId)),
+    )
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const ids: string[] = [];
+  for (const m of recent) {
+    for (const id of [...m.teamA, ...m.teamB]) {
+      if (id !== myPlayerId && !ids.includes(id)) {
+        ids.push(id);
+      }
+    }
+    if (ids.length >= limit) {
+      break;
+    }
+  }
+  return ids.slice(0, limit);
+}
+
+/**
+ * "Rematch": a new match between the same sides, same format and length. Never a title match
+ * and never a tournament fixture (those are set up on purpose, not by a quick rematch).
+ */
+export async function createRematch(matchId: string, createdByUid: string): Promise<Match> {
+  const previous = await getMatch(matchId);
+  if (!previous) {
+    throw new AppError('NOT_FOUND', 'Match not found');
+  }
+  return createMatch({
+    leagueId: previous.leagueId,
+    createdByUid,
+    format: matchFormatOf(previous),
+    teamA: previous.teamA,
+    teamB: previous.teamB,
+    bestOf: oddBestOf(previous.bestOf),
+    namedLabel: null,
+    crownsChampion: false,
+  });
+}
+
 export async function createMatch(input: {
   leagueId: string;
   createdByUid: string;

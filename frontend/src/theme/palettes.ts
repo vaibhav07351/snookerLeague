@@ -185,8 +185,11 @@ const daylight: Palette = {
   borderStrong: 'rgba(201, 138, 11, 0.6)',
   text: '#1A1E24',
   textMuted: '#5A616B',
-  textFaint: '#8C939C',
-  primary: '#C98A0B',
+  // Hints must still be readable under club lights: at least 4.5:1 on the page background.
+  textFaint: '#646C75',
+  // Deep gold: white button text on it and gold text on the page both reach 4.5:1 (WCAG AA).
+  // The brighter #C98A0B is kept for decoration only (tints, borders, charts).
+  primary: '#966400',
   primarySoft: '#9A6A06',
   onPrimary: '#FFFFFF',
   accent: '#6A4FD8',

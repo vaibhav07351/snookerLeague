@@ -28,6 +28,37 @@ const seed = (overrides: Partial<FrameSeed> = {}): FrameSeed => ({
   ...overrides,
 });
 
+describe('hand changes of the player at the table', () => {
+  // A fouls, B asks A to play again ("put them back in"), A pots a red.
+  const foul = shot('a', 'foul', 'a1');
+  const turnBack = { afterShots: 1, side: 'a' as const, playerId: 'a1' };
+
+  it('are replayed between the shots', () => {
+    const open = replayOpenFrame(
+      [foul, shot('a', 'pot', 'a1', 1)],
+      seed({ turns: [turnBack] }),
+      teams,
+    );
+    expect(open.atTable).toBe('a');
+    expect(open.teamAPoints).toBe(1);
+    expect(open.teamBPoints).toBe(4);
+    expect(open.currentBreak).toBe(1);
+  });
+
+  it('survive undoing a later shot, so the right player is back at the table', () => {
+    const afterUndo = replayOpenFrame([foul], seed({ turns: [turnBack] }), teams);
+    expect(afterUndo.atTable).toBe('a');
+    expect(afterUndo.atTablePlayerId).toBe('a1');
+    expect(frameSeedOf(afterUndo).turns).toEqual([turnBack]);
+  });
+
+  it('go with the shot they followed when that shot is undone', () => {
+    const open = replayOpenFrame([], seed({ turns: [turnBack] }), teams);
+    expect(open.atTable).toBe('a'); // A broke off: back to the start
+    expect(open.turns).toBeUndefined();
+  });
+});
+
 describe('replayOpenFrame', () => {
   it('keeps the breaker when every shot is undone (B broke off)', () => {
     const open = replayOpenFrame([], seed({ breakerSide: 'b', breakerPlayerId: 'b1' }), teams);

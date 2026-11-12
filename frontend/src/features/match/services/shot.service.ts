@@ -155,23 +155,46 @@ async function setAtTablePlayerNow(matchId: string, playerId: string): Promise<M
       teamsOf(match),
     );
   } else {
-    const sameVisit = open.atTable === side && open.atTablePlayerId === playerId;
-    next = {
-      ...open,
-      atTable: side,
-      currentBreak: sameVisit ? open.currentBreak : 0,
-      currentBreakSide: side,
-      atTablePlayerId: playerId,
-      lastPlayerIdBySide: {
-        a: open.lastPlayerIdBySide?.a ?? null,
-        b: open.lastPlayerIdBySide?.b ?? null,
-        [side]: playerId,
-      },
-    };
+    // Recorded with the shots (not patched onto the frame), so undoing a later shot puts this
+    // player back, and undoing the shot before it drops the change too.
+    const afterShots = open.shots.length;
+    const turns = [
+      ...(open.turns ?? []).filter((t) => t.afterShots < afterShots),
+      { afterShots, side, playerId },
+    ];
+    next = replayOpenFrame(open.shots, { ...frameSeedOf(open), turns }, teamsOf(match));
   }
   const updated = await writeMatch({ ...match, openFrame: next, updatedAt: nowIso() });
   logger.info('shot.service', 'At-table player set', { matchId, side });
   return updated;
+}
+
+/**
+ * Correct the reds on the table by hand (a red knocked in on a foul, or one miscounted):
+ * `delta` -1 takes a red off, +1 puts one back. Never below 0, never above the reds that are
+ * really left to account for.
+ */
+export function adjustRedsOnTable(matchId: string, delta: -1 | 1): Promise<Match> {
+  return serializeMatchWrite(matchId, async () => {
+    const match = await loadScorableMatch(matchId);
+    const open = openFrameOf(match);
+    const seed = frameSeedOf(open);
+    const redsLeft = tableStateOf(open).redsLeft;
+    if ((delta < 0 && redsLeft === 0) || (delta > 0 && seed.redsRemoved === 0)) {
+      throw new AppError(
+        'INVALID_STATE',
+        delta < 0 ? 'No reds left to take off' : 'No reds to put back',
+      );
+    }
+    const next = replayOpenFrame(
+      open.shots,
+      { ...seed, redsRemoved: seed.redsRemoved - delta },
+      teamsOf(match),
+    );
+    const updated = await writeMatch({ ...match, openFrame: next, updatedAt: nowIso() });
+    logger.info('shot.service', 'Reds on the table corrected', { matchId, delta });
+    return updated;
+  });
 }
 
 export function recordShot(matchId: string, input: ShotInput): Promise<Match> {

@@ -27,6 +27,7 @@ function ProfileButton(): ReactNode {
       accessibilityRole="button"
       accessibilityLabel="Open profile"
       onPress={() => router.push('/(main)/profile')}
+      hitSlop={4}
       style={styles.avatarBtn}
     >
       <Text style={styles.avatarText}>{initial}</Text>

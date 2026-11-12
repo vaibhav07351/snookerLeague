@@ -28,7 +28,7 @@ import { raceRules } from '@/features/rules/services/rules';
 import * as raceService from '@/features/race/services/race.service';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { useLayout } from '@/shared/hooks/use-layout';
-import { useLiveElapsed } from '@/shared/hooks/use-live-elapsed';
+import { useKeepScreenOn } from '@/shared/hooks/use-keep-screen-on';
 import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { Player, Race, RacePlace } from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
@@ -121,7 +121,8 @@ export default function RaceDetailScreen(): ReactNode {
   // The race clock starts on the first shot, like a match frame.
   const clockStart = race ? raceStartedAt(race) : null;
   const racing = race?.status === 'in_progress';
-  const elapsed = useLiveElapsed(clockStart, racing);
+  // Any member can score a live race, so the screen stays on while it is live.
+  useKeepScreenOn(racing, 'race-scoring');
   const navigation = useNavigation();
   const targetScore = race?.targetScore ?? null;
   // Rules and the live clock sit on the right of the screen header, as in a two-sided match.
@@ -134,12 +135,12 @@ export default function RaceDetailScreen(): ReactNode {
               <View style={styles.headerRight}>
                 <RulesButton iconOnly rules={raceRules(targetScore)} />
                 {racing ? (
-                  <ClockPill seconds={elapsed} pending={clockStart === null} label="Race time" />
+                  <ClockPill startedAt={clockStart} running={racing} label="Race time" />
                 ) : null}
               </View>
             ),
     });
-  }, [navigation, targetScore, racing, elapsed, clockStart, styles]);
+  }, [navigation, targetScore, racing, clockStart, styles]);
 
   if (!race) {
     return (

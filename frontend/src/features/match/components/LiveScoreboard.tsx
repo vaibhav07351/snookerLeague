@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SnookerBall } from '@/features/match/components/SnookerBall';
 import { describeBallOn, isBallOn, type TableState } from '@/features/match/services/table-state';
 import { TourTarget } from '@/features/tour/components/TourTarget';
-import { haptic } from '@/shared/feedback/haptics';
+import { haptic, type HapticKind } from '@/shared/feedback/haptics';
 import { useLayout } from '@/shared/hooks/use-layout';
 import type { BallValue } from '@/shared/types/domain';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
@@ -105,17 +105,36 @@ export function LiveScoreboard(props: LiveScoreboardProps): ReactNode {
       </TourTarget>
 
       <TourTarget id="live.actions" style={styles.row}>
-        <Action icon="close-circle-outline" label="Miss" onPress={() => onEndVisit('miss')} />
-        <Action icon="shield-outline" label="Safety" onPress={() => onEndVisit('safety')} />
-        <Action icon="sparkles-outline" label="Free ball" onPress={onFreeBall} />
-        <Action icon="arrow-undo-outline" label="Undo" onPress={onUndo} disabled={!canUndo} />
+        <Action
+          icon="close-circle-outline"
+          label="Miss"
+          feel="light"
+          onPress={() => onEndVisit('miss')}
+        />
+        <Action
+          icon="shield-outline"
+          label="Safety"
+          feel="light"
+          onPress={() => onEndVisit('safety')}
+        />
+        <Action icon="sparkles-outline" label="Free ball" feel="tap" onPress={onFreeBall} />
+        <Action
+          icon="arrow-undo-outline"
+          label="Undo"
+          feel="tap"
+          onPress={onUndo}
+          disabled={!canUndo}
+        />
       </TourTarget>
 
       <TourTarget id="live.fouls" style={styles.row}>
         {FOUL_VALUES.map((pts) => (
           <Pressable
             key={pts}
-            onPress={() => onFoul(pts)}
+            onPress={() => {
+              haptic('firm');
+              onFoul(pts);
+            }}
             accessibilityRole="button"
             accessibilityLabel={foulLabel(pts)}
             style={({ pressed }) => [styles.foul, pressed && styles.pressed]}
@@ -150,11 +169,14 @@ const BALL_LABEL: Record<BallValue, string> = {
 function Action({
   icon,
   label,
+  feel,
   onPress,
   disabled,
 }: {
   icon: IconName;
   label: string;
+  /** Felt with the press, alongside the visual press state (never instead of it). */
+  feel: HapticKind;
   onPress: () => void;
   disabled?: boolean;
 }): ReactNode {
@@ -162,7 +184,10 @@ function Action({
   const palette = usePalette();
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => {
+        haptic(feel);
+        onPress();
+      }}
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={label}
@@ -286,8 +311,10 @@ const makeStyles = (c: Palette) =>
       color: c.text,
       fontSize: 12,
     },
+    // Shown on press-in, before the tap completes: the dip is the feedback, haptics add to it.
     pressed: {
       opacity: 0.75,
+      transform: [{ scale: 0.97 }],
     },
     disabled: {
       opacity: 0.35,

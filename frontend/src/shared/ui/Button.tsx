@@ -51,6 +51,8 @@ export function Button({
     <Pressable
       accessibilityRole="button"
       disabled={isDisabled}
+      // The small button is 40pt tall: reach the 44pt touch target without growing it.
+      hitSlop={size === 'sm' ? SMALL_HIT_SLOP : undefined}
       style={({ pressed }) => [
         styles.base,
         size === 'sm' && styles.small,
@@ -77,6 +79,8 @@ export function Button({
     </Pressable>
   );
 }
+
+const SMALL_HIT_SLOP = { top: 2, bottom: 2 } as const;
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({

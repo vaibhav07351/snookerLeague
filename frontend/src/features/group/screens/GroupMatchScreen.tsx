@@ -11,7 +11,7 @@ import { freeForAllRules } from '@/features/rules/services/rules';
 import { LiveScoreboard } from '@/features/match/components/LiveScoreboard';
 import { haptic } from '@/shared/feedback/haptics';
 import { useLayout } from '@/shared/hooks/use-layout';
-import { useLiveElapsed } from '@/shared/hooks/use-live-elapsed';
+import { useKeepScreenOn } from '@/shared/hooks/use-keep-screen-on';
 import { Button } from '@/shared/ui/Button';
 import { ClockPill } from '@/shared/ui/ClockPill';
 import { EmptyState } from '@/shared/ui/EmptyState';
@@ -35,7 +35,7 @@ export function GroupMatchScreen({ groupId }: { groupId: string | undefined }): 
   const navigation = useNavigation();
   const frameLive = group?.status === 'in_progress' && group.openFrame != null;
   const frameStart = group?.openFrame?.startedAt ?? null;
-  const elapsed = useLiveElapsed(frameStart, frameLive);
+  useKeepScreenOn(frameLive, 'group-scoring');
   const bestOf = group?.bestOf ?? null;
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -46,12 +46,12 @@ export function GroupMatchScreen({ groupId }: { groupId: string | undefined }): 
               <View style={styles.headerRight}>
                 <RulesButton iconOnly rules={freeForAllRules(bestOf)} />
                 {frameLive ? (
-                  <ClockPill seconds={elapsed} pending={frameStart === null} label="Frame time" />
+                  <ClockPill startedAt={frameStart} running={frameLive} label="Frame time" />
                 ) : null}
               </View>
             ),
     });
-  }, [navigation, bestOf, frameLive, elapsed, frameStart, styles]);
+  }, [navigation, bestOf, frameLive, frameStart, styles]);
 
   if (group === undefined) {
     return (

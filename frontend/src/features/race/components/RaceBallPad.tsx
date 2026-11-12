@@ -90,7 +90,10 @@ export function RaceBallPad({
       </View>
       <View style={styles.row}>
         <Pressable
-          onPress={onMiss}
+          onPress={() => {
+            haptic('light');
+            onMiss();
+          }}
           style={({ pressed }) => [styles.action, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel={`Miss by ${playerName}`}
@@ -99,7 +102,10 @@ export function RaceBallPad({
           <Text style={styles.actionText}>Miss</Text>
         </Pressable>
         <Pressable
-          onPress={onSafety}
+          onPress={() => {
+            haptic('light');
+            onSafety();
+          }}
           style={({ pressed }) => [styles.action, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel={`Safety by ${playerName}`}
@@ -108,7 +114,10 @@ export function RaceBallPad({
           <Text style={styles.actionText}>Safety</Text>
         </Pressable>
         <Pressable
-          onPress={onUndo}
+          onPress={() => {
+            haptic('tap');
+            onUndo();
+          }}
           disabled={!canUndo}
           style={({ pressed }) => [
             styles.action,
@@ -126,7 +135,10 @@ export function RaceBallPad({
         {FOUL_POINTS.map((pts) => (
           <Pressable
             key={pts}
-            onPress={() => onFoul(pts)}
+            onPress={() => {
+              haptic('firm');
+              onFoul(pts);
+            }}
             style={({ pressed }) => [styles.foul, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel={`Foul ${pts} on ${playerName}`}
@@ -232,6 +244,7 @@ const makeStyles = (c: Palette) =>
     },
     pressed: {
       opacity: 0.75,
+      transform: [{ scale: 0.97 }],
     },
     // Same press as the match ball pad, so both scorers feel alike.
     ballPressed: {

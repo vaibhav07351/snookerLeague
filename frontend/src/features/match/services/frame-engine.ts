@@ -4,6 +4,7 @@ import {
   type Match,
   type OpenFrame,
   type Shot,
+  type TurnChange,
 } from '@/shared/types/domain';
 
 /** Everything about a frame that is not derived from its shots. */
@@ -13,6 +14,8 @@ export interface FrameSeed {
   startingReds: number;
   redsRemoved: number;
   carriedPoints?: { a: number; b: number };
+  /** Hand changes of the player at the table; replayed between the shots. */
+  turns?: TurnChange[];
 }
 
 export interface Teams {
@@ -54,6 +57,7 @@ export function frameSeedOf(open: OpenFrame): FrameSeed {
     startingReds: open.startingReds ?? FULL_RACK_REDS,
     redsRemoved: open.redsRemoved ?? 0,
     ...(open.carriedPoints ? { carriedPoints: open.carriedPoints } : {}),
+    ...(open.turns && open.turns.length > 0 ? { turns: open.turns } : {}),
   };
 }
 
@@ -76,7 +80,28 @@ export function replayOpenFrame(shots: Shot[], seed: FrameSeed, teams: Teams): O
     atTablePlayerId = incomingPartner(teams[side], lastPlayerIdBySide[side]);
   }
 
-  for (const shot of shots) {
+  // Hand changes that still apply: one made after a shot that was since undone goes with it.
+  const turns = (seed.turns ?? []).filter((t) => t.afterShots <= shots.length);
+  let nextTurn = 0;
+  function applyTurns(shotsSoFar: number): void {
+    for (
+      let turn = turns[nextTurn];
+      turn && turn.afterShots === shotsSoFar;
+      turn = turns[++nextTurn]
+    ) {
+      const sameVisit = atTable === turn.side && atTablePlayerId === turn.playerId;
+      if (!sameVisit) {
+        currentBreak = 0;
+      }
+      atTable = turn.side;
+      currentBreakSide = turn.side;
+      atTablePlayerId = turn.playerId;
+      lastPlayerIdBySide[turn.side] = turn.playerId;
+    }
+  }
+
+  applyTurns(0);
+  for (const [index, shot] of shots.entries()) {
     const playerId = shot.playerId ?? null;
     if (playerId) {
       lastPlayerIdBySide[shot.side] = playerId;
@@ -114,6 +139,7 @@ export function replayOpenFrame(shots: Shot[], seed: FrameSeed, teams: Teams): O
       currentBreakSide = atTable;
       seatIncoming(atTable);
     }
+    applyTurns(index + 1);
   }
 
   return {
@@ -130,6 +156,7 @@ export function replayOpenFrame(shots: Shot[], seed: FrameSeed, teams: Teams): O
     startingReds: seed.startingReds,
     redsRemoved: seed.redsRemoved,
     ...(seed.carriedPoints ? { carriedPoints: seed.carriedPoints } : {}),
+    ...(turns.length > 0 ? { turns } : {}),
   };
 }
 

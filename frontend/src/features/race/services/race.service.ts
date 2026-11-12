@@ -154,12 +154,17 @@ export async function persistRace(race: Race, event?: FeedEvent): Promise<Race> 
       events = [...events, withTs];
     }
 
-    // Derived stats: not an edit of the player, so no updatedAt bump.
-    const players = applyPlayerStats(s.players, race.leagueId, {
-      matches: s.matches,
-      races,
-      groupMatches: s.groupMatches,
-    });
+    // Derived stats: not an edit of the player, so no updatedAt bump. Only finished races
+    // count, so a live shot changes nothing: recompute only when this race is (or was) done.
+    const previous = s.races.find((r) => r.id === race.id);
+    const countsForStats = race.status === 'completed' || previous?.status === 'completed';
+    const players = countsForStats
+      ? applyPlayerStats(s.players, race.leagueId, {
+          matches: s.matches,
+          races,
+          groupMatches: s.groupMatches,
+        })
+      : s.players;
 
     return { ...s, races, leagues, events, players };
   });

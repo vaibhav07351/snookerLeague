@@ -48,6 +48,10 @@ export interface MatchScreenState {
     freeBall: () => void;
     undoShot: () => Promise<boolean>;
     selectPlayer: (playerId: string) => void;
+    /** Take a red off the table (-1) or put one back (+1) by hand. */
+    adjustReds: (delta: -1 | 1) => void;
+    /** Start a new match between the same sides; resolves the new match id. */
+    rematch: () => Promise<string | null>;
   };
 }
 
@@ -127,6 +131,7 @@ export function useMatchScreen(matchId: string | undefined): MatchScreenState {
   }, []);
 
   const id = match?.id;
+  const uid = user?.uid;
   const actions = useMemo(() => {
     // Shot taps are fire-and-forget so rapid taps never wait on each other; each write
     // re-reads the latest match from the store, so order is preserved.
@@ -153,8 +158,20 @@ export function useMatchScreen(matchId: string | undefined): MatchScreenState {
         id ? run('Could not undo', () => shotService.undoLastShot(id)) : Promise.resolve(false),
       selectPlayer: (playerId: string) =>
         shot('Could not change player', (mid) => shotService.setAtTablePlayer(mid, playerId)),
+      adjustReds: (delta: -1 | 1) =>
+        shot('Could not change the reds', (mid) => shotService.adjustRedsOnTable(mid, delta)),
+      rematch: async (): Promise<string | null> => {
+        if (!id || !uid) {
+          return null;
+        }
+        let created: string | null = null;
+        await run('Could not start the rematch', async () => {
+          created = (await matchService.createRematch(id, uid)).id;
+        });
+        return created;
+      },
     };
-  }, [id, run]);
+  }, [id, uid, run]);
 
   return { match, league, players, busy, run, actions, ...derived };
 }

@@ -5,8 +5,9 @@ import {
   freeBallValue,
   isBallOn,
   tableStateFromShots,
+  tableStateOf,
 } from '@/features/match/services/table-state';
-import type { BallValue, Shot, ShotKind } from '@/shared/types/domain';
+import type { BallValue, OpenFrame, Shot, ShotKind } from '@/shared/types/domain';
 
 let seq = 0;
 function shot(kind: ShotKind, ball?: BallValue, side: 'a' | 'b' = 'a'): Shot {
@@ -88,5 +89,46 @@ describe('tableStateFromShots', () => {
     expect(tableStateFromShots([], { startingReds: 9 }).redsLeft).toBe(9);
     expect(tableStateFromShots([pot(1)], { startingReds: 15, redsRemoved: 3 }).redsLeft).toBe(11);
     expect(tableStateFromShots([], { startingReds: 2, redsRemoved: 5 }).redsLeft).toBe(0);
+  });
+
+  it('takes the unlogged red off when a colour is logged while on a red', () => {
+    const state = tableStateFromShots([pot(7)]);
+    expect(state.redsLeft).toBe(14);
+    expect(state.on).toEqual({ kind: 'red' });
+    expect(state.pointsRemaining).toBe(14 * 8 + 27);
+    // With the last red unlogged, the colour after it leads into the clearance.
+    expect(tableStateFromShots([pot(5)], { startingReds: 1 }).on).toEqual({
+      kind: 'clearance',
+      ball: 2,
+    });
+  });
+});
+
+describe('tableStateOf (two-sided frames)', () => {
+  function open(shots: Shot[], a: number, b: number): OpenFrame {
+    return {
+      shots,
+      teamAPoints: a,
+      teamBPoints: b,
+      atTable: 'a',
+      currentBreak: 0,
+      currentBreakSide: 'a',
+      startingReds: 0,
+    };
+  }
+  const clearance = (): Shot[] => [pot(2), pot(3), pot(4), pot(5), pot(6), pot(7)];
+
+  it('re-spots the black when the frame ends level', () => {
+    const state = tableStateOf(open(clearance(), 60, 60));
+    expect(state.on).toEqual({ kind: 'respot' });
+    expect(state.pointsRemaining).toBe(7);
+    expect(isBallOn(state, 7)).toBe(true);
+    expect(isBallOn(state, 6)).toBe(false);
+    expect(describeBallOn(state)).toBe('Level: re-spotted black');
+  });
+
+  it('is cleared once the re-spotted black decides it', () => {
+    expect(tableStateOf(open([...clearance(), pot(7)], 67, 60)).on).toEqual({ kind: 'cleared' });
+    expect(tableStateOf(open(clearance(), 61, 60)).on).toEqual({ kind: 'cleared' });
   });
 });

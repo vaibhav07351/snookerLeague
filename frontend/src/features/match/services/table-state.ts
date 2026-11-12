@@ -5,12 +5,15 @@ import { FULL_RACK_REDS, type BallValue, type OpenFrame, type Shot } from '@/sha
  * - red: a red (any reds left)
  * - colour: any colour, after potting a red (or a free ball as red)
  * - clearance: the colours in order, yellow (2) to black (7), once the reds are gone
+ * - respot: the scores are level after the last black, so the black is re-spotted and the
+ *   next score (a pot, or a foul) wins the frame (two-sided matches only, see tableStateOf)
  * - cleared: every ball is off the table
  */
 export type BallOn =
   | { kind: 'red' }
   | { kind: 'colour' }
   | { kind: 'clearance'; ball: ColourValue }
+  | { kind: 'respot' }
   | { kind: 'cleared' };
 
 export type ColourValue = 2 | 3 | 4 | 5 | 6 | 7;
@@ -57,7 +60,8 @@ function onAfterPot(redsLeft: number, on: BallOn, ball: BallValue): BallOn {
     // Logged out of order (scorer tapped a different colour): follow the ball actually potted.
     return ball >= on.ball ? nextColour(ball as ColourValue) : on;
   }
-  // A colour logged while on a red: treat it as the colour after an unlogged red.
+  // A colour logged while on a red is the colour after an unlogged red (the caller has
+  // already taken that red off the table).
   return redsLeft > 0 ? { kind: 'red' } : { kind: 'clearance', ball: 2 };
 }
 
@@ -78,6 +82,8 @@ export function pointsRemainingFor(redsLeft: number, on: BallOn): number {
       return 7 + redsLeft * 8 + colourSum(2);
     case 'clearance':
       return colourSum(on.ball);
+    case 'respot':
+      return 7;
     case 'cleared':
       return 0;
   }
@@ -97,7 +103,9 @@ export function tableStateFromShots(shots: readonly TableShot[], seed: TableSeed
     }
     if (shot.kind === 'pot') {
       const ball = shot.ball ?? (shot.points as BallValue);
-      if (ball === 1) {
+      // A red potted, or a colour while on a red (its red went down unlogged): one red fewer,
+      // so reds left and points remaining never drift from the table.
+      if (ball === 1 || (on.kind === 'red' && redsLeft > 0)) {
         redsLeft = Math.max(0, redsLeft - 1);
       }
       on = onAfterPot(redsLeft, on, ball);
@@ -114,11 +122,24 @@ export function tableStateFromShots(shots: readonly TableShot[], seed: TableSeed
   return { redsLeft, on, pointsRemaining: pointsRemainingFor(redsLeft, on) };
 }
 
+/**
+ * Table state of a two-sided match frame. When the last black goes down with the scores level,
+ * the black is re-spotted: the frame goes on until someone scores (a pot or a foul), which is
+ * what makes the scores differ again.
+ */
 export function tableStateOf(open: OpenFrame): TableState {
-  return tableStateFromShots(open.shots, {
+  const state = tableStateFromShots(open.shots, {
     startingReds: open.startingReds,
     redsRemoved: open.redsRemoved,
   });
+  if (state.on.kind === 'cleared' && open.teamAPoints === open.teamBPoints) {
+    return {
+      ...state,
+      on: { kind: 'respot' },
+      pointsRemaining: pointsRemainingFor(0, { kind: 'respot' }),
+    };
+  }
+  return state;
 }
 
 /** True when potting `ball` now is a legal, expected pot (used to highlight the ball pad). */
@@ -130,6 +151,8 @@ export function isBallOn(state: TableState, ball: BallValue): boolean {
       return ball !== 1;
     case 'clearance':
       return ball === state.on.ball;
+    case 'respot':
+      return ball === 7;
     case 'cleared':
       return false;
   }
@@ -139,6 +162,9 @@ export function isBallOn(state: TableState, ball: BallValue): boolean {
 export function freeBallValue(state: TableState): BallValue {
   if (state.on.kind === 'clearance') {
     return state.on.ball;
+  }
+  if (state.on.kind === 'respot') {
+    return 7;
   }
   return 1;
 }
@@ -151,6 +177,8 @@ export function describeBallOn(state: TableState): string {
       return 'On: any colour';
     case 'clearance':
       return `On: ${COLOUR_NAMES[state.on.ball]}`;
+    case 'respot':
+      return 'Level: re-spotted black';
     case 'cleared':
       return 'Table cleared';
   }

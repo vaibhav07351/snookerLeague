@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useNavigation } from 'expo-router';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -40,9 +40,10 @@ import { Button } from '@/shared/ui/Button';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { haptic } from '@/shared/feedback/haptics';
 import { EmptyState } from '@/shared/ui/EmptyState';
-import { useLiveElapsed } from '@/shared/hooks/use-live-elapsed';
+import { useKeepScreenOn } from '@/shared/hooks/use-keep-screen-on';
 import { HeaderBack, useSafeBack } from '@/shared/ui/HeaderBack';
 import { BottomSheet } from '@/shared/ui/BottomSheet';
+import { Stepper } from '@/shared/ui/Stepper';
 import { confirmAction } from '@/shared/utils/confirm';
 import type { Match } from '@/shared/types/domain';
 import { sideColor } from '@/theme/palettes';
@@ -76,7 +77,7 @@ export default function MatchDetailScreen(): ReactNode {
 
   const inProgress = match?.outcome.status === 'in_progress';
   const timingOn = match?.timingEnabled === true;
-  const elapsed = useLiveElapsed(match?.frameStartedAt, timingOn && inProgress);
+  const frameStartedAt = match?.frameStartedAt ?? null;
   const matchId = match?.id;
   const { user } = useSession();
 
@@ -92,6 +93,8 @@ export default function MatchDetailScreen(): ReactNode {
     void maybeAskForRating(match, mine);
   }, [match, s.players, user?.uid]);
   const { run, canScore, busy } = s;
+  // The phone must not dim or lock between shots while someone is scoring here.
+  useKeepScreenOn(inProgress && canScore, 'match-scoring');
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -110,8 +113,7 @@ export default function MatchDetailScreen(): ReactNode {
               {inProgress && matchId ? (
                 <MatchTimingHeader
                   enabled={timingOn}
-                  pending={!match.frameStartedAt}
-                  elapsedSeconds={elapsed}
+                  startedAt={frameStartedAt}
                   disabled={busy || !canScore}
                   onToggle={(next) =>
                     void run('Could not change the timer', () =>
@@ -124,13 +126,25 @@ export default function MatchDetailScreen(): ReactNode {
           )
         : undefined,
     });
-  }, [navigation, match, matchId, inProgress, timingOn, elapsed, busy, canScore, run, styles]);
+  }, [
+    navigation,
+    match,
+    matchId,
+    inProgress,
+    timingOn,
+    frameStartedAt,
+    busy,
+    canScore,
+    run,
+    styles,
+  ]);
 
   // Per-frame player lines and the live frame's per-player points (short names: first
-  // names, surnames only when two players share a first name).
+  // names, surnames only when two players share a first name). The per-frame lines are only
+  // shown in the Frames sheet, so they are worked out while it is open, not on every shot.
   const { shortName } = s;
   const frameLines = useMemo<FramePlayerLine[][]>(() => {
-    if (!match) {
+    if (!match || !showFrames) {
       return [];
     }
     return match.frames.map((frame) =>
@@ -145,7 +159,7 @@ export default function MatchDetailScreen(): ReactNode {
         safeties: p.safeties,
       })),
     );
-  }, [match, shortName]);
+  }, [match, shortName, showFrames]);
 
   const liveRanks = useMemo<FrameRankView[]>(() => {
     if (!match?.openFrame) {
@@ -382,6 +396,21 @@ export default function MatchDetailScreen(): ReactNode {
   ) : null;
 
   const hasMore = canScore || s.canManage;
+  // A rematch is offered to the people in this game (and whoever scored or runs it).
+  const iPlayed = s.players.some(
+    (p) =>
+      p.authUid != null &&
+      p.authUid === user?.uid &&
+      (m.teamA.includes(p.id) || m.teamB.includes(p.id)),
+  );
+  const canRematch = finished && winnerLabel != null && (iPlayed || canScore || s.canManage);
+  async function rematch(): Promise<void> {
+    const id = await s.actions.rematch();
+    if (id) {
+      router.replace({ pathname: '/match/[id]', params: { id } });
+    }
+  }
+  const table = s.table;
   const closeMore = (): void => {
     setShowMore(false);
     setShowManual(false);
@@ -498,8 +527,21 @@ export default function MatchDetailScreen(): ReactNode {
             style={styles.actionFlex}
           />
         ) : null}
+        {canRematch ? (
+          <Button
+            label="Rematch"
+            icon="refresh"
+            size="sm"
+            variant="secondary"
+            disabled={busy}
+            onPress={() => void rematch()}
+            style={styles.actionFlex}
+          />
+        ) : null}
         <Button
-          label={m.frames.length > 0 ? `Frames (${m.frames.length})` : 'Frames'}
+          // Finished, the result card already shows the frames; the short label keeps four
+          // buttons on one line on the narrowest phones.
+          label={!finished && m.frames.length > 0 ? `Frames (${m.frames.length})` : 'Frames'}
           icon="list-outline"
           size="sm"
           variant="secondary"
@@ -556,6 +598,19 @@ export default function MatchDetailScreen(): ReactNode {
 
       <BottomSheet visible={showMore} title="Match options" onClose={closeMore}>
         {scoring ? scoringStatus : null}
+        {scoring &&
+        open &&
+        table &&
+        (table.on.kind === 'red' || table.on.kind === 'colour' || (open.redsRemoved ?? 0) > 0) ? (
+          // For a red that went down without being logged (knocked in on a foul, say).
+          <Stepper
+            label="Reds on the table"
+            value={table.redsLeft}
+            min={0}
+            max={table.redsLeft + (open.redsRemoved ?? 0)}
+            onChange={(next) => s.actions.adjustReds(next < table.redsLeft ? -1 : 1)}
+          />
+        ) : null}
         {canStartMidway && !showMidway ? (
           <Button
             label="Already playing? Start from the current score"
