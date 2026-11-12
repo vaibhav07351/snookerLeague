@@ -97,4 +97,6 @@ var (
 	ErrTermsRequired = errors.New("terms not accepted")
 	// ErrTooManyPosts: the daily posting limit is reached.
 	ErrTooManyPosts = errors.New("posting limit reached")
+	// ErrAdultsOnly: public posts are for players 18 and over (decision D5).
+	ErrAdultsOnly = errors.New("public posts are for adults")
 )

@@ -53,9 +53,28 @@ func TestOnlyAgreedSinglesBetweenAccountsCount(t *testing.T) {
 		"same person twice":     {`{"updatedAt":"2026-10-01T00:00:00Z","createdByUid":"u1","teamA":["c1"],"teamB":["c3"],"outcome":{"winner":"a"}}`, false},
 		"doubles":               {`{"updatedAt":"2026-10-01T00:00:00Z","createdByUid":"u1","teamA":["c1","c3"],"teamB":["c2"],"confirmedByUids":["u2"],"outcome":{"winner":"a"}}`, false},
 	}
+	savedAt := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	for name, c := range cases {
-		if _, ok := ratedGame([]byte(c.raw), owners); ok != c.want {
+		if _, ok := ratedGame([]byte(c.raw), savedAt, owners); ok != c.want {
 			t.Errorf("%s: rated=%v, want %v", name, ok, c.want)
 		}
+	}
+}
+
+func TestARatedGameUsesTheServersTimeNotThePhones(t *testing.T) {
+	owners := map[string]string{"c1": "u1", "c2": "u2"}
+	savedAt := time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC)
+	game := func(extra string) string {
+		return `{"createdByUid":"u1","teamA":["c1"],"teamB":["c2"],"confirmedByUids":["u2"],` + extra + `"outcome":{"winner":"a"}}`
+	}
+	// A backdated phone time is ignored: the server's save time is used.
+	g, ok := ratedGame([]byte(game(`"finishedAt":"2020-01-01T00:00:00Z",`)), savedAt, owners)
+	if !ok || !g.At.Equal(savedAt) {
+		t.Fatalf("want the server save time, got %v (rated %v)", g.At, ok)
+	}
+	// When the server stamped the finish, that time is used.
+	g, _ = ratedGame([]byte(game(`"serverFinishedAt":"2026-11-09T18:30:00Z",`)), savedAt, owners)
+	if want := time.Date(2026, 11, 9, 18, 30, 0, 0, time.UTC); !g.At.Equal(want) {
+		t.Fatalf("want serverFinishedAt %v, got %v", want, g.At)
 	}
 }

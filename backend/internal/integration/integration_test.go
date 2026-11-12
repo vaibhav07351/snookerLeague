@@ -142,7 +142,9 @@ func TestSyncAgainstPostgres(t *testing.T) {
 	svc := syncmod.NewService(syncmod.NewPGStore(pool))
 
 	league := randID("lg_")
-	leagueDoc := fmt.Sprintf(`{"id":%q,"name":"Club","kind":"club","createdByUid":%q,"inviteCode":"ABC"}`, league, owner.ID)
+	// Invite codes are unique across live leagues and runs share this database: random code.
+	leagueDoc := fmt.Sprintf(`{"id":%q,"name":"Club","kind":"club","createdByUid":%q,"inviteCode":%q}`,
+		league, owner.ID, "I"+strings.ToUpper(randID(""))[:7])
 	res := put(t, svc, owner.ID, upsert(syncmod.EntityLeague, league, league, 0, leagueDoc))
 	if res.Status != syncmod.StatusApplied || res.Version == 0 {
 		t.Fatalf("league create: %+v", res)

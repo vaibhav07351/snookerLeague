@@ -339,6 +339,9 @@ func (s *Service) PublicMatch(ctx context.Context, matchID string) (match, leagu
 		if league, err = tx.Get(ctx, EntityLeague, m.LeagueID); err != nil {
 			return err
 		}
+		if league.Deleted {
+			return ErrNotFound
+		}
 		var body struct {
 			TeamA []string `json:"teamA"`
 			TeamB []string `json:"teamB"`
@@ -346,7 +349,8 @@ func (s *Service) PublicMatch(ctx context.Context, matchID string) (match, leagu
 		if err := json.Unmarshal(m.Data, &body); err != nil {
 			return fmt.Errorf("decode match: %w", err)
 		}
-		for _, id := range append(body.TeamA, body.TeamB...) {
+		// Anyone can open this page, so never read more cards than a doubles match has.
+		for _, id := range firstN(append(body.TeamA, body.TeamB...), 2*maxTeamSize) {
 			p, err := tx.Get(ctx, EntityPlayer, id)
 			if errors.Is(err, ErrNotFound) {
 				continue
@@ -366,6 +370,11 @@ func (s *Service) PublicMatch(ctx context.Context, matchID string) (match, leagu
 	return match, league, players, nil
 }
 
+// firstN is ids cut to at most n (documents saved before shape checks may hold more).
+func firstN(ids []string, n int) []string {
+	return ids[:min(len(ids), n)]
+}
+
 // PublicTournament returns a tournament with its league, fixtures and entrant cards, for the
 // public bracket page.
 func (s *Service) PublicTournament(ctx context.Context, id string) (tournament, league Doc, fixtures, players []Doc, err error) {
@@ -381,6 +390,9 @@ func (s *Service) PublicTournament(ctx context.Context, id string) (tournament, 
 		if league, err = tx.Get(ctx, EntityLeague, t.LeagueID); err != nil {
 			return err
 		}
+		if league.Deleted {
+			return ErrNotFound
+		}
 		if fixtures, err = tx.TournamentMatches(ctx, t.LeagueID, id); err != nil {
 			return err
 		}
@@ -390,7 +402,7 @@ func (s *Service) PublicTournament(ctx context.Context, id string) (tournament, 
 		if err := json.Unmarshal(t.Data, &body); err != nil {
 			return fmt.Errorf("decode tournament: %w", err)
 		}
-		for _, pid := range body.Entrants {
+		for _, pid := range firstN(body.Entrants, maxEntrants) {
 			p, err := tx.Get(ctx, EntityPlayer, pid)
 			if errors.Is(err, ErrNotFound) {
 				continue

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 )
 
 const (
@@ -30,13 +31,16 @@ type Service struct {
 	store     Store
 	publisher Publisher
 	claims    ClaimStore
+	now       func() time.Time
 }
 
 // SetPublisher connects live updates (optional; nil turns them off).
 func (s *Service) SetPublisher(p Publisher) { s.publisher = p }
 
 // NewService builds the sync service.
-func NewService(store Store) *Service { return &Service{store: store} }
+func NewService(store Store) *Service {
+	return &Service{store: store, now: func() time.Time { return time.Now().UTC() }}
+}
 
 // Push applies each operation independently, so one refused operation never blocks or drops
 // the rest of the batch. Results come back in the same order as the operations.
@@ -63,6 +67,7 @@ func (s *Service) applyOne(ctx context.Context, userID string, op Op) (OpResult,
 		return OpResult{OpID: op.OpID, Status: StatusRejected, Code: invalidOpCode, Message: msg}, nil
 	}
 	var result OpResult
+	var saved json.RawMessage
 	err := s.store.InTx(ctx, func(tx Tx) error {
 		if err := tx.LockWrites(ctx); err != nil {
 			return err
@@ -76,33 +81,37 @@ func (s *Service) applyOne(ctx context.Context, userID string, op Op) (OpResult,
 		if !errors.Is(err, ErrNotFound) {
 			return err
 		}
-		result, err = s.apply(ctx, tx, userID, op)
+		result, saved, err = s.apply(ctx, tx, userID, op)
 		return err
 	})
 	if err != nil {
 		return OpResult{}, fmt.Errorf("apply op %s: %w", op.OpID, err)
 	}
-	// Only after the commit, so watchers never see a change that was rolled back.
-	if s.publisher != nil && result.Status == StatusApplied && op.Entity == EntityMatch {
+	// Only after the commit, so watchers never see a change that was rolled back. A retried
+	// operation (saved == nil for upserts) was published the first time.
+	if s.publisher != nil && result.Status == StatusApplied && op.Entity == EntityMatch &&
+		(op.Action == ActionDelete || saved != nil) {
 		d := Doc{Entity: op.Entity, ID: op.ID, LeagueID: op.LeagueID, Version: result.Version}
 		if op.Action == ActionDelete {
 			d.Deleted = true
 		} else {
-			d.Data = op.Data
+			d.Data = saved
 		}
 		s.publisher.Publish(d)
 	}
 	return result, nil
 }
 
-func (s *Service) apply(ctx context.Context, tx Tx, userID string, op Op) (OpResult, error) {
+// apply checks and saves one operation. It returns the answer for the phone and, for a saved
+// upsert, the stored body (which can differ from what the phone sent: see settleMatchFields).
+func (s *Service) apply(ctx context.Context, tx Tx, userID string, op Op) (OpResult, json.RawMessage, error) {
 	var current *Doc
 	doc, err := tx.Get(ctx, op.Entity, op.ID)
 	switch {
 	case err == nil:
 		current = &doc
 	case !errors.Is(err, ErrNotFound):
-		return OpResult{}, fmt.Errorf("load document: %w", err)
+		return OpResult{}, nil, fmt.Errorf("load document: %w", err)
 	}
 
 	// Document ids are unique across ALL leagues, so an id that exists must belong to the league
@@ -111,16 +120,34 @@ func (s *Service) apply(ctx context.Context, tx Tx, userID string, op Op) (OpRes
 	// and overwrite it. The refusal reveals nothing about the other document.
 	if current != nil && current.LeagueID != op.LeagueID {
 		slog.Warn("sync op names another league's document", "op", op.OpID, "entity", op.Entity)
-		return refused(op, "id_taken", "That id is already in use."), nil
+		return refused(op, "id_taken", "That id is already in use."), nil, nil
 	}
 	if current == nil && op.Action == ActionDelete {
-		return refused(op, "not_found", "Nothing to delete."), nil
+		return refused(op, "not_found", "Nothing to delete."), nil, nil
+	}
+	var cur fields
+	if current != nil && !current.Deleted {
+		if cur, err = decodeFields(current.Data); err != nil {
+			return OpResult{}, nil, err
+		}
+	}
+	isMatchUpsert := op.Entity == EntityMatch && op.Action == ActionUpsert
+	if isMatchUpsert {
+		if op.Data, err = pinServerFinishedAt(cur, op.Data); err != nil {
+			return OpResult{}, nil, err
+		}
 	}
 	if rej, err := authorize(ctx, tx, userID, op, current); err != nil {
-		return OpResult{}, err
+		return OpResult{}, nil, err
 	} else if rej != nil {
+		if rej.code == retryLaterCode {
+			// Something this write depends on is not on the server yet: the phone sends the
+			// rest of its queue and tries again.
+			return OpResult{OpID: op.OpID, Status: StatusConflict, Code: conflictCode,
+				Message: rej.message, Current: current}, nil, nil
+		}
 		slog.Info("sync op rejected", "op", op.OpID, "entity", op.Entity, "code", rej.code)
-		return refused(op, rej.code, rej.message), nil
+		return refused(op, rej.code, rej.message), nil, nil
 	}
 
 	// The phone must have seen the latest server version, otherwise two phones edited the
@@ -131,53 +158,82 @@ func (s *Service) apply(ctx context.Context, tx Tx, userID string, op Op) (OpRes
 	}
 	if op.BaseVersion != currentVersion {
 		return OpResult{OpID: op.OpID, Status: StatusConflict, Code: conflictCode,
-			Message: conflictReason, Current: current}, nil
+			Message: conflictReason, Current: current}, nil, nil
 	}
 
 	if current == nil && op.Entity == EntityLeague {
 		if err := tx.AddMember(ctx, op.ID, userID, RoleOwner); err != nil {
-			return OpResult{}, fmt.Errorf("add league owner: %w", err)
+			return OpResult{}, nil, fmt.Errorf("add league owner: %w", err)
 		}
 	}
 	stored := Doc{Entity: op.Entity, ID: op.ID, LeagueID: op.LeagueID}
 	if op.Action == ActionDelete {
 		stored.Deleted = true
-	} else {
-		stored.Data = op.Data
-		if op.Entity == EntityLeague {
-			// The member list belongs to the server: whatever a phone sends is replaced.
-			if stored.Data, err = withMembers(ctx, tx, op.ID, op.Data); err != nil {
-				return OpResult{}, err
-			}
-		}
-		if op.Entity == EntityMatch && current != nil {
-			cur, err := decodeFields(current.Data)
-			if err != nil {
-				return OpResult{}, err
-			}
-			next, err := decodeFields(op.Data)
-			if err != nil {
-				return OpResult{}, err
-			}
-			if stored.Data, err = clearConfirmationsOnChange(cur, next, stored.Data); err != nil {
-				return OpResult{}, err
-			}
-		}
+	} else if stored.Data, err = s.storedBody(ctx, tx, userID, op, cur); err != nil {
+		return OpResult{}, nil, err
 	}
 	saved, err := tx.Put(ctx, stored)
 	if err != nil {
-		return OpResult{}, fmt.Errorf("save document: %w", err)
+		return OpResult{}, nil, fmt.Errorf("save document: %w", err)
+	}
+	if op.Entity == EntityLeague && op.Action == ActionDelete {
+		if err := deleteLeagueContents(ctx, tx, op.ID); err != nil {
+			return OpResult{}, nil, err
+		}
 	}
 	if affectsStats(op.Entity) {
 		if err := tx.MarkDirty(ctx, op.LeagueID); err != nil {
-			return OpResult{}, fmt.Errorf("mark league for stats: %w", err)
+			return OpResult{}, nil, fmt.Errorf("mark league for stats: %w", err)
 		}
 	}
 	result := OpResult{OpID: op.OpID, Status: StatusApplied, Version: saved.Version}
 	if err := tx.SaveResult(ctx, op.OpID, userID, result); err != nil {
-		return OpResult{}, fmt.Errorf("save result: %w", err)
+		return OpResult{}, nil, fmt.Errorf("save result: %w", err)
 	}
-	return result, nil
+	return result, stored.Data, nil
+}
+
+// storedBody is the document body to save for an upsert: the phone's body, with the fields
+// the server owns put right (league members, match confirmations and finish time).
+func (s *Service) storedBody(ctx context.Context, tx Tx, userID string, op Op, cur fields) (json.RawMessage, error) {
+	switch op.Entity {
+	case EntityLeague:
+		// The member list belongs to the server: whatever a phone sends is replaced.
+		return withMembers(ctx, tx, op.ID, op.Data)
+	case EntityMatch:
+		next, err := decodeFields(op.Data)
+		if err != nil {
+			return nil, err
+		}
+		confirming, err := confirmingOwnResult(ctx, tx, userID, op, cur, next)
+		if err != nil {
+			return nil, err
+		}
+		return settleMatchFields(cur, next, confirming, s.now())
+	}
+	return op.Data, nil
+}
+
+// deleteLeagueContents deletes everything in a deleted league, so its games leave public pages,
+// stats and ratings, and every member's phone removes them on its next pull. Memberships stay
+// so members still receive these deletions.
+func deleteLeagueContents(ctx context.Context, tx Tx, leagueID string) error {
+	docs, err := tx.LiveLeagueDocs(ctx, leagueID)
+	if err != nil {
+		return fmt.Errorf("list league contents: %w", err)
+	}
+	for _, d := range docs {
+		if d.Entity == EntityLeague {
+			continue
+		}
+		if _, err := tx.Put(ctx, Doc{Entity: d.Entity, ID: d.ID, LeagueID: d.LeagueID, Deleted: true}); err != nil {
+			return fmt.Errorf("delete %s %s: %w", d.Entity, d.ID, err)
+		}
+	}
+	if err := tx.MarkDirty(ctx, leagueID); err != nil {
+		return fmt.Errorf("mark deleted league for stats: %w", err)
+	}
+	return nil
 }
 
 func refused(op Op, code, message string) OpResult {
@@ -206,20 +262,17 @@ func validateOp(op Op) string {
 	if len(op.Data) == 0 || len(op.Data) > maxDocBytes {
 		return "data is required and must be under 512 KB."
 	}
-	var body struct {
-		ID       string `json:"id"`
-		LeagueID string `json:"leagueId"`
-	}
-	if err := json.Unmarshal(op.Data, &body); err != nil {
+	var body fields
+	if err := json.Unmarshal(op.Data, &body); err != nil || body == nil {
 		return "data must be a JSON object."
 	}
-	if body.ID != "" && body.ID != op.ID {
+	if id, _ := body["id"].(string); id != "" && id != op.ID {
 		return "data.id does not match id."
 	}
-	if op.Entity != EntityLeague && body.LeagueID != "" && body.LeagueID != op.LeagueID {
+	if leagueID, _ := body["leagueId"].(string); op.Entity != EntityLeague && leagueID != "" && leagueID != op.LeagueID {
 		return "data.leagueId does not match leagueId."
 	}
-	return ""
+	return checkShape(op.Entity, body)
 }
 
 // Pull returns the next page of changes after `since` for the leagues the user belongs to.

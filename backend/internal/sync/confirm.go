@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"time"
 )
 
 // Result confirmation (public rating, phase 6): a player from the other side confirms a
@@ -57,17 +58,70 @@ func confirmingOwnResult(ctx context.Context, tx Tx, userID string, op Op, cur, 
 	return false, nil
 }
 
-// clearConfirmationsOnChange returns the match JSON with confirmedByUids emptied when the
-// result changed, so an edited result must be confirmed again.
-func clearConfirmationsOnChange(cur, next fields, data json.RawMessage) (json.RawMessage, error) {
-	if cur == nil || len(strList(next["confirmedByUids"])) == 0 {
-		return data, nil
-	}
+// serverFinishedAtKey is when the server first saw the match finished. The public rating uses
+// it instead of the phone's finishedAt, which a phone could backdate past the anti-cheat
+// window (at most 3 rated games per pair per 30 days).
+const serverFinishedAtKey = "serverFinishedAt"
+
+// serverOwnedMatchKeys are match fields the server sets itself (settleMatchFields), so a phone's
+// stale copy of them never counts as a change in permission checks.
+var serverOwnedMatchKeys = []string{"confirmedByUids", serverFinishedAtKey}
+
+func isFinished(status string) bool { return status == "completed" || status == "forfeited" }
+
+func resultChanged(cur, next fields) bool {
 	changed := changedKeys(cur, next)
-	if !slices.ContainsFunc(resultFields, func(k string) bool { return slices.Contains(changed, k) }) {
+	return slices.ContainsFunc(resultFields, func(k string) bool { return slices.Contains(changed, k) })
+}
+
+// pinServerFinishedAt overwrites whatever serverFinishedAt a phone sent with the stored one, so
+// phones can never set it and permission checks never see it as a change.
+func pinServerFinishedAt(cur fields, data json.RawMessage) (json.RawMessage, error) {
+	next, err := decodeFields(data)
+	if err != nil {
+		return data, nil //nolint:nilerr // invalid JSON is refused by the permission check
+	}
+	_, sent := next[serverFinishedAtKey]
+	stored, has := cur[serverFinishedAtKey]
+	if !sent && !has {
 		return data, nil
 	}
-	next["confirmedByUids"] = []string{}
+	if has {
+		next[serverFinishedAtKey] = stored
+	} else {
+		delete(next, serverFinishedAtKey)
+	}
+	out, err := json.Marshal(next)
+	if err != nil {
+		return nil, fmt.Errorf("encode match: %w", err)
+	}
+	return out, nil
+}
+
+// settleMatchFields sets the match fields the server owns before saving:
+//   - confirmedByUids: only an opponent's own confirmation adds to it (confirming); any other
+//     write keeps the stored list, emptied on a new match or when the result changed.
+//   - serverFinishedAt: stamped when the match first becomes finished, kept while it stays
+//     finished, removed when it is reopened.
+func settleMatchFields(cur, next fields, confirming bool, now time.Time) (json.RawMessage, error) {
+	if !confirming {
+		keep := []string{}
+		if cur != nil && !resultChanged(cur, next) {
+			keep = strList(cur["confirmedByUids"])
+		}
+		_, sent := next["confirmedByUids"]
+		if sent || len(keep) > 0 {
+			next["confirmedByUids"] = keep
+		}
+	}
+	switch {
+	case !isFinished(next.outcomeStatus()):
+		delete(next, serverFinishedAtKey)
+	case cur == nil || !isFinished(cur.outcomeStatus()) || cur.str(serverFinishedAtKey) == "":
+		next[serverFinishedAtKey] = now.UTC().Format(time.RFC3339Nano)
+	default:
+		next[serverFinishedAtKey] = cur[serverFinishedAtKey]
+	}
 	out, err := json.Marshal(next)
 	if err != nil {
 		return nil, fmt.Errorf("encode match: %w", err)

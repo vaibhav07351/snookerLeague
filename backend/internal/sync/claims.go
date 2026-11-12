@@ -97,6 +97,55 @@ func (s *Service) CreateClaimLink(ctx context.Context, userID, playerID string) 
 	return token, nil
 }
 
+// ClaimPreview is what a claim link offers, shown before anything changes.
+type ClaimPreview struct {
+	PlayerName string `json:"playerName"`
+	LeagueName string `json:"leagueName"`
+}
+
+// PreviewClaimLink says which card and league a link would give, without using it up, so the
+// app can ask "Join Pune Cue Club as Rahul?" first.
+func (s *Service) PreviewClaimLink(ctx context.Context, token string) (ClaimPreview, error) {
+	if s.claims == nil {
+		return ClaimPreview{}, errors.New("claim links are not configured")
+	}
+	var preview ClaimPreview
+	err := s.store.InTx(ctx, func(tx Tx) error {
+		link, err := s.claims.ClaimLinkForUpdate(ctx, tx, hashToken(token))
+		if errors.Is(err, ErrNotFound) {
+			return ErrClaimInvalid
+		}
+		if err != nil {
+			return err
+		}
+		if link.UsedAt != nil || time.Now().UTC().After(link.ExpiresAt) {
+			return ErrClaimInvalid
+		}
+		card, err := tx.Get(ctx, EntityPlayer, link.PlayerID)
+		if err != nil || card.Deleted {
+			return ErrClaimInvalid
+		}
+		league, err := tx.Get(ctx, EntityLeague, link.LeagueID)
+		if err != nil || league.Deleted {
+			return ErrClaimInvalid
+		}
+		c, err := decodeFields(card.Data)
+		if err != nil {
+			return err
+		}
+		l, err := decodeFields(league.Data)
+		if err != nil {
+			return err
+		}
+		preview = ClaimPreview{PlayerName: c.str("displayName"), LeagueName: l.str("name")}
+		return nil
+	})
+	if err != nil {
+		return ClaimPreview{}, fmt.Errorf("preview claim link: %w", err)
+	}
+	return preview, nil
+}
+
 // RedeemClaimLink gives the card to the user, adds them to the league, and uses up the link.
 // It returns the league and the claimed card.
 func (s *Service) RedeemClaimLink(ctx context.Context, userID, token string) (league, card Doc, err error) {

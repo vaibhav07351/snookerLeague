@@ -16,10 +16,15 @@ type Loader interface {
 }
 
 // PublicPages adapts tournaments to the public bracket page (public.TournamentSource).
-type PublicPages struct{ loader Loader }
+type PublicPages struct {
+	loader Loader
+	minors public.MinorChecker
+}
 
-// NewPublicPages builds the adapter.
-func NewPublicPages(l Loader) *PublicPages { return &PublicPages{loader: l} }
+// NewPublicPages builds the adapter. minors hides under-18 players' names.
+func NewPublicPages(l Loader, minors public.MinorChecker) *PublicPages {
+	return &PublicPages{loader: l, minors: minors}
+}
 
 // PublicBracket builds the page view with short names (guest privacy).
 func (p *PublicPages) PublicBracket(ctx context.Context, id string) (public.Bracket, error) {
@@ -43,14 +48,9 @@ func (p *PublicPages) PublicBracket(ctx context.Context, id string) (public.Brac
 	if err != nil {
 		return public.Bracket{}, err
 	}
-	names := map[string]string{}
-	for _, d := range playerDocs {
-		var card struct {
-			DisplayName string `json:"displayName"`
-		}
-		if json.Unmarshal(d.Data, &card) == nil {
-			names[d.ID] = public.ShortName(card.DisplayName)
-		}
+	names, err := public.CardNames(ctx, p.minors, playerDocs)
+	if err != nil {
+		return public.Bracket{}, err
 	}
 	name := func(id string) string {
 		if id == "" {

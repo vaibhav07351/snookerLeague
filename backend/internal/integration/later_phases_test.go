@@ -40,10 +40,16 @@ func TestStatsTournamentsAndPublicPagesAgainstPostgres(t *testing.T) {
 	put(t, svc, a.ID, upsert(syncmod.EntityTournament, tid, league, 0,
 		fmt.Sprintf(`{"id":%q,"leagueId":%q,"name":"Cup","format":"knockout","entrants":[%q,%q],"createdByUid":%q}`, tid, league, pa, pb, a.ID)))
 	mid := randID("mt_")
-	match := fmt.Sprintf(`{"id":%q,"leagueId":%q,"createdByUid":%q,"scorerUid":%q,"teamA":[%q],"teamB":[%q],"tournamentId":%q,"round":0,"slot":0,"confirmedByUids":[%q],"updatedAt":"2026-10-30T10:00:00Z","frames":[],"outcome":{"status":"completed","winner":"a","framesA":2,"framesB":1}}`,
-		mid, league, a.ID, a.ID, pa, pb, tid, b.ID)
-	if r := put(t, svc, a.ID, upsert(syncmod.EntityMatch, mid, league, 0, match)); r.Status != syncmod.StatusApplied {
-		t.Fatalf("match: %+v", r)
+	match := fmt.Sprintf(`{"id":%q,"leagueId":%q,"createdByUid":%q,"scorerUid":%q,"teamA":[%q],"teamB":[%q],"tournamentId":%q,"round":0,"slot":0,"confirmedByUids":[%%s],"updatedAt":"2026-10-30T10:00:00Z","frames":[],"outcome":{"status":"completed","winner":"a","framesA":2,"framesB":1}}`,
+		mid, league, a.ID, a.ID, pa, pb, tid)
+	scored := put(t, svc, a.ID, upsert(syncmod.EntityMatch, mid, league, 0, fmt.Sprintf(match, "")))
+	if scored.Status != syncmod.StatusApplied {
+		t.Fatalf("match: %+v", scored)
+	}
+	// The opponent confirms the result themselves (the scorer can't do it for them).
+	confirmed := put(t, svc, b.ID, upsert(syncmod.EntityMatch, mid, league, scored.Version, fmt.Sprintf(match, fmt.Sprintf("%q", b.ID))))
+	if confirmed.Status != syncmod.StatusApplied {
+		t.Fatalf("confirm: %+v", confirmed)
 	}
 
 	// Stats worker queries.
@@ -66,7 +72,7 @@ func TestStatsTournamentsAndPublicPagesAgainstPostgres(t *testing.T) {
 	if _, _, players, err := svc.PublicMatch(ctx, mid); err != nil || len(players) != 2 {
 		t.Fatalf("public match: %v %d", err, len(players))
 	}
-	bracket, err := tournament.NewPublicPages(svc).PublicBracket(ctx, tid)
+	bracket, err := tournament.NewPublicPages(svc, community.NewPGRepository(pool)).PublicBracket(ctx, tid)
 	if err != nil || bracket.Champion != "Asha R." {
 		t.Fatalf("bracket: %v %+v", err, bracket)
 	}

@@ -164,6 +164,11 @@ func (m *memStore) LiveLeagueDocs(_ context.Context, league string) ([]Doc, erro
 	return out, nil
 }
 
+func (m *memStore) CountLiveDocs(ctx context.Context, league string) (int, error) {
+	docs, err := m.LiveLeagueDocs(ctx, league)
+	return len(docs), err
+}
+
 func (m *memStore) PlayerCardsOf(_ context.Context, user string) ([]Doc, error) {
 	out := []Doc{}
 	for _, d := range m.docs {
@@ -308,26 +313,48 @@ func TestClientsCannotCreateCityHubs(t *testing.T) {
 	wantStatus(t, push1(t, svc, "owner", op(EntityLeague, "city_pune", "city_pune", 0, hub)), StatusRejected, "forbidden")
 }
 
-func TestMembersPostEventsButOnlyTheOwnerDeletesThem(t *testing.T) {
+func TestFeedPostsMustBeAboutARealGameByItsScorer(t *testing.T) {
 	svc, _ := setup(t)
-	posted := push1(t, svc, "member", op(EntityEvent, "e1", "lg1", 0, `{"id":"e1","leagueId":"lg1"}`))
+	match := `{"id":"m1","leagueId":"lg1","createdByUid":"member","scorerUid":"member","teamA":["a"],"teamB":["b"],"outcome":{"status":"completed","winner":"a"}}`
+	wantStatus(t, push1(t, svc, "member", op(EntityMatch, "m1", "lg1", 0, match)), StatusApplied, "")
+	event := func(id, game string) string {
+		return fmt.Sprintf(`{"id":%q,"leagueId":"lg1","title":"Won","relatedIds":["a",%q]}`, id, game)
+	}
+
+	posted := push1(t, svc, "member", op(EntityEvent, "e1", "lg1", 0, event("e1", "m1")))
 	wantStatus(t, posted, StatusApplied, "")
-	wantStatus(t, push1(t, svc, "stranger", op(EntityEvent, "e2", "lg1", 0, `{"id":"e2","leagueId":"lg1"}`)), StatusRejected, "forbidden")
+	// Not about any game, someone else's match, or a stranger: refused.
+	wantStatus(t, push1(t, svc, "member", op(EntityEvent, "e2", "lg1", 0, `{"id":"e2","leagueId":"lg1"}`)), StatusRejected, "forbidden")
+	wantStatus(t, push1(t, svc, "other", op(EntityEvent, "e3", "lg1", 0, event("e3", "m1"))), StatusRejected, "forbidden")
+	wantStatus(t, push1(t, svc, "stranger", op(EntityEvent, "e4", "lg1", 0, event("e4", "m1"))), StatusRejected, "forbidden")
+	// A post about a game that has not reached the server yet is retried later, not refused.
+	wantStatus(t, push1(t, svc, "member", op(EntityEvent, "e5", "lg1", 0, event("e5", "m9"))), StatusConflict, conflictCode)
+
 	wantStatus(t, push1(t, svc, "member", del(EntityEvent, "e1", "lg1", posted.Version)), StatusRejected, "forbidden")
 	wantStatus(t, push1(t, svc, "owner", del(EntityEvent, "e1", "lg1", posted.Version)), StatusApplied, "")
 }
 
 func TestLeagueImmutableFieldsAndInviteCode(t *testing.T) {
 	svc, _ := setup(t)
-	cur := push1(t, svc, "owner", op(EntityLeague, "lg1", "lg1", 1, `{"id":"lg1","name":"Club 2","kind":"club","createdByUid":"owner","inviteCode":"ABC"}`))
+	cur := push1(t, svc, "owner", op(EntityLeague, "lg1", "lg1", 1, `{"id":"lg1","name":"Club 2","kind":"club","createdByUid":"owner","inviteCode":"ABC234"}`))
 	wantStatus(t, cur, StatusApplied, "")
 
-	asCity := `{"id":"lg1","name":"Club 2","kind":"city","createdByUid":"owner","inviteCode":"ABC"}`
+	asCity := `{"id":"lg1","name":"Club 2","kind":"city","createdByUid":"owner","inviteCode":"ABC234"}`
 	wantStatus(t, push1(t, svc, "owner", op(EntityLeague, "lg1", "lg1", cur.Version, asCity)), StatusRejected, "forbidden")
 
-	newCode := `{"id":"lg1","name":"Club 2","kind":"club","createdByUid":"owner","inviteCode":"ZZZ"}`
+	newCode := `{"id":"lg1","name":"Club 2","kind":"club","createdByUid":"owner","inviteCode":"ZZZZ99"}`
 	wantStatus(t, push1(t, svc, "member", op(EntityLeague, "lg1", "lg1", cur.Version, newCode)), StatusRejected, "forbidden")
 	wantStatus(t, push1(t, svc, "owner", op(EntityLeague, "lg1", "lg1", cur.Version, newCode)), StatusApplied, "")
+}
+
+func TestInviteCodesAreUniqueAndWellFormed(t *testing.T) {
+	svc, _ := setup(t)
+	taken := `{"id":"lg2","name":"Other","kind":"club","createdByUid":"other","inviteCode":"ABC234"}`
+	wantStatus(t, push1(t, svc, "other", op(EntityLeague, "lg2", "lg2", 0, taken)), StatusRejected, "code_taken")
+	badShape := `{"id":"lg2","name":"Other","kind":"club","createdByUid":"other","inviteCode":"ab"}`
+	wantStatus(t, push1(t, svc, "other", op(EntityLeague, "lg2", "lg2", 0, badShape)), StatusRejected, "bad_document")
+	fine := `{"id":"lg2","name":"Other","kind":"club","createdByUid":"other","inviteCode":"XYZ789"}`
+	wantStatus(t, push1(t, svc, "other", op(EntityLeague, "lg2", "lg2", 0, fine)), StatusApplied, "")
 }
 
 func TestOnlyOwnerDeletesLeagueAndPlayers(t *testing.T) {

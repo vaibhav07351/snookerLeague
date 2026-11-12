@@ -29,7 +29,23 @@ func (h *Handler) ProtectedRoutes(r chi.Router) {
 	r.Post("/leagues/{leagueID}/leave", h.leave)
 	r.Post("/cities/{cityID}/join", h.joinCityHub)
 	r.Post("/claims", h.createClaim)
+	r.Post("/claims/preview", h.previewClaim)
 	r.Post("/claims/redeem", h.redeemClaim)
+}
+
+// previewClaim takes the token in the body (like redeem), so it never lands in access logs.
+func (h *Handler) previewClaim(w http.ResponseWriter, r *http.Request) {
+	var req redeemClaimRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	preview, err := h.svc.PreviewClaimLink(r.Context(), req.Token)
+	if err != nil {
+		httpx.WriteError(w, r, asAPIError(err))
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, preview)
 }
 
 type createClaimRequest struct {

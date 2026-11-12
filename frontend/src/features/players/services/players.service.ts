@@ -5,7 +5,12 @@ import { logger } from '@/shared/logging/logger';
 import { createId, nowIso } from '@/shared/utils/id';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { scheduleSync } from '@/shared/sync';
-import { emptyRaceStats, emptyStandardStats, type Player } from '@/shared/types/domain';
+import {
+  emptyRaceStats,
+  emptyStandardStats,
+  leagueKindOf,
+  type Player,
+} from '@/shared/types/domain';
 
 const guestSchema = z.object({
   leagueId: z.string().min(1),
@@ -153,6 +158,14 @@ export async function claimPlayer(input: {
   }
   if (player.authUid != null) {
     throw new AppError('CONFLICT', 'Someone else has already claimed this player');
+  }
+  const league = getStore().leagues.find((l) => l.id === player.leagueId);
+  if (league && leagueKindOf(league) === 'city') {
+    // Anyone can join a city hub, so the server only hands hub cards over with a claim link.
+    throw new AppError(
+      'FORBIDDEN',
+      'In a city hub, ask the person who added you to send you a claim link.',
+    );
   }
   requireNoCardYet(player.leagueId, input.uid);
   const claimed: Player = {

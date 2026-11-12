@@ -19,7 +19,7 @@ func (r *PGRepository) RatedGames(ctx context.Context) ([]RatedGame, map[string]
 		return nil, nil, err
 	}
 	rows, err := r.pool.Query(ctx,
-		`SELECT data FROM docs
+		`SELECT data, updated_at FROM docs
 		  WHERE entity = 'match' AND NOT deleted AND data -> 'outcome' ->> 'status' = 'completed'`)
 	if err != nil {
 		return nil, nil, fmt.Errorf("query matches: %w", err)
@@ -28,10 +28,11 @@ func (r *PGRepository) RatedGames(ctx context.Context) ([]RatedGame, map[string]
 	var games []RatedGame
 	for rows.Next() {
 		var raw []byte
-		if err := rows.Scan(&raw); err != nil {
+		var savedAt time.Time
+		if err := rows.Scan(&raw, &savedAt); err != nil {
 			return nil, nil, fmt.Errorf("scan match: %w", err)
 		}
-		if g, ok := ratedGame(raw, owners); ok {
+		if g, ok := ratedGame(raw, savedAt, owners); ok {
 			games = append(games, g)
 		}
 	}
@@ -86,17 +87,18 @@ func (r *PGRepository) accountAges(ctx context.Context) (map[string]time.Time, e
 	return created, nil
 }
 
-// ratedGame turns one match document into a rated game, if it qualifies.
-func ratedGame(raw []byte, owners map[string]string) (RatedGame, bool) {
+// ratedGame turns one match document into a rated game, if it qualifies. The game's time is
+// the server's (serverFinishedAt, or for older matches when the server last saved it), never
+// the phone's finishedAt, which could be backdated past the 30-day pair limit.
+func ratedGame(raw []byte, savedAt time.Time, owners map[string]string) (RatedGame, bool) {
 	var m struct {
-		UpdatedAt       string   `json:"updatedAt"`
-		FinishedAt      string   `json:"finishedAt"`
-		CreatedByUID    string   `json:"createdByUid"`
-		ScorerUID       string   `json:"scorerUid"`
-		TeamA           []string `json:"teamA"`
-		TeamB           []string `json:"teamB"`
-		ConfirmedByUIDs []string `json:"confirmedByUids"`
-		Outcome         struct {
+		ServerFinishedAt string   `json:"serverFinishedAt"`
+		CreatedByUID     string   `json:"createdByUid"`
+		ScorerUID        string   `json:"scorerUid"`
+		TeamA            []string `json:"teamA"`
+		TeamB            []string `json:"teamB"`
+		ConfirmedByUIDs  []string `json:"confirmedByUids"`
+		Outcome          struct {
 			Winner string `json:"winner"`
 		} `json:"outcome"`
 	}
@@ -121,13 +123,13 @@ func ratedGame(raw []byte, owners map[string]string) (RatedGame, bool) {
 	if !agreed(ua) || !agreed(ub) {
 		return RatedGame{}, false
 	}
-	playedAt := m.FinishedAt
-	if playedAt == "" {
-		playedAt = m.UpdatedAt
-	}
-	at, err := time.Parse(time.RFC3339Nano, playedAt)
-	if err != nil {
-		return RatedGame{}, false
+	at := savedAt
+	if m.ServerFinishedAt != "" {
+		parsed, err := time.Parse(time.RFC3339Nano, m.ServerFinishedAt)
+		if err != nil {
+			return RatedGame{}, false
+		}
+		at = parsed
 	}
 	switch m.Outcome.Winner {
 	case "a":

@@ -70,7 +70,7 @@ func NewRouter(cfg config.Config, pool *pgxpool.Pool) http.Handler {
 		SupportEmail:        cfg.SupportEmail,
 		AndroidPackage:      androidPackage,
 		AndroidFingerprints: cfg.AndroidCertSHA256,
-	}, syncSvc, communitySvc, tournament.NewPublicPages(syncSvc), public.NewPGRemovals(pool))
+	}, syncSvc, communitySvc, tournament.NewPublicPages(syncSvc, communityRepo), public.NewPGRemovals(pool), communityRepo)
 	accountHandler := account.NewHandler(account.NewService(authSvc, syncSvc, communitySvc), cfg.SupportEmail)
 	authLimiter := httpx.NewRateLimiter(authRateLimit, authRateWindow)
 	userLimiter := httpx.NewRateLimiter(userRateLimit, userRateWindow)

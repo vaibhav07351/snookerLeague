@@ -32,6 +32,27 @@ func scanDoc(row pgx.Row) (Doc, error) {
 	return d, nil
 }
 
+// MinorUIDs returns which of the given accounts have an under-18 age band on their profile
+// (set from the saved date of birth when there is one, see minorDivisions). One query.
+func (r *PGRepository) MinorUIDs(ctx context.Context, uids []string) (map[string]bool, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id FROM community_docs
+		  WHERE kind = 'profile' AND id = ANY($1) AND data ->> 'division' = ANY($2)`,
+		uids, minorDivisions)
+	if err != nil {
+		return nil, fmt.Errorf("query minor profiles: %w", err)
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, fmt.Errorf("read minor profiles: %w", err)
+	}
+	out := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		out[id] = true
+	}
+	return out, nil
+}
+
 // Get returns one row or ErrNotFound.
 func (r *PGRepository) Get(ctx context.Context, kind Kind, id string) (Doc, error) {
 	d, err := scanDoc(r.pool.QueryRow(ctx,

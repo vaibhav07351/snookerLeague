@@ -74,7 +74,8 @@ function syncPriority(op: PendingOp): number {
     match: 2,
     race: 2,
     group_match: 2,
-    event: 2,
+    // After the games: the server only accepts a feed post once the game it is about is saved.
+    event: 3,
     challenge: 2,
     looking: 2,
     directory: 2,

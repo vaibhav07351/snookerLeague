@@ -155,8 +155,17 @@ func TestHubMembersMayOnlyUpdateTitles(t *testing.T) {
 	}
 	var body map[string]any
 	_ = json.Unmarshal(hub.Data, &body)
+	race := `{"id":"r1","leagueId":"city_pune","createdByUid":"member","status":"completed","crownsRaceChampion":true,` +
+		`"entrants":[{"playerId":"p1","place":1},{"playerId":"p2","place":2}]}`
+	raceRes := push1(t, svc, "member", op(EntityRace, "r1", "city_pune", 0, race))
+	wantStatus(t, raceRes, StatusApplied, "")
 
-	body["raceKing"] = map[string]any{"playerId": "p1"}
+	// A race king who did not win the named race is refused.
+	body["raceKing"] = map[string]any{"playerId": "p2", "raceId": "r1"}
+	fake, _ := json.Marshal(body)
+	wantStatus(t, push1(t, svc, "member", op(EntityLeague, "city_pune", "city_pune", hub.Version, string(fake))), StatusRejected, "forbidden")
+
+	body["raceKing"] = map[string]any{"playerId": "p1", "raceId": "r1"}
 	crowned, _ := json.Marshal(body)
 	wantStatus(t, push1(t, svc, "member", op(EntityLeague, "city_pune", "city_pune", hub.Version, string(crowned))), StatusApplied, "")
 

@@ -48,6 +48,14 @@ func TestClaimLinksHandOverAGuestCardOnce(t *testing.T) {
 			t.Fatal("the raw token must never be stored")
 		}
 	}
+	// Looking first changes nothing and names the card and league.
+	preview, err := svc.PreviewClaimLink(ctx, token)
+	if err != nil || preview.PlayerName != "Guest" || preview.LeagueName != "Club" {
+		t.Fatalf("preview: %+v %v", preview, err)
+	}
+	if role, _ := store.Role(ctx, "lg1", "newbie"); role != RoleNone {
+		t.Fatal("a preview must not join anyone")
+	}
 	league, card, err := svc.RedeemClaimLink(ctx, "newbie", token)
 	if err != nil {
 		t.Fatalf("redeem: %v", err)
@@ -60,6 +68,9 @@ func TestClaimLinksHandOverAGuestCardOnce(t *testing.T) {
 	}
 	if _, _, err := svc.RedeemClaimLink(ctx, "someone", token); !errors.Is(err, ErrClaimInvalid) {
 		t.Fatalf("a used link must be refused, got %v", err)
+	}
+	if _, err := svc.PreviewClaimLink(ctx, token); !errors.Is(err, ErrClaimInvalid) {
+		t.Fatalf("a used link has nothing to preview, got %v", err)
 	}
 	if _, err := svc.CreateClaimLink(ctx, "member", "g1"); !errors.Is(err, ErrCardTaken) {
 		t.Fatalf("an owned card can't get a new link, got %v", err)

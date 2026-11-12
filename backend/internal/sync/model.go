@@ -139,6 +139,8 @@ type Tx interface {
 	OwnedLeagues(ctx context.Context, userID string) ([]string, error)
 	// LiveLeagueDocs returns every document of a league that is not a tombstone.
 	LiveLeagueDocs(ctx context.Context, leagueID string) ([]Doc, error)
+	// CountLiveDocs counts a league's documents that are not tombstones.
+	CountLiveDocs(ctx context.Context, leagueID string) (int, error)
 	// PlayerCardsOf returns the live player cards owned by the user (authUid), in any league.
 	PlayerCardsOf(ctx context.Context, userID string) ([]Doc, error)
 	// TournamentMatches returns the live fixtures of a tournament in its league.

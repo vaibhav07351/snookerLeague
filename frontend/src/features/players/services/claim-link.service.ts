@@ -44,6 +44,45 @@ export async function shareClaimLink(playerId: string, playerName: string): Prom
   });
 }
 
+export interface ClaimPreview {
+  playerName: string;
+  leagueName: string;
+}
+
+function claimError(error: unknown, fallback: string): AppError {
+  if (
+    error instanceof ApiError &&
+    (error.code === 'claim_invalid' || error.code === 'card_taken')
+  ) {
+    return new AppError('CLAIM_INVALID', error.message);
+  }
+  return new AppError('NETWORK', fallback);
+}
+
+/**
+ * What a claim link offers (player and league), without using it up, so the person can say
+ * yes first. Null when the server is too old to tell: the screen then asks without names.
+ */
+export async function previewClaimLink(token: string): Promise<ClaimPreview | null> {
+  await loadStore();
+  if (!shouldCloudSync(getStore().user)) {
+    throw new AppError('NEEDS_ACCOUNT', 'Sign in with Google first, then open the link again.');
+  }
+  try {
+    return await apiRequest<ClaimPreview>('/v1/claims/preview', {
+      method: 'POST',
+      body: { token },
+    });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      logger.warn('claim-link', 'Server has no claim preview yet', apiErrorMeta(error));
+      return null;
+    }
+    logger.error('claim-link', 'Could not preview a claim link', apiErrorMeta(error));
+    throw claimError(error, 'Could not open the link. Check your connection.');
+  }
+}
+
 /** Take over the card behind a claim link, join its league and make it the active one. */
 export async function redeemClaimLink(token: string): Promise<string> {
   await loadStore();
@@ -55,13 +94,7 @@ export async function redeemClaimLink(token: string): Promise<string> {
     res = await apiRequest('/v1/claims/redeem', { method: 'POST', body: { token } });
   } catch (error) {
     logger.error('claim-link', 'Could not redeem a claim link', apiErrorMeta(error));
-    if (
-      error instanceof ApiError &&
-      (error.code === 'claim_invalid' || error.code === 'card_taken')
-    ) {
-      throw new AppError('CLAIM_INVALID', error.message);
-    }
-    throw new AppError('NETWORK', 'Could not claim right now. Check your connection.');
+    throw claimError(error, 'Could not claim right now. Check your connection.');
   }
   await replaceWithServerDoc(res.league);
   await replaceWithServerDoc(res.player);

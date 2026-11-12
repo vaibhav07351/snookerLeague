@@ -114,6 +114,9 @@ func asAPIError(err error) error {
 	case errors.Is(err, ErrTermsRequired):
 		return &httpx.APIError{Status: http.StatusForbidden, Code: "terms_required",
 			Message: "Accept the community rules before posting."}
+	case errors.Is(err, ErrAdultsOnly):
+		return &httpx.APIError{Status: http.StatusForbidden, Code: "adults_only",
+			Message: "Public posts are for players 18 and over."}
 	case errors.Is(err, ErrTooManyPosts):
 		return &httpx.APIError{Status: http.StatusTooManyRequests, Code: "too_many_posts",
 			Message: "You have reached today's limit. Try again tomorrow."}

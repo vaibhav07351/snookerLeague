@@ -50,6 +50,11 @@ services:
       GOOGLE_ANDROID_CLIENT_IDS: ${GOOGLE_ANDROID_CLIENT_IDS:?set GOOGLE_ANDROID_CLIENT_IDS in .env}
       SENTRY_DSN: ${SENTRY_DSN:-}
       MIN_APP_VERSION: ${MIN_APP_VERSION:-0.0.0}
+      # Optional: empty values switch the feature off (see .env.example).
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://snookit.duckdns.org}
+      ANDROID_CERT_SHA256: ${ANDROID_CERT_SHA256:-}
+      EXPO_PUSH_ACCESS_TOKEN: ${EXPO_PUSH_ACCESS_TOKEN:-}
     expose:
       - "8080"
     stop_grace_period: 20s

@@ -270,6 +270,15 @@ func (t *pgTx) LiveLeagueDocs(ctx context.Context, leagueID string) ([]Doc, erro
 	return scanDocs(rows)
 }
 
+func (t *pgTx) CountLiveDocs(ctx context.Context, leagueID string) (int, error) {
+	var n int
+	if err := t.tx.QueryRow(ctx,
+		`SELECT count(*) FROM docs WHERE league_id = $1 AND NOT deleted`, leagueID).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count league docs: %w", err)
+	}
+	return n, nil
+}
+
 func (t *pgTx) PlayerCardsOf(ctx context.Context, userID string) ([]Doc, error) {
 	rows, err := t.tx.Query(ctx,
 		`SELECT entity, id, league_id, version, deleted, data, updated_at

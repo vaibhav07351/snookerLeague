@@ -246,6 +246,15 @@ func (s *Service) index(ctx context.Context, userID string, kind Kind, id string
 		if err != nil {
 			return Doc{}, err
 		}
+		// The age band decides who appears publicly, so it comes from the saved date of birth
+		// when there is one, not from what the phone says.
+		division, err := s.savedDivision(ctx, userID)
+		if err != nil {
+			return Doc{}, err
+		}
+		if division != "" {
+			body["division"] = division
+		}
 		city := body.str("cityId")
 		if slices.Contains(minorDivisions, body.str("division")) {
 			// D5: under-18 players keep their profile but are left off public city boards.
@@ -484,6 +493,48 @@ func rankFields(r stats.CityRank) map[string]any {
 // minorDivisions are the age bands kept off public boards (decision D5).
 var minorDivisions = []string{"u16", "u18"}
 
+// savedDivision is the age band from the user's saved date of birth, or "" when none is saved.
+func (s *Service) savedDivision(ctx context.Context, userID string) (string, error) {
+	settings, err := s.repo.Get(ctx, KindUser, userID)
+	if errors.Is(err, ErrNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("load settings: %w", err)
+	}
+	var f fields
+	if err := json.Unmarshal(settings.Data, &f); err != nil {
+		return "", fmt.Errorf("decode settings: %w", err)
+	}
+	return divisionFromDOB(f.str("dateOfBirth"), s.now()), nil
+}
+
+// divisionFromDOB is the snooker age band on the given day for a YYYY-MM-DD date of birth, or
+// "" when the date is missing or invalid. It matches the app's divisionFromDob.
+func divisionFromDOB(dob string, now time.Time) string {
+	born, err := time.Parse(time.DateOnly, dob)
+	if err != nil || born.After(now) {
+		return ""
+	}
+	age := now.Year() - born.Year()
+	if now.Month() < born.Month() || (now.Month() == born.Month() && now.Day() < born.Day()) {
+		age--
+	}
+	switch {
+	case age < 16:
+		return "u16"
+	case age < 18:
+		return "u18"
+	case age < 21:
+		return "u21"
+	case age < 40:
+		return "open"
+	case age < 50:
+		return "masters"
+	}
+	return "seniors"
+}
+
 const (
 	postsPerDay   = 5
 	reportsPerDay = 20
@@ -507,6 +558,9 @@ func (s *Service) checkCanPost(ctx context.Context, userID string, kind Kind) er
 	}
 	if f.str("termsAcceptedAt") == "" {
 		return ErrTermsRequired
+	}
+	if slices.Contains(minorDivisions, divisionFromDOB(f.str("dateOfBirth"), s.now())) {
+		return ErrAdultsOnly
 	}
 	n, err := s.countSince(ctx, kind, userID, 24*time.Hour)
 	if err != nil {

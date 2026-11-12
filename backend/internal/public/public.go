@@ -67,27 +67,51 @@ type Handler struct {
 	profiles   ProfileSource
 	tournament TournamentSource
 	removals   RemovalStore
+	minors     MinorChecker
 	limiter    *httpx.RateLimiter
+	pages      *httpx.RateLimiter
 }
 
+// Page views per visitor (IP) per minute. Generous for people, a brake on scrapers: every
+// page view reads the database.
+const pageViewsPerMinute = 120
+
 // NewHandler builds the public pages handler.
-func NewHandler(cfg Config, m MatchSource, p ProfileSource, t TournamentSource, r RemovalStore) *Handler {
-	return &Handler{cfg: cfg, matches: m, profiles: p, tournament: t, removals: r,
-		limiter: httpx.NewRateLimiter(5, time.Hour)}
+func NewHandler(cfg Config, m MatchSource, p ProfileSource, t TournamentSource, r RemovalStore, minors MinorChecker) *Handler {
+	return &Handler{cfg: cfg, matches: m, profiles: p, tournament: t, removals: r, minors: minors,
+		limiter: httpx.NewRateLimiter(5, time.Hour),
+		pages:   httpx.NewRateLimiter(pageViewsPerMinute, time.Minute)}
 }
 
 // Routes mounts the pages at the site root.
 func (h *Handler) Routes(r chi.Router) {
-	r.Get("/m/{id}", h.match)
-	r.Get("/p/{uid}", h.player)
-	r.Get("/c/{city}", h.city)
-	r.Get("/t/{id}", h.tournamentPage)
-	r.Get("/claim/{token}", h.claimPage)
-	r.Get("/terms", h.terms)
-	r.Get("/privacy", h.privacy)
-	r.With(h.limiter.Middleware).Post("/remove-request", h.removeRequest)
+	r.Group(func(r chi.Router) {
+		r.Use(securityHeaders, h.pages.Middleware)
+		r.Get("/m/{id}", h.match)
+		r.Get("/p/{uid}", h.player)
+		r.Get("/c/{city}", h.city)
+		r.Get("/t/{id}", h.tournamentPage)
+		r.Get("/claim/{token}", h.claimPage)
+		r.Get("/terms", h.terms)
+		r.Get("/privacy", h.privacy)
+		r.With(h.limiter.Middleware).Post("/remove-request", h.removeRequest)
+	})
 	r.Get("/.well-known/assetlinks.json", h.assetLinks)
 	r.Get("/static/logo.png", h.logo)
+}
+
+// securityHeaders: the pages are plain HTML with one inline stylesheet and no scripts, so
+// the browser is told to run no scripts, load nothing from elsewhere, and never frame them.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; "+
+			"form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		next.ServeHTTP(w, r)
+	})
 }
 
 type view struct {
@@ -177,14 +201,10 @@ func (h *Handler) match(w http.ResponseWriter, r *http.Request) {
 		h.failed(w, fmt.Errorf("decode match: %w", err))
 		return
 	}
-	names := map[string]string{}
-	for _, p := range players {
-		var card struct {
-			DisplayName string `json:"displayName"`
-		}
-		if json.Unmarshal(p.Data, &card) == nil {
-			names[p.ID] = ShortName(card.DisplayName)
-		}
+	names, err := CardNames(r.Context(), h.minors, players)
+	if err != nil {
+		h.failed(w, err)
+		return
 	}
 	side := func(ids []string) string {
 		var out []string
