@@ -19,7 +19,7 @@ import { notify } from '@/shared/ui/notify';
 import { SegmentedTabs } from '@/shared/ui/SegmentedTabs';
 import { Stepper } from '@/shared/ui/Stepper';
 import { useStyles } from '@/theme/ThemeProvider';
-import { fonts, spacing, type Palette } from '@/theme/tokens';
+import { fonts, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 const FORMATS = [
   { key: 'knockout', label: 'Knockout' },
@@ -130,7 +130,7 @@ const makeStyles = (c: Palette) =>
     },
     heading: {
       fontFamily: fonts.bodyBold,
-      fontSize: 16,
+      fontSize: typeScale.lead,
       color: c.text,
       marginTop: spacing.lg,
     },
@@ -145,7 +145,7 @@ const makeStyles = (c: Palette) =>
     },
     hint: {
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       lineHeight: 18,
       color: c.textMuted,
       marginVertical: spacing.sm,

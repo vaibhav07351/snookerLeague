@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, type Palette } from '@/theme/tokens';
+import { fonts, radii, typeScale, type Palette } from '@/theme/tokens';
 
 interface ChipProps {
   label: string;
@@ -61,7 +61,7 @@ const makeStyles = (c: Palette) =>
     text: {
       fontFamily: fonts.bodyMedium,
       color: c.text,
-      fontSize: 13,
+      fontSize: typeScale.small,
     },
     textOn: {
       fontFamily: fonts.bodyBold,

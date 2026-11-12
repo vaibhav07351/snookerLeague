@@ -15,9 +15,10 @@ import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { MatchFormat, Player } from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
 import { EmptyState } from '@/shared/ui/EmptyState';
+import { LoadGate } from '@/shared/ui/LoadGate';
 import { formatGameStart, withDuration } from '@/shared/utils/datetime';
 import { useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import { TOUCH_TARGET, fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 type ChampTab = 'match' | 'race';
 
@@ -51,7 +52,7 @@ export default function ChampionsHistoryScreen(): ReactNode {
     setRaces(raceHistory);
   }, [leagueId]);
 
-  useStoreReload(reload, leagueId ?? null);
+  const load = useStoreReload(reload, leagueId ?? null);
 
   if (!league) {
     return null;
@@ -85,76 +86,78 @@ export default function ChampionsHistoryScreen(): ReactNode {
         })}
       </View>
 
-      {tab === 'match' ? (
-        teams.length === 0 ? (
+      <LoadGate load={load} loadingLabel="Loading champions">
+        {tab === 'match' ? (
+          teams.length === 0 ? (
+            <EmptyState
+              icon="trophy-outline"
+              title="No title matches yet"
+              message={'Turn on "Crowns champions" when you log a final.'}
+              actionLabel="Start a match"
+              onAction={() => router.push('/match/new')}
+            />
+          ) : (
+            teams.map((row) => (
+              <Card
+                key={row.matchId}
+                tone={row.isCurrent ? 'highlight' : 'default'}
+                style={styles.card}
+                onPress={() => router.push(`/match/${row.matchId}`)}
+              >
+                <View style={styles.cardTop}>
+                  <Text style={[styles.kind, row.isCurrent && styles.kindCurrent]}>
+                    {row.isCurrent ? 'CURRENT' : FORMAT_TAGS[row.format]}
+                    {row.viaForfeit ? ' · FORFEIT' : ''}
+                  </Text>
+                  <Text style={styles.when}>{formatGameStart(row.startedAt, row.crownedAt)}</Text>
+                </View>
+                <Text style={styles.names} numberOfLines={2}>
+                  {row.playerIds.map((id) => nameOf(id)).join(' & ')}
+                </Text>
+                <Text style={styles.meta}>
+                  {withDuration(
+                    `${row.namedLabel ? `${row.namedLabel} · ` : ''}${row.scoreLine}`,
+                    row.durationSeconds,
+                  )}
+                </Text>
+              </Card>
+            ))
+          )
+        ) : races.length === 0 ? (
           <EmptyState
             icon="trophy-outline"
-            title="No title matches yet"
-            message={'Turn on "Crowns champions" when you log a final.'}
-            actionLabel="Start a match"
-            onAction={() => router.push('/match/new')}
+            title="No race kings yet"
+            message="Crown a race-to-score when you finish one."
+            actionLabel="Start a race"
+            onAction={() => router.push('/race/new')}
           />
         ) : (
-          teams.map((row) => (
+          races.map((row) => (
             <Card
-              key={row.matchId}
+              key={row.raceId}
               tone={row.isCurrent ? 'highlight' : 'default'}
               style={styles.card}
-              onPress={() => router.push(`/match/${row.matchId}`)}
+              onPress={() => router.push(`/race/${row.raceId}`)}
             >
               <View style={styles.cardTop}>
                 <Text style={[styles.kind, row.isCurrent && styles.kindCurrent]}>
-                  {row.isCurrent ? 'CURRENT' : FORMAT_TAGS[row.format]}
-                  {row.viaForfeit ? ' · FORFEIT' : ''}
+                  {row.isCurrent ? 'CURRENT KING' : 'RACE'}
                 </Text>
                 <Text style={styles.when}>{formatGameStart(row.startedAt, row.crownedAt)}</Text>
               </View>
               <Text style={styles.names} numberOfLines={2}>
-                {row.playerIds.map((id) => nameOf(id)).join(' & ')}
+                {nameOf(row.playerId)}
               </Text>
               <Text style={styles.meta}>
                 {withDuration(
-                  `${row.namedLabel ? `${row.namedLabel} · ` : ''}${row.scoreLine}`,
+                  `${row.namedLabel ? `${row.namedLabel} · ` : ''}Race to ${row.targetScore}`,
                   row.durationSeconds,
                 )}
               </Text>
             </Card>
           ))
-        )
-      ) : races.length === 0 ? (
-        <EmptyState
-          icon="trophy-outline"
-          title="No race kings yet"
-          message="Crown a race-to-score when you finish one."
-          actionLabel="Start a race"
-          onAction={() => router.push('/race/new')}
-        />
-      ) : (
-        races.map((row) => (
-          <Card
-            key={row.raceId}
-            tone={row.isCurrent ? 'highlight' : 'default'}
-            style={styles.card}
-            onPress={() => router.push(`/race/${row.raceId}`)}
-          >
-            <View style={styles.cardTop}>
-              <Text style={[styles.kind, row.isCurrent && styles.kindCurrent]}>
-                {row.isCurrent ? 'CURRENT KING' : 'RACE'}
-              </Text>
-              <Text style={styles.when}>{formatGameStart(row.startedAt, row.crownedAt)}</Text>
-            </View>
-            <Text style={styles.names} numberOfLines={2}>
-              {nameOf(row.playerId)}
-            </Text>
-            <Text style={styles.meta}>
-              {withDuration(
-                `${row.namedLabel ? `${row.namedLabel} · ` : ''}Race to ${row.targetScore}`,
-                row.durationSeconds,
-              )}
-            </Text>
-          </Card>
-        ))
-      )}
+        )}
+      </LoadGate>
     </Screen>
   );
 }
@@ -189,7 +192,7 @@ const makeStyles = (c: Palette) =>
     tabText: {
       fontFamily: fonts.bodyBold,
       color: c.textMuted,
-      fontSize: 14,
+      fontSize: typeScale.body,
     },
     tabTextOn: {
       color: c.onPrimary,
@@ -207,7 +210,7 @@ const makeStyles = (c: Palette) =>
     kind: {
       flexShrink: 1,
       fontFamily: fonts.bodyBold,
-      fontSize: 11,
+      fontSize: typeScale.label,
       letterSpacing: 1,
       color: c.textMuted,
     },
@@ -216,17 +219,17 @@ const makeStyles = (c: Palette) =>
     },
     when: {
       fontFamily: fonts.body,
-      fontSize: 11,
+      fontSize: typeScale.label,
       color: c.textMuted,
     },
     names: {
       fontFamily: fonts.bodyBold,
-      fontSize: 17,
+      fontSize: typeScale.headline,
       color: c.text,
     },
     meta: {
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.textMuted,
     },
   });

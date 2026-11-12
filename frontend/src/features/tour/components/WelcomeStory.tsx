@@ -14,7 +14,7 @@ import { Button } from '@/shared/ui/Button';
 import { FeltAtmosphere } from '@/shared/ui/FeltBackground';
 import { WelcomeArt, type WelcomeArtKind } from '@/features/tour/components/WelcomeArt';
 import { useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import { TOUCH_TARGET, fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface Slide {
   art: WelcomeArtKind;
@@ -196,7 +196,7 @@ const makeStyles = (c: Palette) =>
     },
     counter: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.textFaint,
     },
     skip: {
@@ -206,7 +206,7 @@ const makeStyles = (c: Palette) =>
     },
     skipText: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       color: c.textMuted,
     },
     body: {
@@ -226,21 +226,21 @@ const makeStyles = (c: Palette) =>
     },
     eyebrow: {
       fontFamily: fonts.bodyBold,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       letterSpacing: 1.2,
       textTransform: 'uppercase',
       color: c.primary,
     },
     title: {
       fontFamily: fonts.display,
-      fontSize: 26,
+      fontSize: typeScale.display,
       lineHeight: 34,
       textAlign: 'center',
       color: c.text,
     },
     text: {
       fontFamily: fonts.body,
-      fontSize: 16,
+      fontSize: typeScale.lead,
       lineHeight: 24,
       textAlign: 'center',
       color: c.textMuted,

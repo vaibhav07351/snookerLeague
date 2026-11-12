@@ -13,7 +13,7 @@ import * as groupService from '@/features/group/services/group.service';
 import { tableStateFromShots, type TableState } from '@/features/match/services/table-state';
 import * as playersService from '@/features/players/services/players.service';
 import { toUserMessage } from '@/shared/errors/app-error';
-import { useStoreReload } from '@/shared/hooks/use-store-reload';
+import { useStoreReload, type StoreLoad } from '@/shared/hooks/use-store-reload';
 import type { BallValue, GroupMatch, Player } from '@/shared/types/domain';
 import { notify } from '@/shared/ui/notify';
 import { shortNames } from '@/shared/utils/names';
@@ -34,6 +34,8 @@ export interface GroupLiveFrame {
 export interface GroupMatchScreenState {
   /** undefined while loading, null when the match does not exist (or was deleted). */
   group: GroupMatch | null | undefined;
+  /** First load status: an error shows Retry instead of spinning forever. */
+  load: StoreLoad;
   fullName: (playerId: string) => string;
   shortName: (playerId: string) => string;
   standings: GroupStandingRow[];
@@ -90,7 +92,7 @@ export function useGroupMatch(groupId: string | undefined): GroupMatchScreenStat
     }
   }, [groupId]);
 
-  useStoreReload(reload, groupId ?? null);
+  const load = useStoreReload(reload, groupId ?? null);
 
   const derived = useMemo(() => {
     const byId = new Map(players.map((p) => [p.id, p.displayName]));
@@ -152,5 +154,5 @@ export function useGroupMatch(groupId: string | undefined): GroupMatchScreenStat
     };
   }, [id, run]);
 
-  return { group, busy, actions, ...derived };
+  return { group, load, busy, actions, ...derived };
 }

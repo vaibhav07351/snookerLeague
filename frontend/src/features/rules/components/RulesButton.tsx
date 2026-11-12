@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { RuleSet } from '@/features/rules/services/rules';
 import { BottomSheet } from '@/shared/ui/BottomSheet';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import { TOUCH_TARGET, fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface RulesButtonProps {
   rules: RuleSet;
@@ -77,7 +77,7 @@ const makeStyles = (c: Palette) =>
     },
     pillText: {
       fontFamily: fonts.bodyBold,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.primary,
     },
     list: {
@@ -98,7 +98,7 @@ const makeStyles = (c: Palette) =>
     line: {
       flex: 1,
       fontFamily: fonts.body,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       lineHeight: 22,
       color: c.text,
     },

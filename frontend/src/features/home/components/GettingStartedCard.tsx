@@ -6,7 +6,7 @@ import Svg, { Circle } from 'react-native-svg';
 import { useHint } from '@/shared/hooks/use-hint';
 import { BottomSheet } from '@/shared/ui/BottomSheet';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 export interface GettingStartedStep {
   key: string;
@@ -201,12 +201,12 @@ const makeStyles = (c: Palette) =>
     },
     title: {
       fontFamily: fonts.bodyBold,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       color: c.text,
     },
     progress: {
       fontFamily: fonts.body,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.textMuted,
     },
     ring: {
@@ -218,7 +218,7 @@ const makeStyles = (c: Palette) =>
     ringText: {
       position: 'absolute',
       fontFamily: fonts.bodyBold,
-      fontSize: 11,
+      fontSize: typeScale.label,
       color: c.text,
     },
     step: {
@@ -241,7 +241,7 @@ const makeStyles = (c: Palette) =>
     },
     stepLabel: {
       fontFamily: fonts.bodyBold,
-      fontSize: 14,
+      fontSize: typeScale.body,
       color: c.text,
     },
     stepDone: {
@@ -250,7 +250,7 @@ const makeStyles = (c: Palette) =>
     },
     stepHint: {
       fontFamily: fonts.body,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       lineHeight: 16,
       color: c.textMuted,
     },

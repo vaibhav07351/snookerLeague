@@ -6,7 +6,7 @@ import { Button } from '@/shared/ui/Button';
 import type { HeadToHead, Meeting } from '@/features/stats/services/head-to-head.service';
 import { Card } from '@/shared/ui/Card';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface HeadToHeadCardProps {
   h2h: HeadToHead;
@@ -110,7 +110,7 @@ const makeStyles = (c: Palette) =>
     },
     label: {
       fontFamily: fonts.bodyBold,
-      fontSize: 10,
+      fontSize: typeScale.micro,
       letterSpacing: 1,
       textTransform: 'uppercase',
       color: c.textMuted,
@@ -124,21 +124,21 @@ const makeStyles = (c: Palette) =>
     },
     score: {
       fontFamily: fonts.display,
-      fontSize: 34,
+      fontSize: typeScale.displayLarge,
       minWidth: 48,
       textAlign: 'center',
     },
     scoreDense: {
-      fontSize: 28,
+      fontSize: typeScale.displayLarge,
     },
     scoreMid: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.textMuted,
     },
     line: {
       fontFamily: fonts.body,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.textMuted,
       textAlign: 'center',
     },
@@ -164,11 +164,11 @@ const makeStyles = (c: Palette) =>
     },
     meetingLetter: {
       fontFamily: fonts.bodyBold,
-      fontSize: 12,
+      fontSize: typeScale.caption,
     },
     meetingScore: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 11,
+      fontSize: typeScale.label,
       color: c.text,
     },
     never: {

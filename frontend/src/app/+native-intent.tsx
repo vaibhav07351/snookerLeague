@@ -6,6 +6,10 @@ import { logger } from '@/shared/logging/logger';
  */
 const ROUTES: [RegExp, (id: string) => string][] = [
   [/^\/m\/([^/?#]+)/, (id) => `/match/${id}`],
+  [/^\/r\/([^/?#]+)/, (id) => `/race/${id}`],
+  [/^\/g\/([^/?#]+)/, (id) => `/group/${id}`],
+  [/^\/r\/([^/?#]+)/, (id) => `/race/${id}`],
+  [/^\/g\/([^/?#]+)/, (id) => `/group/${id}`],
   [/^\/p\/([^/?#]+)/, (id) => `/(main)/city-player?uid=${id}`],
   [/^\/c\/([^/?#]+)/, () => '/(main)/(tabs)/community'],
   [/^\/t\/([^/?#]+)/, (id) => `/tournament/${id}`],

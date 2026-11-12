@@ -19,9 +19,17 @@ import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { DirectoryKind, DirectoryListing } from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
 import { EmptyState } from '@/shared/ui/EmptyState';
+import { LoadGate } from '@/shared/ui/LoadGate';
 import { notify } from '@/shared/ui/notify';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import {
+  TOUCH_TARGET,
+  fonts,
+  makeTypography,
+  spacing,
+  typeScale,
+  type Palette,
+} from '@/theme/tokens';
 
 function parseKind(raw: string | undefined): DirectoryKind {
   if (raw === 'table' || raw === 'referee' || raw === 'organiser' || raw === 'club') {
@@ -61,7 +69,7 @@ export default function DirectoryScreen(): ReactNode {
     setRows(await listDirectory({ cityId, kind }));
   }, [cityId, kind]);
 
-  useStoreReload(reload, cityId ? `directory:${cityId}:${kind}` : null);
+  const load = useStoreReload(reload, cityId ? `directory:${cityId}:${kind}` : null);
 
   async function save(): Promise<void> {
     if (!user?.cityId || !user.cityName) {
@@ -144,47 +152,49 @@ export default function DirectoryScreen(): ReactNode {
         </Card>
       ) : null}
 
-      <View style={styles.list}>
-        {rows.length === 0 ? (
-          <EmptyState
-            icon="map-outline"
-            title="Nothing listed yet"
-            message={`Be the first to add one in ${user.cityName ?? 'this city'}.`}
-          />
-        ) : (
-          rows.map((row) => (
-            <Card key={row.id} style={styles.row}>
-              <View style={styles.flex}>
-                <Text style={styles.name}>{row.name}</Text>
-                {row.detail ? <Text style={styles.detail}>{row.detail}</Text> : null}
-              </View>
-              {row.createdByUid === user.uid ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Remove ${row.name}`}
-                  hitSlop={4}
-                  style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
-                  onPress={() => {
-                    void deleteDirectoryListing(row.id).catch((error: unknown) => {
-                      notify.error('Could not remove', toUserMessage(error));
-                    });
-                  }}
-                >
-                  <Ionicons name="trash-outline" size={18} color={palette.textMuted} />
-                </Pressable>
-              ) : (
-                <SafetyActions
-                  compact
-                  targetKind="directory"
-                  targetId={row.id}
-                  targetUid={row.createdByUid}
-                  name={row.name}
-                />
-              )}
-            </Card>
-          ))
-        )}
-      </View>
+      <LoadGate load={load} loadingLabel="Loading listings">
+        <View style={styles.list}>
+          {rows.length === 0 ? (
+            <EmptyState
+              icon="map-outline"
+              title="Nothing listed yet"
+              message={`Be the first to add one in ${user.cityName ?? 'this city'}.`}
+            />
+          ) : (
+            rows.map((row) => (
+              <Card key={row.id} style={styles.row}>
+                <View style={styles.flex}>
+                  <Text style={styles.name}>{row.name}</Text>
+                  {row.detail ? <Text style={styles.detail}>{row.detail}</Text> : null}
+                </View>
+                {row.createdByUid === user.uid ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${row.name}`}
+                    hitSlop={4}
+                    style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+                    onPress={() => {
+                      void deleteDirectoryListing(row.id).catch((error: unknown) => {
+                        notify.error('Could not remove', toUserMessage(error));
+                      });
+                    }}
+                  >
+                    <Ionicons name="trash-outline" size={18} color={palette.textMuted} />
+                  </Pressable>
+                ) : (
+                  <SafetyActions
+                    compact
+                    targetKind="directory"
+                    targetId={row.id}
+                    targetUid={row.createdByUid}
+                    name={row.name}
+                  />
+                )}
+              </Card>
+            ))
+          )}
+        </View>
+      </LoadGate>
     </Screen>
   );
 }
@@ -229,12 +239,12 @@ const makeStyles = (c: Palette) =>
     name: {
       fontFamily: fonts.bodyBold,
       color: c.text,
-      fontSize: 16,
+      fontSize: typeScale.lead,
     },
     detail: {
       fontFamily: fonts.body,
       color: c.textMuted,
-      fontSize: 14,
+      fontSize: typeScale.body,
       lineHeight: 20,
     },
   });

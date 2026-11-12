@@ -22,10 +22,11 @@ import {
 } from '@/features/notifications/services/push.service';
 import * as Notifications from 'expo-notifications';
 import { HeaderBack } from '@/shared/ui/HeaderBack';
+import { ConfirmHost } from '@/shared/ui/ConfirmHost';
 import { SyncBanner } from '@/shared/ui/SyncBanner';
 import { ToastHost } from '@/shared/ui/ToastHost';
 import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
-import { fonts } from '@/theme/tokens';
+import { fonts, typeScale } from '@/theme/tokens';
 
 initMonitoring();
 configureNotifications();
@@ -113,7 +114,7 @@ function AppShell({ fontsLoaded }: { fontsLoaded: boolean }): ReactNode {
                 headerTintColor: palette.text,
                 headerTitleStyle: {
                   fontFamily: fonts.bodyBold,
-                  fontSize: 17,
+                  fontSize: typeScale.headline,
                 },
                 headerBackTitleStyle: { fontFamily: fonts.body },
                 contentStyle: { backgroundColor: palette.bg },
@@ -142,6 +143,7 @@ function AppShell({ fontsLoaded }: { fontsLoaded: boolean }): ReactNode {
             </Stack>
           </TourProvider>
         </UpdateRequiredGate>
+        <ConfirmHost />
         <ToastHost />
       </SessionProvider>
     </GestureHandlerRootView>

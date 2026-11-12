@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EDGE_MARGIN, placeTooltip } from '@/features/tour/services/tour-layout';
 import type { TourRect, TourStep } from '@/features/tour/types/tour.types';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import { TOUCH_TARGET, fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 const MAX_CARD_WIDTH = 420;
 const CARET = 14;
@@ -224,20 +224,20 @@ const makeStyles = (c: Palette) =>
     },
     count: {
       fontFamily: fonts.bodyBold,
-      fontSize: 11,
+      fontSize: typeScale.label,
       letterSpacing: 0.8,
       textTransform: 'uppercase',
       color: c.primary,
     },
     title: {
       fontFamily: fonts.display,
-      fontSize: 19,
+      fontSize: typeScale.title3,
       lineHeight: 25,
       color: c.text,
     },
     body: {
       fontFamily: fonts.body,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       lineHeight: 22,
       color: c.textMuted,
     },
@@ -279,7 +279,7 @@ const makeStyles = (c: Palette) =>
     },
     ghostText: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 14,
+      fontSize: typeScale.body,
       color: c.textMuted,
     },
     back: {
@@ -302,7 +302,7 @@ const makeStyles = (c: Palette) =>
     },
     nextText: {
       fontFamily: fonts.bodyBold,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       color: c.onPrimary,
     },
     pressed: {

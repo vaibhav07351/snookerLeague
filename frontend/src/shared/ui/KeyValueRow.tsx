@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { useStyles } from '@/theme/ThemeProvider';
-import { fonts, spacing, type Palette } from '@/theme/tokens';
+import { fonts, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface KeyValueRowProps {
   label: string;
@@ -38,12 +38,12 @@ const makeStyles = (c: Palette) =>
     label: {
       flex: 1,
       fontFamily: fonts.body,
-      fontSize: 14,
+      fontSize: typeScale.body,
       color: c.textMuted,
     },
     value: {
       fontFamily: fonts.bodyBold,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       color: c.text,
     },
   });

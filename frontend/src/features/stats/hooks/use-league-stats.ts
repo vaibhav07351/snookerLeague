@@ -61,7 +61,18 @@ export function useLeagueStats(
       return;
     }
     let cancelled = false;
+    const fail =
+      (step: string) =>
+      (error: unknown): void => {
+        logger.error('use-league-stats', `${step} failed`, {
+          leagueId,
+          shape: error instanceof Error ? error.name : 'unknown',
+        });
+      };
     loadStore()
+      // A store that could not be read still has its in-memory copy (the sync banner says
+      // saving is paused), so the screens show that rather than spinning forever.
+      .catch(fail('Loading the store'))
       .then(() => {
         if (!cancelled) {
           setLoaded(true);
@@ -69,12 +80,7 @@ export function useLeagueStats(
         // Keeps the cached player stats (used by lists elsewhere) in step.
         return refreshLeaguePlayerStats(leagueId);
       })
-      .catch((error: unknown) => {
-        logger.error('use-league-stats', 'Loading league stats failed', {
-          leagueId,
-          shape: error instanceof Error ? error.name : 'unknown',
-        });
-      });
+      .catch(fail('Refreshing player stats'));
     return () => {
       cancelled = true;
     };

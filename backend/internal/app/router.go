@@ -83,6 +83,7 @@ func NewRouter(cfg config.Config, pool *pgxpool.Pool) http.Handler {
 	r.Route("/v1", func(v1 chi.Router) {
 		v1.Get("/config", configHandler(cfg))
 		liveHandler.Routes(v1)
+		publicHandler.APIRoutes(v1)
 		v1.Group(func(public chi.Router) {
 			public.Use(authLimiter.Middleware)
 			authHandler.PublicRoutes(public)

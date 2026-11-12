@@ -20,7 +20,7 @@ import { isCloudEnabled } from '@/shared/config/env';
 import { useLayout } from '@/shared/hooks/use-layout';
 import { notify } from '@/shared/ui/notify';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, spacing, type Palette } from '@/theme/tokens';
+import { fonts, makeTypography, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 export default function LoginScreen(): ReactNode {
   const { refresh } = useSession();
@@ -233,7 +233,7 @@ const makeStyles = (c: Palette) =>
     googleNote: {
       fontFamily: fonts.body,
       color: c.textMuted,
-      fontSize: 13,
+      fontSize: typeScale.small,
       lineHeight: 18,
       textAlign: 'center',
     },
@@ -245,7 +245,7 @@ const makeStyles = (c: Palette) =>
     demoLinkText: {
       fontFamily: fonts.bodyBold,
       color: c.primary,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
     },
     back: {
       flexDirection: 'row',
@@ -258,7 +258,7 @@ const makeStyles = (c: Palette) =>
     backText: {
       fontFamily: fonts.bodyMedium,
       color: c.textMuted,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
     },
     demoNote: {
       marginTop: spacing.xs,

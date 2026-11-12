@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/shared/ui/Button';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface EmptyStateProps {
   icon: ComponentProps<typeof Ionicons>['name'];
@@ -61,13 +61,13 @@ const makeStyles = (c: Palette) =>
     title: {
       fontFamily: fonts.bodyBold,
       color: c.text,
-      fontSize: 16,
+      fontSize: typeScale.lead,
       textAlign: 'center',
     },
     message: {
       fontFamily: fonts.body,
       color: c.textMuted,
-      fontSize: 14,
+      fontSize: typeScale.body,
       lineHeight: 20,
       textAlign: 'center',
     },

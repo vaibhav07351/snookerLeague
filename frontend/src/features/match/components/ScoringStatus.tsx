@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/shared/ui/Button';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface ScoringStatusProps {
   canScore: boolean;
@@ -85,7 +85,7 @@ const makeStyles = (c: Palette) =>
       flex: 1,
       minWidth: 0,
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       lineHeight: 18,
       color: c.textMuted,
     },

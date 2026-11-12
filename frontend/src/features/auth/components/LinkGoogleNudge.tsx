@@ -5,7 +5,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { useLinkGoogle } from '@/features/auth/hooks/use-link-google';
 import { useHint } from '@/shared/hooks/use-hint';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface LinkGoogleNudgeProps {
   /**
@@ -119,22 +119,22 @@ const makeStyles = (c: Palette) =>
     },
     title: {
       fontFamily: fonts.bodyBold,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       color: c.text,
     },
     titleSmall: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 13,
+      fontSize: typeScale.small,
     },
     subtitle: {
       fontFamily: fonts.body,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       lineHeight: 16,
       color: c.textMuted,
     },
     action: {
       fontFamily: fonts.bodyBold,
-      fontSize: 14,
+      fontSize: typeScale.body,
       color: c.primary,
     },
   });

@@ -7,7 +7,7 @@ import { Button } from '@/shared/ui/Button';
 import { Chip } from '@/shared/ui/Chip';
 import type { Match, Player, ScoringPolicy } from '@/shared/types/domain';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface MatchOptionsProps {
   match: Match;
@@ -197,7 +197,7 @@ const makeStyles = (c: Palette) =>
     headerText: {
       flex: 1,
       fontFamily: fonts.bodyBold,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       color: c.text,
     },
     body: {
@@ -219,12 +219,12 @@ const makeStyles = (c: Palette) =>
     },
     optionTitle: {
       fontFamily: fonts.bodyBold,
-      fontSize: 14,
+      fontSize: typeScale.body,
       color: c.text,
     },
     optionHint: {
       fontFamily: fonts.body,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       lineHeight: 17,
       color: c.textMuted,
     },

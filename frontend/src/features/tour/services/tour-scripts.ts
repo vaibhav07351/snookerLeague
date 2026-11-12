@@ -47,13 +47,7 @@ export const TOUR_SCRIPTS: Record<TourId, TourScript> = {
         targetId: 'nav.tabs',
         icon: 'apps-outline',
         title: 'One tap away',
-        body: 'Looking finds a game near you, My Snooker holds your club tools, Community shows your city, and Profile is you.',
-      },
-      {
-        targetId: 'nav.menu',
-        icon: 'menu',
-        title: 'The full menu',
-        body: 'History, champions, stats, leaderboard, players and league settings all live here.',
+        body: 'Looking finds a game near you. My Snooker holds history, champions, stats, the leaderboard, players and league settings. Community shows your city and challenges, and Profile is you.',
         primaryLabel: "Let's play",
       },
     ],
@@ -131,7 +125,7 @@ export const TOUR_SCRIPTS: Record<TourId, TourScript> = {
         targetId: 'league.list',
         icon: 'trophy-outline',
         title: 'Your leagues',
-        body: 'Each league has its own players, matches and champions. Make one active to switch.',
+        body: 'Each league has its own players, matches and champions. Make one active to switch. Settings and + (add a league) are at the top right.',
       },
       {
         targetId: 'league.invite',

@@ -8,8 +8,9 @@ import { displayNameForUid } from '@/features/community/services/follow.service'
 import { Screen } from '@/shared/ui/Screen';
 import { Card } from '@/shared/ui/Card';
 import { EmptyState } from '@/shared/ui/EmptyState';
+import { LoadGate } from '@/shared/ui/LoadGate';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, spacing, type Palette } from '@/theme/tokens';
+import { fonts, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 export default function FollowsScreen(): ReactNode {
   const styles = useStyles(makeStyles);
@@ -30,36 +31,38 @@ export default function FollowsScreen(): ReactNode {
 
   return (
     <Screen>
-      {rows.length === 0 ? (
-        <EmptyState
-          icon="people-outline"
-          title={followingMode ? 'Not following anyone yet' : 'No followers yet'}
-          message="Follow players from the city leaderboard to keep up with their games."
-        />
-      ) : (
-        <View style={styles.list}>
-          {rows.map((row) => {
-            const otherUid = followingMode ? row.followingUid : row.followerUid;
-            const name = displayNameForUid(otherUid);
-            return (
-              <Card
-                key={row.id}
-                style={styles.row}
-                accessibilityLabel={`Open ${name}`}
-                onPress={() => router.push(`/(main)/city-player?uid=${otherUid}`)}
-              >
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{name.trim().charAt(0).toUpperCase()}</Text>
-                </View>
-                <Text style={styles.name} numberOfLines={1}>
-                  {name}
-                </Text>
-                <Ionicons name="chevron-forward" size={18} color={palette.textFaint} />
-              </Card>
-            );
-          })}
-        </View>
-      )}
+      <LoadGate load={graph.load} loadingLabel="Loading" errorTitle="Couldn't load this list">
+        {rows.length === 0 ? (
+          <EmptyState
+            icon="people-outline"
+            title={followingMode ? 'Not following anyone yet' : 'No followers yet'}
+            message="Follow players from the city leaderboard to keep up with their games."
+          />
+        ) : (
+          <View style={styles.list}>
+            {rows.map((row) => {
+              const otherUid = followingMode ? row.followingUid : row.followerUid;
+              const name = displayNameForUid(otherUid);
+              return (
+                <Card
+                  key={row.id}
+                  style={styles.row}
+                  accessibilityLabel={`Open ${name}`}
+                  onPress={() => router.push(`/(main)/city-player?uid=${otherUid}`)}
+                >
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>{name.trim().charAt(0).toUpperCase()}</Text>
+                  </View>
+                  <Text style={styles.name} numberOfLines={1}>
+                    {name}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={palette.textFaint} />
+                </Card>
+              );
+            })}
+          </View>
+        )}
+      </LoadGate>
     </Screen>
   );
 }
@@ -88,13 +91,13 @@ const makeStyles = (c: Palette) =>
     avatarText: {
       fontFamily: fonts.bodyBold,
       color: c.primary,
-      fontSize: 16,
+      fontSize: typeScale.lead,
     },
     name: {
       flex: 1,
       minWidth: 0,
       fontFamily: fonts.bodyBold,
-      fontSize: 16,
+      fontSize: typeScale.lead,
       color: c.text,
     },
   });

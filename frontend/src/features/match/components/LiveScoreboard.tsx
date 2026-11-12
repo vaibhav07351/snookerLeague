@@ -9,7 +9,7 @@ import { haptic, type HapticKind } from '@/shared/feedback/haptics';
 import { useLayout } from '@/shared/hooks/use-layout';
 import type { BallValue } from '@/shared/types/domain';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import { TOUCH_TARGET, fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 const BALL_ORDER: BallValue[] = [1, 2, 3, 4, 5, 6, 7];
 const FOUL_VALUES = [4, 5, 6, 7] as const;
@@ -247,12 +247,12 @@ const makeStyles = (c: Palette) =>
     onText: {
       flexShrink: 0,
       fontFamily: fonts.bodyBold,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       color: c.text,
     },
     remaining: {
       fontFamily: fonts.body,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       flexShrink: 1,
       textAlign: 'right',
       color: c.textMuted,
@@ -309,7 +309,7 @@ const makeStyles = (c: Palette) =>
     actionText: {
       fontFamily: fonts.bodyBold,
       color: c.text,
-      fontSize: 12,
+      fontSize: typeScale.caption,
     },
     // Shown on press-in, before the tap completes: the dip is the feedback, haptics add to it.
     pressed: {
@@ -334,7 +334,7 @@ const makeStyles = (c: Palette) =>
     foulText: {
       fontFamily: fonts.bodyBold,
       color: c.danger,
-      fontSize: 13,
+      fontSize: typeScale.small,
     },
     win: {
       flex: 1,
@@ -350,11 +350,11 @@ const makeStyles = (c: Palette) =>
     },
     winKicker: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 11,
+      fontSize: typeScale.label,
       color: c.textMuted,
     },
     winText: {
       fontFamily: fonts.bodyBold,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
     },
   });

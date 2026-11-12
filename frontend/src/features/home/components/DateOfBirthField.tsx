@@ -8,7 +8,7 @@ import {
   parseIsoDate,
 } from '@/features/auth/services/division.service';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, makeTypography, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface DateOfBirthFieldProps {
   value: string;
@@ -168,7 +168,7 @@ const makeStyles = (c: Palette) =>
       paddingVertical: 14,
       color: c.text,
       // 16px on web avoids mobile Safari auto-zoom on focus (looks "zoomed in").
-      fontSize: Platform.OS === 'web' ? 16 : 17,
+      fontSize: Platform.OS === 'web' ? typeScale.lead : typeScale.headline,
       fontFamily: fonts.body,
       minHeight: 52,
       textAlign: 'center',
@@ -182,13 +182,13 @@ const makeStyles = (c: Palette) =>
     },
     hint: {
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.textMuted,
       lineHeight: 18,
     },
     error: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.danger,
     },
   });

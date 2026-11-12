@@ -6,7 +6,7 @@ import { toUserMessage } from '@/shared/errors/app-error';
 import type { League } from '@/shared/types/domain';
 import { notify } from '@/shared/ui/notify';
 import { useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface LeagueSwitchListProps {
   /** Called after a successful switch; the caller decides where to go next. */
@@ -91,7 +91,7 @@ const makeStyles = (c: Palette) =>
     },
     name: {
       fontFamily: fonts.bodyBold,
-      fontSize: 16,
+      fontSize: typeScale.lead,
       color: c.text,
     },
     nameOn: {
@@ -99,13 +99,13 @@ const makeStyles = (c: Palette) =>
     },
     meta: {
       fontFamily: fonts.body,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.textMuted,
       marginTop: 2,
     },
     badge: {
       fontFamily: fonts.bodyBold,
-      fontSize: 11,
+      fontSize: typeScale.label,
       color: c.onPrimary,
       backgroundColor: c.primary,
       paddingHorizontal: spacing.sm,

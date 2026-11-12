@@ -19,7 +19,7 @@ import { BrandLogo } from '@/features/home/components/BrandLogo';
 import { SnookerBall } from '@/features/match/components/SnookerBall';
 import type { BallValue } from '@/shared/types/domain';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 export type WelcomeArtKind = 'club' | 'players' | 'scoring' | 'champions';
 
@@ -326,7 +326,7 @@ const makeStyles = (c: Palette) =>
     },
     avatarText: {
       fontFamily: fonts.display,
-      fontSize: 24,
+      fontSize: typeScale.display,
     },
     guestTag: {
       position: 'absolute',
@@ -339,12 +339,12 @@ const makeStyles = (c: Palette) =>
     },
     guestText: {
       fontFamily: fonts.bodyBold,
-      fontSize: 10,
+      fontSize: typeScale.micro,
       color: c.textMuted,
     },
     vs: {
       fontFamily: fonts.bodyBold,
-      fontSize: 16,
+      fontSize: typeScale.lead,
       letterSpacing: 1,
       color: c.textMuted,
     },
@@ -359,7 +359,7 @@ const makeStyles = (c: Palette) =>
     },
     breakText: {
       fontFamily: fonts.bodyBold,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
     },
     cloth: {
       flexDirection: 'row',

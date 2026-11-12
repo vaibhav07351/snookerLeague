@@ -204,6 +204,18 @@ async function persistChallenge(next: Challenge): Promise<void> {
   ]);
 }
 
+/** Challenges sent to me that I have not answered yet (this phone's copy, no network). */
+export async function countIncomingPending(): Promise<number> {
+  await loadStore();
+  const uid = getStore().user?.uid;
+  if (!uid) {
+    return 0;
+  }
+  return (await listMyChallenges({ refresh: false })).filter(
+    (c) => c.toUid === uid && c.status === 'pending',
+  ).length;
+}
+
 export async function listMyChallenges(opts: { refresh?: boolean } = {}): Promise<Challenge[]> {
   await loadStore();
   const user = getStore().user;

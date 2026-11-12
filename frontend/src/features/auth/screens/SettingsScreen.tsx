@@ -18,7 +18,7 @@ import { notify } from '@/shared/ui/notify';
 import { confirmAction } from '@/shared/utils/confirm';
 import { describeAppearance } from '@/theme/theme-preference';
 import { usePalette, useStyles, useTheme } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, makeTypography, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 /** Account, leagues and app preferences: everything that used to make Profile scroll. */
 export function SettingsScreen(): ReactNode {
@@ -218,13 +218,13 @@ const makeStyles = (c: Palette) =>
     },
     meta: {
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       lineHeight: 18,
       color: c.textMuted,
     },
     badge: {
       fontFamily: fonts.bodyBold,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.onPrimary,
       backgroundColor: c.success,
       paddingHorizontal: spacing.sm,
@@ -256,7 +256,7 @@ const makeStyles = (c: Palette) =>
     },
     rowLabel: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       color: c.text,
     },
     rowValue: {
@@ -264,7 +264,7 @@ const makeStyles = (c: Palette) =>
       minWidth: 0,
       textAlign: 'right',
       fontFamily: fonts.body,
-      fontSize: 14,
+      fontSize: typeScale.body,
       color: c.textMuted,
     },
     flex: {

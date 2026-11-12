@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { divisionLabel } from '@/features/auth/services/division.service';
@@ -20,17 +20,18 @@ import { getStore } from '@/shared/storage/local-store';
 import type { PlayerProfile } from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
 import { EmptyState } from '@/shared/ui/EmptyState';
+import { ErrorState } from '@/shared/ui/ErrorState';
+import { LoadingState } from '@/shared/ui/LoadingState';
 import { notify } from '@/shared/ui/notify';
 import { confirmAction } from '@/shared/utils/confirm';
-import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
+import { useStyles } from '@/theme/ThemeProvider';
+import { fonts, makeTypography, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 type LoadState = 'loading' | 'missing' | 'ready';
 
 export default function CityPlayerScreen(): ReactNode {
   const styles = useStyles(makeStyles);
   const typography = useStyles(makeTypography);
-  const palette = usePalette();
   const { scale } = useLayout();
   const { uid } = useLocalSearchParams<{ uid: string }>();
   const { user } = useSession();
@@ -51,7 +52,7 @@ export default function CityPlayerScreen(): ReactNode {
     setFollowing(currentUid ? followService.isFollowing(currentUid, uid) : false);
   }, [uid]);
 
-  useStoreReload(reload, uid ?? null);
+  const load = useStoreReload(reload, uid ?? null);
 
   async function toggleFollow(): Promise<void> {
     if (!uid) {
@@ -129,11 +130,10 @@ export default function CityPlayerScreen(): ReactNode {
             title="Profile not found"
             message="This player may have left the city or made their profile private."
           />
+        ) : load.status === 'error' ? (
+          <ErrorState title="Couldn't load this player" onRetry={load.retry} />
         ) : (
-          <View style={styles.loading}>
-            <ActivityIndicator color={palette.primary} />
-            <Text style={typography.subtitle}>Loading profile</Text>
-          </View>
+          <LoadingState label="Loading profile" />
         )}
       </Screen>
     );
@@ -187,7 +187,9 @@ export default function CityPlayerScreen(): ReactNode {
       <Card tone="highlight" style={styles.breakCard}>
         <View style={styles.breakMain}>
           <Text style={typography.label}>Highest break</Text>
-          <Text style={[styles.breakValue, { fontSize: scale(40), lineHeight: scale(46) }]}>
+          <Text
+            style={[styles.breakValue, { fontSize: scale(typeScale.hero), lineHeight: scale(46) }]}
+          >
             {profile.highestBreak > 0 ? String(profile.highestBreak) : '-'}
           </Text>
         </View>
@@ -268,12 +270,6 @@ function MiniStat({ label, value }: { label: string; value: string }): ReactNode
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
-    loading: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-      paddingVertical: spacing.lg,
-    },
     headRow: {
       flexDirection: 'row',
       alignItems: 'flex-start',
@@ -293,7 +289,7 @@ const makeStyles = (c: Palette) =>
     followMeta: {
       fontFamily: fonts.body,
       color: c.textMuted,
-      fontSize: 13,
+      fontSize: typeScale.small,
     },
     followCount: {
       fontFamily: fonts.bodyBold,
@@ -324,12 +320,12 @@ const makeStyles = (c: Palette) =>
     miniValue: {
       fontFamily: fonts.bodyBold,
       color: c.text,
-      fontSize: 18,
+      fontSize: typeScale.title3,
     },
     miniLabel: {
       fontFamily: fonts.body,
       color: c.textMuted,
-      fontSize: 11,
+      fontSize: typeScale.label,
     },
     grid: {
       flexDirection: 'row',
@@ -352,7 +348,7 @@ const makeStyles = (c: Palette) =>
     value: {
       fontFamily: fonts.bodyBold,
       color: c.text,
-      fontSize: 20,
+      fontSize: typeScale.title2,
     },
     actions: {
       flexDirection: 'row',
@@ -370,7 +366,7 @@ const makeStyles = (c: Palette) =>
     },
     link: {
       fontFamily: fonts.bodyBold,
-      fontSize: 14,
+      fontSize: typeScale.body,
       color: c.primary,
     },
   });

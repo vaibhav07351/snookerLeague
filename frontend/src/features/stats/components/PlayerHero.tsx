@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { FormPips } from '@/features/stats/components/FormPips';
 import { PROVISIONAL_GAMES, type RatingEntry } from '@/features/stats/services/rating.service';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface PlayerHeroProps {
   name: string;
@@ -127,15 +127,15 @@ const makeStyles = (c: Palette) =>
     name: {
       flexShrink: 1,
       fontFamily: fonts.display,
-      fontSize: 21,
+      fontSize: typeScale.title1,
       color: c.text,
     },
     nameDense: {
-      fontSize: 18,
+      fontSize: typeScale.title3,
     },
     subtitle: {
       fontFamily: fonts.body,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.textMuted,
     },
     strip: {
@@ -157,19 +157,19 @@ const makeStyles = (c: Palette) =>
     },
     ratingValue: {
       fontFamily: fonts.bodyBold,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       color: c.primary,
     },
     ratingLabel: {
       fontFamily: fonts.bodyBold,
-      fontSize: 9,
+      fontSize: typeScale.micro,
       letterSpacing: 0.8,
       color: c.textMuted,
     },
     standing: {
       flexShrink: 1,
       fontFamily: fonts.bodyMedium,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.text,
     },
   });

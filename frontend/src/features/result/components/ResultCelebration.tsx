@@ -14,19 +14,19 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import type { ResultMood, ResultView } from '@/features/result/types/result.types';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
-const HEADLINES_WIN = [
-  'What a finish!',
-  'Champions of the table',
-  'Cue pure magic',
-  'They owned the felt',
-] as const;
+const HEADLINES: Record<ResultMood, readonly string[]> = {
+  win: ['What a finish!', 'Cue pure magic', 'Owned the felt', 'Top of the table'],
+  forfeit: ['Win by forfeit', 'Walkover win', 'Still counts'],
+  crown: ['A new champion!', 'Crown secured', 'The throne is taken'],
+};
+const HEADLINES_LIVE = ['Still in play'] as const;
 
-const HEADLINES_FORFEIT = ['Win by forfeit', 'Walkover winners', 'Still counts'] as const;
-
-const HEADLINES_CROWN = ['New reigning champs!', 'Crown secured', 'The throne is theirs'] as const;
+/** Rows of a race or free-for-all shown on the card; the rest are in Details. */
+const CARD_ROWS = 3;
 
 interface ParticleSpec {
   id: number;
@@ -114,45 +114,28 @@ function useRotatingHeadline(headlines: readonly string[]): string {
   return text;
 }
 
-export interface MatchCelebrationProps {
-  winnersLabel: string;
-  framesA: number;
-  framesB: number;
-  viaForfeit: boolean;
-  crownsChampion: boolean;
-  namedLabel: string | null;
-  forfeitSummary: string | null;
-  scoreLockedLine: string | null;
+interface ResultCelebrationProps {
+  view: ResultView;
+  /** Extra line under the result, e.g. a forfeit explanation. */
+  detail?: string | null;
 }
 
-export function MatchCelebration({
-  winnersLabel,
-  framesA,
-  framesB,
-  viaForfeit,
-  crownsChampion,
-  namedLabel,
-  forfeitSummary,
-  scoreLockedLine,
-}: MatchCelebrationProps): ReactNode {
+/**
+ * The finished-game card for a match, race or free-for-all: headline, the big score, the
+ * winner and (for races and free-for-alls) the top places. Celebrates with confetti and a
+ * gentle pulse; under reduce motion it only fades in.
+ */
+export function ResultCelebration({ view, detail = null }: ResultCelebrationProps): ReactNode {
   const styles = useStyles(makeStyles);
   const palette = usePalette();
   const hero = useSharedValue(0);
   const pulse = useSharedValue(0);
   const glow = useSharedValue(0);
   const reduceMotion = useReducedMotion();
+  // A live public result is not a celebration: no confetti, no pulse.
+  const still = reduceMotion || view.live;
 
-  const headlines = useMemo(() => {
-    if (crownsChampion) {
-      return HEADLINES_CROWN;
-    }
-    if (viaForfeit) {
-      return HEADLINES_FORFEIT;
-    }
-    return HEADLINES_WIN;
-  }, [crownsChampion, viaForfeit]);
-
-  const activeHeadline = useRotatingHeadline(headlines);
+  const activeHeadline = useRotatingHeadline(view.live ? HEADLINES_LIVE : HEADLINES[view.mood]);
 
   const particles = useMemo<ParticleSpec[]>(
     () =>
@@ -170,7 +153,7 @@ export function MatchCelebration({
 
   useEffect(() => {
     // Reduce motion: the card fades in and then holds still (no pulse, glow loop or confetti).
-    if (reduceMotion) {
+    if (still) {
       hero.value = withTiming(1, { duration: 250, reduceMotion: ReduceMotion.Never });
       pulse.value = 0;
       glow.value = 0.6;
@@ -190,10 +173,10 @@ export function MatchCelebration({
       -1,
       false,
     );
-  }, [hero, pulse, glow, reduceMotion]);
+  }, [hero, pulse, glow, still]);
 
   const heroStyle = useAnimatedStyle(() =>
-    reduceMotion
+    still
       ? { opacity: hero.value }
       : {
           opacity: hero.value,
@@ -211,11 +194,13 @@ export function MatchCelebration({
   const ringStyle = useAnimatedStyle(() => ({
     shadowOpacity: 0.2 + glow.value * 0.35,
   }));
-  const ringColor = viaForfeit ? palette.danger : palette.primary;
+  const ringColor = view.mood === 'forfeit' ? palette.danger : palette.primary;
+  // The winner already leads the card; the places after it fit under the score.
+  const others = view.standings.filter((r) => !r.winner).slice(0, CARD_ROWS - 1);
 
   return (
     <View style={styles.wrap}>
-      {reduceMotion ? null : (
+      {still ? null : (
         <View style={styles.particleLayer} pointerEvents="none">
           {particles.map((p) => (
             <Particle key={p.id} spec={p} />
@@ -231,26 +216,41 @@ export function MatchCelebration({
           heroStyle,
         ]}
       >
-        <Text style={styles.kicker}>
-          {crownsChampion ? 'Title match' : viaForfeit ? 'Forfeit result' : 'Match complete'}
-        </Text>
+        <Text style={styles.kicker}>{view.kicker}</Text>
         <Text style={styles.headline}>{activeHeadline}</Text>
 
         <Animated.Text style={[styles.score, scoreStyle]}>
-          {framesA}-{framesB}
+          {view.score}
+          {view.scoreUnit ? <Text style={styles.unit}> {view.scoreUnit}</Text> : null}
         </Animated.Text>
 
-        <Text style={styles.winnersLabel}>Winners</Text>
-        <Text style={styles.winners}>{winnersLabel}</Text>
+        {view.winnerLabel ? (
+          <>
+            <Text style={styles.winnersLabel}>{view.winnerHeading}</Text>
+            <Text style={styles.winners}>{view.winnerLabel}</Text>
+          </>
+        ) : null}
 
-        {namedLabel ? <Text style={styles.named}>{namedLabel}</Text> : null}
-        {crownsChampion ? (
-          <View style={styles.crownBadge}>
-            <Text style={styles.crownText}>Reigning champions crowned</Text>
+        {others.length > 0 ? (
+          <View style={styles.places}>
+            {others.map((r) => (
+              <Text key={`${r.place}-${r.name}`} style={styles.placeLine} numberOfLines={1}>
+                <Text style={styles.placeNo}>{r.place}</Text> {r.name} · {r.detail}
+              </Text>
+            ))}
           </View>
         ) : null}
-        {forfeitSummary ? <Text style={styles.detail}>{forfeitSummary}</Text> : null}
-        {scoreLockedLine ? <Text style={styles.detailMuted}>{scoreLockedLine}</Text> : null}
+
+        <Text style={styles.named} numberOfLines={1}>
+          {view.label}
+          {view.caption ? ` · ${view.caption}` : ''}
+        </Text>
+        {view.notes.map((note) => (
+          <View key={note} style={styles.noteBadge}>
+            <Text style={styles.noteText}>{note}</Text>
+          </View>
+        ))}
+        {detail ? <Text style={styles.detail}>{detail}</Text> : null}
       </Animated.View>
     </View>
   );
@@ -284,45 +284,64 @@ const makeStyles = (c: Palette) =>
     },
     kicker: {
       fontFamily: fonts.bodyBold,
-      fontSize: 11,
+      fontSize: typeScale.label,
       letterSpacing: 1.4,
       textTransform: 'uppercase',
       color: c.primarySoft,
     },
     headline: {
       fontFamily: fonts.display,
-      fontSize: 26,
+      fontSize: typeScale.display,
       color: c.text,
       textAlign: 'center',
       marginTop: spacing.xs,
     },
     score: {
       fontFamily: fonts.display,
-      fontSize: 52,
+      fontSize: typeScale.score,
       color: c.primary,
       marginVertical: spacing.sm,
     },
     winnersLabel: {
       fontFamily: fonts.bodyBold,
-      fontSize: 11,
+      fontSize: typeScale.label,
       letterSpacing: 1.2,
       textTransform: 'uppercase',
       color: c.success,
     },
     winners: {
       fontFamily: fonts.bodyBold,
-      fontSize: 20,
+      fontSize: typeScale.title2,
       color: c.text,
       textAlign: 'center',
       lineHeight: 28,
     },
     named: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 14,
+      fontSize: typeScale.body,
       color: c.primarySoft,
       marginTop: spacing.xs,
     },
-    crownBadge: {
+    unit: {
+      fontFamily: fonts.bodyBold,
+      fontSize: typeScale.lead,
+      color: c.textMuted,
+    },
+    places: {
+      alignSelf: 'stretch',
+      gap: 2,
+      alignItems: 'center',
+    },
+    placeLine: {
+      fontFamily: fonts.bodyMedium,
+      fontSize: typeScale.body,
+      color: c.textMuted,
+    },
+    placeNo: {
+      fontFamily: fonts.bodyBold,
+      color: c.text,
+    },
+    noteBadge: {
       marginTop: spacing.sm,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
@@ -331,24 +350,17 @@ const makeStyles = (c: Palette) =>
       borderWidth: 1,
       borderColor: c.borderStrong,
     },
-    crownText: {
+    noteText: {
       fontFamily: fonts.bodyBold,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.primary,
     },
     detail: {
       fontFamily: fonts.body,
-      fontSize: 14,
+      fontSize: typeScale.body,
       lineHeight: 20,
       color: c.text,
       textAlign: 'center',
       marginTop: spacing.sm,
-    },
-    detailMuted: {
-      fontFamily: fonts.body,
-      fontSize: 13,
-      lineHeight: 18,
-      color: c.textMuted,
-      textAlign: 'center',
     },
   });

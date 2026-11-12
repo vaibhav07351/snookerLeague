@@ -15,7 +15,7 @@ import { EmptyState } from '@/shared/ui/EmptyState';
 import { notify } from '@/shared/ui/notify';
 import { SectionTitle } from '@/shared/ui/SectionTitle';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, makeTypography, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 /** Leave the join flow for good: clear the stack so back never returns to it or onboarding. */
 function leaveTo(href: '/' | '/(main)'): void {
@@ -301,12 +301,12 @@ const makeStyles = (c: Palette) =>
     },
     optionName: {
       fontFamily: fonts.bodyBold,
-      fontSize: 16,
+      fontSize: typeScale.lead,
       color: c.text,
     },
     optionMeta: {
       fontFamily: fonts.body,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.textMuted,
     },
     newRow: {

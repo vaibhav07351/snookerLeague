@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Defs, Ellipse, RadialGradient, Stop } from 'react-native-svg';
 
 import type { BallValue } from '@/shared/types/domain';
-import { fonts } from '@/theme/tokens';
+import { fonts, typeScale } from '@/theme/tokens';
 
 interface BallStyle {
   label: string;
@@ -114,7 +114,12 @@ export function SnookerBall({ value, size = 48 }: SnookerBallProps): ReactNode {
           fill="rgba(255,255,255,0.55)"
         />
       </Svg>
-      <Text style={[styles.label, { color: ball.text, fontSize: size < 42 ? 10 : 12 }]}>
+      <Text
+        style={[
+          styles.label,
+          { color: ball.text, fontSize: size < 42 ? typeScale.micro : typeScale.caption },
+        ]}
+      >
         {ball.label}
       </Text>
     </View>

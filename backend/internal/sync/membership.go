@@ -327,30 +327,65 @@ func (s *Service) CurrentMatch(ctx context.Context, matchID string) (Doc, error)
 // PublicMatch returns a match with its league and the player cards it names, for the public
 // match page. Only the cards in the match are loaded (at most four).
 func (s *Service) PublicMatch(ctx context.Context, matchID string) (match, league Doc, players []Doc, err error) {
+	return s.PublicGame(ctx, EntityMatch, matchID)
+}
+
+// gamePlayerIDs lists the player cards a game names, capped at the most that kind of game
+// may hold: anyone can open a public result, so it never reads more cards than that.
+func gamePlayerIDs(entity Entity, data json.RawMessage) ([]string, error) {
+	var body struct {
+		TeamA    []string `json:"teamA"`
+		TeamB    []string `json:"teamB"`
+		Entrants []struct {
+			PlayerID string `json:"playerId"`
+		} `json:"entrants"`
+		PlayerIDs []string `json:"playerIds"`
+	}
+	if err := json.Unmarshal(data, &body); err != nil {
+		return nil, fmt.Errorf("decode %s: %w", entity, err)
+	}
+	switch entity {
+	case EntityMatch:
+		return firstN(append(body.TeamA, body.TeamB...), 2*maxTeamSize), nil
+	case EntityRace:
+		ids := make([]string, 0, len(body.Entrants))
+		for _, e := range body.Entrants {
+			ids = append(ids, e.PlayerID)
+		}
+		return firstN(ids, maxRaceSize), nil
+	case EntityGroupMatch:
+		return firstN(body.PlayerIDs, maxGroupSize), nil
+	}
+	return nil, ErrNotFound
+}
+
+// PublicGame returns a match, race or free-for-all with its league and the player cards it
+// names, for public result pages and shared result links. Deleted games and games in a
+// deleted league are not found.
+func (s *Service) PublicGame(ctx context.Context, entity Entity, id string) (game, league Doc, players []Doc, err error) {
+	if entity != EntityMatch && entity != EntityRace && entity != EntityGroupMatch {
+		return Doc{}, Doc{}, nil, ErrNotFound
+	}
 	err = s.store.InTx(ctx, func(tx Tx) error {
-		m, err := tx.Get(ctx, EntityMatch, matchID)
+		m, err := tx.Get(ctx, entity, id)
 		if err != nil {
 			return err
 		}
 		if m.Deleted {
 			return ErrNotFound
 		}
-		match = m
+		game = m
 		if league, err = tx.Get(ctx, EntityLeague, m.LeagueID); err != nil {
 			return err
 		}
 		if league.Deleted {
 			return ErrNotFound
 		}
-		var body struct {
-			TeamA []string `json:"teamA"`
-			TeamB []string `json:"teamB"`
+		ids, err := gamePlayerIDs(entity, m.Data)
+		if err != nil {
+			return err
 		}
-		if err := json.Unmarshal(m.Data, &body); err != nil {
-			return fmt.Errorf("decode match: %w", err)
-		}
-		// Anyone can open this page, so never read more cards than a doubles match has.
-		for _, id := range firstN(append(body.TeamA, body.TeamB...), 2*maxTeamSize) {
+		for _, id := range ids {
 			p, err := tx.Get(ctx, EntityPlayer, id)
 			if errors.Is(err, ErrNotFound) {
 				continue
@@ -365,9 +400,9 @@ func (s *Service) PublicMatch(ctx context.Context, matchID string) (match, leagu
 		return nil
 	})
 	if err != nil {
-		return Doc{}, Doc{}, nil, fmt.Errorf("load public match: %w", err)
+		return Doc{}, Doc{}, nil, fmt.Errorf("load public %s: %w", entity, err)
 	}
-	return match, league, players, nil
+	return game, league, players, nil
 }
 
 // firstN is ids cut to at most n (documents saved before shape checks may hold more).

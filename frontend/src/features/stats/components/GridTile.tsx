@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 export interface GridTileData {
   key: string;
@@ -96,22 +96,22 @@ const makeStyles = (c: Palette) =>
     label: {
       flex: 1,
       fontFamily: fonts.bodyBold,
-      fontSize: 10,
+      fontSize: typeScale.micro,
       letterSpacing: 0.7,
       textTransform: 'uppercase',
       color: c.textMuted,
     },
     value: {
       fontFamily: fonts.bodyBold,
-      fontSize: 24,
+      fontSize: typeScale.display,
       color: c.text,
     },
     valueDense: {
-      fontSize: 20,
+      fontSize: typeScale.title2,
     },
     hint: {
       fontFamily: fonts.body,
-      fontSize: 11,
+      fontSize: typeScale.label,
       color: c.textMuted,
     },
   });

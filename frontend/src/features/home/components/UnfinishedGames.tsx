@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { LiveSessionCards } from '@/features/home/components/LiveSessionCards';
 import { sessionCount, type LiveSessionSet } from '@/features/home/hooks/use-live-sessions';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, spacing, type Palette } from '@/theme/tokens';
+import { fonts, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface UnfinishedGamesProps {
   sessions: LiveSessionSet;
@@ -67,7 +67,7 @@ const makeStyles = (c: Palette) =>
       flex: 1,
       minWidth: 0,
       fontFamily: fonts.bodyMedium,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.textMuted,
     },
     count: {

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import { TOUCH_TARGET, fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 export interface SegmentItem<K extends string> {
   key: K;
@@ -105,11 +105,11 @@ const makeStyles = (c: Palette) =>
     text: {
       fontFamily: fonts.bodyBold,
       color: c.textMuted,
-      fontSize: 13,
+      fontSize: typeScale.small,
     },
     textSmall: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 12,
+      fontSize: typeScale.caption,
     },
     textOn: {
       color: c.onPrimary,

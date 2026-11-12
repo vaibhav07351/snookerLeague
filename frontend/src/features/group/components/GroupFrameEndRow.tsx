@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import { TOUCH_TARGET, fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface GroupFrameEndRowProps {
   /** Players sharing the top score. */
@@ -95,7 +95,7 @@ const makeStyles = (c: Palette) =>
     },
     idleText: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 14,
+      fontSize: typeScale.body,
       color: c.textFaint,
     },
     pressed: {
@@ -103,14 +103,14 @@ const makeStyles = (c: Palette) =>
     },
     kicker: {
       fontFamily: fonts.bodyBold,
-      fontSize: 10,
+      fontSize: typeScale.micro,
       letterSpacing: 1,
       textTransform: 'uppercase',
       color: c.textMuted,
     },
     winner: {
       fontFamily: fonts.bodyBold,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       color: c.primary,
     },
     tieWrap: {

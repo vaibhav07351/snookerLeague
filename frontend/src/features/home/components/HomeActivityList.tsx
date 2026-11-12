@@ -6,7 +6,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { HomeActivity } from '@/features/home/services/home-feed.service';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import { TOUCH_TARGET, fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface HomeActivityListProps {
   items: HomeActivity[];
@@ -93,13 +93,13 @@ const makeStyles = (c: Palette) =>
     feedTitle: {
       fontFamily: fonts.bodyBold,
       color: c.text,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       lineHeight: 20,
     },
     feedBody: {
       fontFamily: fonts.body,
       color: c.textMuted,
-      fontSize: 13,
+      fontSize: typeScale.small,
       lineHeight: 18,
     },
   });

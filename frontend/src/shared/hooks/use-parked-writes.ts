@@ -2,15 +2,25 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { logger } from '@/shared/logging/logger';
 import { getStore, subscribeStore } from '@/shared/storage/local-store';
+import { flushPending } from '@/shared/sync/schedule';
 import { syncErrorMeta } from '@/shared/sync/sync-errors';
-import { discardParkedWrites, parkedWritesOf, retryParkedWrites } from '@/shared/sync/parked';
+import {
+  discardParkedWrites,
+  parkedWritesOf,
+  retryParkedWrites,
+  waitingWritesOf,
+} from '@/shared/sync/parked';
 import { notify } from '@/shared/ui/notify';
 import { confirmAction } from '@/shared/utils/confirm';
 
 export interface ParkedWritesState {
   /** Changes this account has that the server refused or could not save. */
   count: number;
+  /** Changes still queued to send (they go up on their own when the server is reachable). */
+  waiting: number;
   busy: boolean;
+  /** Send the waiting changes now instead of after the backoff. */
+  syncNow: () => Promise<void>;
   retry: () => Promise<void>;
   /** Asks first, then puts the online version back on this phone. */
   discard: () => Promise<void>;
@@ -19,9 +29,30 @@ export interface ParkedWritesState {
 /** Set-aside sync writes for the signed-in account, with the user's two ways out. */
 export function useParkedWrites(): ParkedWritesState {
   const [count, setCount] = useState(() => parkedWritesOf(getStore()).length);
+  const [waiting, setWaiting] = useState(() => waitingWritesOf(getStore()).length);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => subscribeStore(() => setCount(parkedWritesOf(getStore()).length)), []);
+  useEffect(
+    () =>
+      subscribeStore(() => {
+        const store = getStore();
+        setCount(parkedWritesOf(store).length);
+        setWaiting(waitingWritesOf(store).length);
+      }),
+    [],
+  );
+
+  const syncNow = useCallback(async () => {
+    setBusy(true);
+    try {
+      await flushPending({ force: true });
+    } catch (error) {
+      logger.error('use-parked-writes', 'Sync now failed', syncErrorMeta(error));
+      notify.error('Could not sync', 'Check your connection and try again.');
+    } finally {
+      setBusy(false);
+    }
+  }, []);
 
   const retry = useCallback(async () => {
     setBusy(true);
@@ -56,5 +87,5 @@ export function useParkedWrites(): ParkedWritesState {
     }
   }, []);
 
-  return { count, busy, retry, discard };
+  return { count, waiting, busy, syncNow, retry, discard };
 }

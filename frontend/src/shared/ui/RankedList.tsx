@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import Animated, { LinearTransition, useReducedMotion } from 'react-native-reanimated';
 
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, type Palette } from '@/theme/tokens';
+import { fonts, radii, typeScale, type Palette } from '@/theme/tokens';
 
 export interface RankedListRow {
   id: string;
@@ -109,7 +109,7 @@ const makeStyles = (c: Palette) =>
     place: {
       width: 12,
       fontFamily: fonts.bodyBold,
-      fontSize: 11,
+      fontSize: typeScale.label,
       color: c.textMuted,
       textAlign: 'center',
       fontVariant: ['tabular-nums'],
@@ -126,7 +126,7 @@ const makeStyles = (c: Palette) =>
       flex: 1,
       minWidth: 0,
       fontFamily: fonts.bodyMedium,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.text,
     },
     nameLeading: {
@@ -136,7 +136,7 @@ const makeStyles = (c: Palette) =>
       width: 36,
       textAlign: 'right',
       fontFamily: fonts.bodyMedium,
-      fontSize: 11,
+      fontSize: typeScale.label,
       color: c.textMuted,
       fontVariant: ['tabular-nums'],
     },
@@ -144,7 +144,7 @@ const makeStyles = (c: Palette) =>
       minWidth: 26,
       textAlign: 'right',
       fontFamily: fonts.bodyBold,
-      fontSize: 14,
+      fontSize: typeScale.body,
       color: c.text,
       fontVariant: ['tabular-nums'],
     },
@@ -153,7 +153,7 @@ const makeStyles = (c: Palette) =>
       width: 46,
       textAlign: 'right',
       fontFamily: fonts.bodyBold,
-      fontSize: 11,
+      fontSize: typeScale.label,
       color: c.danger,
       fontVariant: ['tabular-nums'],
     },

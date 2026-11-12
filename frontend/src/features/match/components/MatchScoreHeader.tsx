@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useLayout } from '@/shared/hooks/use-layout';
 import { sideColor, sideSoftColor } from '@/theme/palettes';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 export interface ScorePlayerView {
   id: string;
@@ -65,7 +65,7 @@ export function MatchScoreHeader({
       />
       <View style={[styles.centre, compact && styles.centreCompact]}>
         <Text style={styles.centreLabel}>Frames</Text>
-        <Text style={[styles.frames, { fontSize: scale(26) }]} numberOfLines={1}>
+        <Text style={[styles.frames, { fontSize: scale(typeScale.display) }]} numberOfLines={1}>
           {a.frames}-{b.frames}
         </Text>
         <Text style={styles.centreMeta} numberOfLines={2}>
@@ -118,7 +118,7 @@ function SideCard({
         <Text
           style={[
             styles.points,
-            { fontSize: scale(38), lineHeight: scale(44) },
+            { fontSize: scale(typeScale.hero), lineHeight: scale(44) },
             atTable && { color: tone },
           ]}
           numberOfLines={1}
@@ -186,7 +186,7 @@ const makeStyles = (c: Palette) =>
     },
     centreLabel: {
       fontFamily: fonts.bodyBold,
-      fontSize: 10,
+      fontSize: typeScale.micro,
       letterSpacing: 1,
       textTransform: 'uppercase',
       color: c.textMuted,
@@ -197,7 +197,7 @@ const makeStyles = (c: Palette) =>
     },
     centreMeta: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 11,
+      fontSize: typeScale.label,
       color: c.textMuted,
       textAlign: 'center',
     },
@@ -253,7 +253,7 @@ const makeStyles = (c: Palette) =>
     name: {
       flexShrink: 1,
       fontFamily: fonts.bodyMedium,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       color: c.text,
     },
     nameOn: {
@@ -261,7 +261,7 @@ const makeStyles = (c: Palette) =>
     },
     playerPts: {
       fontFamily: fonts.bodyBold,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.textMuted,
     },
     breakBadge: {
@@ -274,7 +274,7 @@ const makeStyles = (c: Palette) =>
     // Opaque page background so the pill cuts cleanly through the card border it sits on.
     breakPill: {
       fontFamily: fonts.bodyBold,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       lineHeight: 16,
       paddingHorizontal: 8,
       borderRadius: radii.pill,

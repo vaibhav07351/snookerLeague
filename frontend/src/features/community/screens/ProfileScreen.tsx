@@ -20,7 +20,7 @@ import { BottomSheet } from '@/shared/ui/BottomSheet';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { notify } from '@/shared/ui/notify';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import { TOUCH_TARGET, fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 /**
  * Your card on one screen: who you are, your key numbers, and the two things you do most
@@ -228,12 +228,12 @@ const makeStyles = (c: Palette) =>
     noCardName: {
       flex: 1,
       fontFamily: fonts.display,
-      fontSize: 22,
+      fontSize: typeScale.title1,
       color: c.text,
     },
     muted: {
       fontFamily: fonts.body,
-      fontSize: 14,
+      fontSize: typeScale.body,
       lineHeight: 20,
       color: c.textMuted,
     },
@@ -259,7 +259,7 @@ const makeStyles = (c: Palette) =>
     pillText: {
       flexShrink: 1,
       fontFamily: fonts.bodyMedium,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.text,
     },
     complete: {
@@ -271,12 +271,12 @@ const makeStyles = (c: Palette) =>
     },
     completeText: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.textMuted,
     },
     completeAction: {
       fontFamily: fonts.bodyBold,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.primary,
     },
     track: {

@@ -7,12 +7,39 @@ import { useParkedWrites } from '@/shared/hooks/use-parked-writes';
 import { isStoreReadOnly, subscribeStore } from '@/shared/storage/local-store';
 import { isCloudReachable, subscribeCloudReachable } from '@/shared/sync/sync-status';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, spacing, type Palette } from '@/theme/tokens';
+import { fonts, spacing, typeScale, type Palette } from '@/theme/tokens';
+
+/**
+ * How long changes may wait while the server is reachable before the banner mentions them.
+ * Every tap queues a change that normally goes up within seconds; only a stuck queue shows.
+ */
+const STUCK_AFTER_MS = 15_000;
+
+/** "1 change", "3 changes". */
+function changes(n: number): string {
+  return n === 1 ? '1 change' : `${n} changes`;
+}
+
+/** True once `count` has stayed above zero for `ms` without a break. */
+function useStuck(count: number, ms: number): boolean {
+  const [stuck, setStuck] = useState(false);
+  const waiting = count > 0;
+  useEffect(() => {
+    setStuck(false);
+    if (!waiting) {
+      return undefined;
+    }
+    const timer = setTimeout(() => setStuck(true), ms);
+    return () => clearTimeout(timer);
+  }, [waiting, ms]);
+  return stuck;
+}
 
 /**
  * Slim notice at the top of the app, most serious first: this phone's saved data could not be
- * read (saving is paused), changes the server would not take (with Retry and Discard), or the
- * server cannot be reached (everything keeps working locally).
+ * read (saving is paused), changes the server would not take (with Retry and Discard), the
+ * server cannot be reached (everything keeps working locally; says how many changes wait),
+ * or changes that have been waiting a while (with Sync now).
  */
 export function SyncBanner(): ReactNode {
   const styles = useStyles(makeStyles);
@@ -21,6 +48,7 @@ export function SyncBanner(): ReactNode {
   const [reachable, setReachable] = useState(isCloudReachable());
   const [readOnly, setReadOnly] = useState(isStoreReadOnly());
   const parked = useParkedWrites();
+  const stuck = useStuck(reachable ? parked.waiting : 0, STUCK_AFTER_MS);
 
   useEffect(() => subscribeCloudReachable(setReachable), []);
   useEffect(() => subscribeStore(() => setReadOnly(isStoreReadOnly())), []);
@@ -53,13 +81,24 @@ export function SyncBanner(): ReactNode {
     );
   }
   if (reachable) {
-    return null;
+    if (!stuck || parked.waiting === 0) {
+      return null;
+    }
+    return (
+      <View style={barStyle} accessibilityRole="alert">
+        <Ionicons name="sync-outline" size={16} color={palette.warning} />
+        <Text style={styles.text}>{changes(parked.waiting)} waiting to sync.</Text>
+        <BannerAction label="Sync now" disabled={parked.busy} onPress={parked.syncNow} />
+      </View>
+    );
   }
   return (
     <View style={barStyle} accessibilityRole="alert">
       <Ionicons name="cloud-offline-outline" size={16} color={palette.warning} />
       <Text style={styles.text}>
-        Can't reach the server. Changes are saved on this phone and sync later.
+        {parked.waiting > 0
+          ? `Offline. ${changes(parked.waiting)} saved on this phone, waiting to sync.`
+          : "Can't reach the server. Changes are saved on this phone and sync later."}
         {Platform.OS === 'web' ? ' Using an ad blocker? Allow this site.' : ''}
       </Text>
     </View>
@@ -101,7 +140,7 @@ const makeStyles = (c: Palette) =>
     text: {
       flex: 1,
       fontFamily: fonts.bodyMedium,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       lineHeight: 16,
       color: c.text,
     },
@@ -115,7 +154,7 @@ const makeStyles = (c: Palette) =>
     },
     actionText: {
       fontFamily: fonts.bodyBold,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.text,
       textDecorationLine: 'underline',
     },

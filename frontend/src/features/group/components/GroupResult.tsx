@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -12,8 +11,8 @@ import type { GroupFrame } from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
 import { formatDuration } from '@/shared/utils/datetime';
 import { totalFrameSeconds } from '@/shared/utils/frame-time';
-import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, spacing, type Palette } from '@/theme/tokens';
+import { useStyles } from '@/theme/ThemeProvider';
+import { fonts, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface GroupResultProps {
   winnerId: string | null;
@@ -33,11 +32,18 @@ function reasonText(reason: GroupWinReason): string {
   }
 }
 
+/** Why the winner won, e.g. "Most frames won (2 to 1)"; null when there is no runner-up. */
+export function groupWinReasonText(
+  standings: readonly GroupStandingRow[],
+  winnerId: string | null,
+): string | null {
+  const reason = winnerId ? groupWinReason(standings, winnerId) : null;
+  return reason ? reasonText(reason) : null;
+}
+
 /** Final table of a finished free-for-all match, then each frame's scores. */
 export function GroupResult({ winnerId, standings, frames, nameOf }: GroupResultProps): ReactNode {
   const styles = useStyles(makeStyles);
-  const palette = usePalette();
-  const reason = winnerId ? groupWinReason(standings, winnerId) : null;
   // Total of the timed frames, as in a two-sided match; null when no frame was timed.
   const totalSeconds = totalFrameSeconds(frames);
   // Best break, misses and safeties: each column only when someone has one.
@@ -50,23 +56,6 @@ export function GroupResult({ winnerId, standings, frames, nameOf }: GroupResult
 
   return (
     <View style={styles.wrap}>
-      {winnerId ? (
-        <Card tone="raised" style={styles.winnerCard}>
-          <Ionicons name="trophy" size={22} color={palette.primary} />
-          <View style={styles.winnerText}>
-            <Text style={styles.kicker}>Winner</Text>
-            <Text style={styles.winner} numberOfLines={1}>
-              {nameOf(winnerId)}
-            </Text>
-            {reason ? (
-              <Text style={styles.reason} numberOfLines={2}>
-                {reasonText(reason)}
-              </Text>
-            ) : null}
-          </View>
-        </Card>
-      ) : null}
-
       <Card style={styles.table}>
         <View style={styles.row}>
           <Text style={[styles.place, styles.head]}>#</Text>
@@ -131,33 +120,6 @@ const makeStyles = (c: Palette) =>
       gap: spacing.md,
       marginBottom: spacing.md,
     },
-    winnerCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
-    },
-    winnerText: {
-      flex: 1,
-      minWidth: 0,
-    },
-    kicker: {
-      fontFamily: fonts.bodyBold,
-      fontSize: 11,
-      letterSpacing: 1,
-      textTransform: 'uppercase',
-      color: c.textMuted,
-    },
-    winner: {
-      fontFamily: fonts.display,
-      fontSize: 22,
-      color: c.text,
-    },
-    reason: {
-      marginTop: 2,
-      fontFamily: fonts.body,
-      fontSize: 13,
-      color: c.textMuted,
-    },
     table: {
       gap: spacing.xs,
     },
@@ -170,7 +132,7 @@ const makeStyles = (c: Palette) =>
     },
     head: {
       fontFamily: fonts.bodyBold,
-      fontSize: 10,
+      fontSize: typeScale.micro,
       letterSpacing: 1,
       textTransform: 'uppercase',
       color: c.textFaint,
@@ -178,14 +140,14 @@ const makeStyles = (c: Palette) =>
     place: {
       width: 20,
       fontFamily: fonts.bodyBold,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.textMuted,
     },
     name: {
       flex: 1,
       minWidth: 0,
       fontFamily: fonts.bodyMedium,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       color: c.text,
     },
     lead: {
@@ -196,7 +158,7 @@ const makeStyles = (c: Palette) =>
       minWidth: 44,
       textAlign: 'right',
       fontFamily: fonts.bodyBold,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       color: c.text,
     },
     // Secondary counts: narrower and quieter than frames and points.
@@ -204,7 +166,7 @@ const makeStyles = (c: Palette) =>
       width: 30,
       textAlign: 'right',
       fontFamily: fonts.bodyMedium,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.textMuted,
       fontVariant: ['tabular-nums'],
     },
@@ -214,7 +176,7 @@ const makeStyles = (c: Palette) =>
     },
     frameNo: {
       fontFamily: fonts.bodyBold,
-      fontSize: 11,
+      fontSize: typeScale.label,
       letterSpacing: 1,
       textTransform: 'uppercase',
       color: c.textMuted,
@@ -222,12 +184,12 @@ const makeStyles = (c: Palette) =>
     meta: {
       marginTop: spacing.xs,
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.textMuted,
     },
     frameLine: {
       fontFamily: fonts.body,
-      fontSize: 14,
+      fontSize: typeScale.body,
       color: c.text,
     },
   });

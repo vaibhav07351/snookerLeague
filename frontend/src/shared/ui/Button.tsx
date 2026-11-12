@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -129,10 +129,10 @@ const makeStyles = (c: Palette) =>
     },
     label: {
       fontFamily: fonts.bodyBold,
-      fontSize: 16,
+      fontSize: typeScale.lead,
       textAlign: 'center',
     },
     smallLabel: {
-      fontSize: 14,
+      fontSize: typeScale.body,
     },
   });

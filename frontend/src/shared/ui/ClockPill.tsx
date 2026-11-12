@@ -5,7 +5,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useLiveElapsed } from '@/shared/hooks/use-live-elapsed';
 import { formatDuration } from '@/shared/utils/datetime';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface ClockPillProps {
   /** When the clock started (ISO), or null while waiting for the first shot. */
@@ -65,7 +65,7 @@ const makeStyles = (c: Palette) =>
     label: {
       fontFamily: fonts.bodyBold,
       color: c.textMuted,
-      fontSize: 13,
+      fontSize: typeScale.small,
       minWidth: 36,
       textAlign: 'center',
       fontVariant: ['tabular-nums'],

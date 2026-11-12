@@ -19,7 +19,15 @@ import { toUserMessage } from '@/shared/errors/app-error';
 import { useSafeBack } from '@/shared/ui/HeaderBack';
 import { notify } from '@/shared/ui/notify';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import {
+  TOUCH_TARGET,
+  fonts,
+  makeTypography,
+  radii,
+  spacing,
+  typeScale,
+  type Palette,
+} from '@/theme/tokens';
 
 const DIVISIONS = SNOOKER_DIVISIONS.map(divisionLabel);
 
@@ -117,7 +125,7 @@ const makeStyles = (c: Palette) =>
     backText: {
       fontFamily: fonts.bodyMedium,
       color: c.text,
-      fontSize: 16,
+      fontSize: typeScale.lead,
     },
     pressed: {
       opacity: 0.7,
@@ -146,6 +154,6 @@ const makeStyles = (c: Palette) =>
     divisionText: {
       fontFamily: fonts.bodyMedium,
       color: c.textMuted,
-      fontSize: 12,
+      fontSize: typeScale.caption,
     },
   });

@@ -5,7 +5,7 @@ import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { getApiBaseUrl } from '@/shared/config/env';
 import { logger } from '@/shared/logging/logger';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import { TOUCH_TARGET, fonts, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 function openPage(path: string): void {
   const base = getApiBaseUrl() || 'https://snookit.duckdns.org';
@@ -75,7 +75,7 @@ const makeStyles = (c: Palette) =>
     text: {
       flex: 1,
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       lineHeight: 18,
       color: c.textMuted,
     },

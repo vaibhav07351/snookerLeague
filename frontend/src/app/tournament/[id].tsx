@@ -16,12 +16,14 @@ import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { Tournament } from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
 import { EmptyState } from '@/shared/ui/EmptyState';
+import { HeaderMenu } from '@/shared/ui/HeaderMenu';
+import { ErrorState } from '@/shared/ui/ErrorState';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { notify } from '@/shared/ui/notify';
 import { SegmentedTabs } from '@/shared/ui/SegmentedTabs';
 import { confirmAction } from '@/shared/utils/confirm';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import { fonts, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 type RobinTab = 'table' | 'fixtures';
 
@@ -116,7 +118,6 @@ function FixtureRow({
 /** A tournament: knockout bracket or round-robin table, with fixtures to start and follow. */
 export default function TournamentScreen(): ReactNode {
   const styles = useStyles(makeStyles);
-  const palette = usePalette();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user, league } = useSession();
   const [tournament, setTournament] = useState<Tournament | null | undefined>(undefined);
@@ -138,12 +139,16 @@ export default function TournamentScreen(): ReactNode {
       setNames(new Map(roster.map((p) => [p.id, p.displayName])));
     }
   }, [id]);
-  useStoreReload(reload, id ?? null);
+  const load = useStoreReload(reload, id ?? null);
 
   if (tournament === undefined) {
     return (
       <Screen>
-        <LoadingState label="Loading tournament" />
+        {load.status === 'error' ? (
+          <ErrorState title="Couldn't load this tournament" onRetry={load.retry} />
+        ) : (
+          <LoadingState label="Loading tournament" />
+        )}
       </Screen>
     );
   }
@@ -226,24 +231,28 @@ export default function TournamentScreen(): ReactNode {
           </Text>
         </View>
         <RulesButton iconOnly rules={tournamentRules(t.format, t.bestOf)} />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Share bracket"
-          onPress={() => void share()}
-          style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
-        >
-          <Ionicons name="share-social-outline" size={20} color={palette.text} />
-        </Pressable>
-        {canManage ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Delete tournament"
-            onPress={() => void remove()}
-            style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
-          >
-            <Ionicons name="trash-outline" size={20} color={palette.textMuted} />
-          </Pressable>
-        ) : null}
+        <HeaderMenu
+          title="Tournament options"
+          items={[
+            {
+              key: 'share',
+              label: 'Share bracket',
+              icon: 'share-social-outline',
+              onPress: () => void share(),
+            },
+            ...(canManage
+              ? [
+                  {
+                    key: 'delete',
+                    label: 'Delete tournament',
+                    icon: 'trash-outline' as const,
+                    danger: true,
+                    onPress: () => void remove(),
+                  },
+                ]
+              : []),
+          ]}
+        />
       </View>
 
       {state.format === 'knockout' && rounds.length > 0 ? (
@@ -344,20 +353,14 @@ const makeStyles = (c: Palette) =>
     },
     title: {
       fontFamily: fonts.display,
-      fontSize: 24,
+      fontSize: typeScale.display,
       color: c.text,
     },
     meta: {
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.textMuted,
       marginTop: 2,
-    },
-    iconBtn: {
-      width: TOUCH_TARGET,
-      height: TOUCH_TARGET,
-      alignItems: 'center',
-      justifyContent: 'center',
     },
     pressed: {
       opacity: 0.7,
@@ -383,7 +386,7 @@ const makeStyles = (c: Palette) =>
       flex: 1,
       minWidth: 0,
       fontFamily: fonts.bodyMedium,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       color: c.text,
     },
     right: {
@@ -395,7 +398,7 @@ const makeStyles = (c: Palette) =>
     },
     score: {
       fontFamily: fonts.bodyBold,
-      fontSize: 14,
+      fontSize: typeScale.body,
       color: c.textMuted,
     },
     fixtureIcon: {
@@ -411,17 +414,17 @@ const makeStyles = (c: Palette) =>
     tableName: {
       flex: 1,
       fontFamily: fonts.bodyMedium,
-      fontSize: 14,
+      fontSize: typeScale.body,
       color: c.text,
     },
     tableNum: {
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.textMuted,
     },
     tableHead: {
       fontFamily: fonts.bodyBold,
-      fontSize: 11,
+      fontSize: typeScale.label,
       color: c.textFaint,
     },
   });

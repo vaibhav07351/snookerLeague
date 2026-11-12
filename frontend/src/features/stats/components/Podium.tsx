@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MovementBadge } from '@/features/stats/components/MovementBadge';
 import type { BoardRow } from '@/features/stats/services/leaderboard.service';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface PodiumProps {
   /** The top three (or fewer) ranked rows, in rank order. */
@@ -116,13 +116,13 @@ const makeStyles = (c: Palette) =>
     },
     avatarText: {
       fontFamily: fonts.display,
-      fontSize: 17,
+      fontSize: typeScale.headline,
       color: c.text,
     },
     name: {
       maxWidth: '100%',
       fontFamily: fonts.bodyBold,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.text,
     },
     nameMe: {
@@ -135,7 +135,7 @@ const makeStyles = (c: Palette) =>
     },
     value: {
       fontFamily: fonts.bodyBold,
-      fontSize: 14,
+      fontSize: typeScale.body,
       color: c.textMuted,
     },
     step: {
@@ -160,7 +160,7 @@ const makeStyles = (c: Palette) =>
     },
     stepText: {
       fontFamily: fonts.bodyBold,
-      fontSize: 13,
+      fontSize: typeScale.small,
       lineHeight: 16,
       color: c.textMuted,
     },

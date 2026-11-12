@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Platform, StyleSheet, TextInput, View, Text, type TextInputProps } from 'react-native';
 
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, makeTypography, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface FieldProps extends TextInputProps {
   label: string;
@@ -43,7 +43,7 @@ const makeStyles = (c: Palette) =>
       paddingVertical: 14,
       color: c.text,
       // 16px on web avoids mobile Safari auto-zoom on focus.
-      fontSize: Platform.OS === 'web' ? 16 : 17,
+      fontSize: Platform.OS === 'web' ? typeScale.lead : typeScale.headline,
       fontFamily: fonts.body,
       minHeight: 52,
       ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : {}),
@@ -53,13 +53,13 @@ const makeStyles = (c: Palette) =>
     },
     hint: {
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.textMuted,
       lineHeight: 18,
     },
     error: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.danger,
     },
   });

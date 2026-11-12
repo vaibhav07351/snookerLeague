@@ -4,7 +4,7 @@ import Svg, { Circle, G } from 'react-native-svg';
 
 import { useLayout } from '@/shared/hooks/use-layout';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, spacing, type Palette } from '@/theme/tokens';
+import { fonts, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 export interface DonutSlice {
   label: string;
@@ -117,12 +117,12 @@ const makeStyles = (c: Palette) =>
     },
     centerValue: {
       fontFamily: fonts.bodyBold,
-      fontSize: 22,
+      fontSize: typeScale.title1,
       color: c.text,
     },
     centerLabel: {
       fontFamily: fonts.body,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.textMuted,
     },
     legend: {
@@ -144,12 +144,12 @@ const makeStyles = (c: Palette) =>
       flexShrink: 1,
       fontFamily: fonts.bodyMedium,
       color: c.text,
-      fontSize: 13,
+      fontSize: typeScale.small,
     },
     empty: {
       fontFamily: fonts.body,
       color: c.textMuted,
-      fontSize: 14,
+      fontSize: typeScale.body,
       lineHeight: 20,
       paddingVertical: spacing.md,
     },

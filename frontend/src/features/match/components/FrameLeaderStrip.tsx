@@ -6,7 +6,7 @@ import { sortFrameRanks, type FrameRankView } from '@/features/match/components/
 import { RankedList } from '@/shared/ui/RankedList';
 import { sideColor } from '@/theme/palettes';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface FrameLeaderStripProps {
   ranks: FrameRankView[];
@@ -132,7 +132,7 @@ const makeStyles = (c: Palette) =>
     },
     place: {
       fontFamily: fonts.bodyBold,
-      fontSize: 11,
+      fontSize: typeScale.label,
       color: c.textMuted,
       fontVariant: ['tabular-nums'],
     },
@@ -145,7 +145,7 @@ const makeStyles = (c: Palette) =>
       flex: 1,
       minWidth: 0,
       fontFamily: fonts.bodyMedium,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.text,
     },
     nameLeading: {
@@ -159,19 +159,19 @@ const makeStyles = (c: Palette) =>
     },
     points: {
       fontFamily: fonts.bodyBold,
-      fontSize: 17,
+      fontSize: typeScale.headline,
       color: c.text,
       fontVariant: ['tabular-nums'],
     },
     unit: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 11,
+      fontSize: typeScale.label,
       color: c.textMuted,
     },
     foul: {
       flexShrink: 1,
       fontFamily: fonts.bodyBold,
-      fontSize: 11,
+      fontSize: typeScale.label,
       color: c.danger,
       fontVariant: ['tabular-nums'],
     },

@@ -11,6 +11,7 @@ import { HomeActivityList } from '@/features/home/components/HomeActivityList';
 import { HomeFilterChips } from '@/features/home/components/HomeFilterChips';
 import { LiveSessionCards } from '@/features/home/components/LiveSessionCards';
 import { UnfinishedGames } from '@/features/home/components/UnfinishedGames';
+import { LoadGate } from '@/shared/ui/LoadGate';
 import { Screen } from '@/shared/ui/Screen';
 import { sessionCount, useLiveSessions } from '@/features/home/hooks/use-live-sessions';
 import {
@@ -29,7 +30,7 @@ import { getStore, loadStore } from '@/shared/storage/local-store';
 import type { Player } from '@/shared/types/domain';
 import { formatLastMatchDay } from '@/shared/utils/datetime';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, makeTypography, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 /** Feed rows shown before "Show more", so the home screen fits without scrolling. */
 const FEED_PREVIEW = 4;
@@ -77,7 +78,10 @@ export default function HomeScreen(): ReactNode {
     setLoaded(true);
   }, [leagueId, userId, cityId, filter]);
 
-  useStoreReload(reload, leagueId && userId ? `${leagueId}:${userId}:${filter}:${cityId}` : null);
+  const load = useStoreReload(
+    reload,
+    leagueId && userId ? `${leagueId}:${userId}:${filter}:${cityId}` : null,
+  );
 
   useEffect(() => {
     if (filter !== 'network' || !userId) {
@@ -224,7 +228,9 @@ export default function HomeScreen(): ReactNode {
         <Text style={typography.label}>Feed</Text>
         <HomeFilterChips value={filter} onChange={setFilter} />
       </TourTarget>
-      <HomeActivityList items={shownActivity} empty={homeActivityEmptyCopy(filter)} />
+      <LoadGate load={load} loadingLabel="Loading results" errorTitle="Couldn't load results">
+        <HomeActivityList items={shownActivity} empty={homeActivityEmptyCopy(filter)} />
+      </LoadGate>
       {activity.length > FEED_PREVIEW ? (
         <Pressable
           accessibilityRole="button"
@@ -264,13 +270,13 @@ const makeStyles = (c: Palette) =>
     greeting: {
       fontFamily: fonts.display,
       color: c.text,
-      fontSize: 24,
+      fontSize: typeScale.display,
       lineHeight: 30,
     },
     headerMeta: {
       fontFamily: fonts.body,
       color: c.textMuted,
-      fontSize: 13,
+      fontSize: typeScale.small,
     },
     headerMetaValue: {
       fontFamily: fonts.bodyMedium,
@@ -293,7 +299,7 @@ const makeStyles = (c: Palette) =>
     },
     ctaHint: {
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       lineHeight: 18,
       color: c.textMuted,
       textAlign: 'center',
@@ -315,7 +321,7 @@ const makeStyles = (c: Palette) =>
       flex: 1,
       minWidth: 0,
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.textMuted,
     },
     champName: {
@@ -338,7 +344,7 @@ const makeStyles = (c: Palette) =>
     },
     moreText: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.textMuted,
     },
   });

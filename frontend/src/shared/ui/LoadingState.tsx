@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, spacing, type Palette } from '@/theme/tokens';
+import { fonts, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface LoadingStateProps {
   label: string;
@@ -31,7 +31,7 @@ const makeStyles = (c: Palette) =>
     },
     label: {
       fontFamily: fonts.body,
-      fontSize: 14,
+      fontSize: typeScale.body,
       color: c.textMuted,
     },
   });

@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { haptic } from '@/shared/feedback/haptics';
 import { useLayout } from '@/shared/hooks/use-layout';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 export interface PlayingOrderTile {
   id: string;
@@ -218,7 +218,7 @@ const makeStyles = (c: Palette) =>
     name: {
       flexShrink: 1,
       fontFamily: fonts.bodyMedium,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.text,
     },
     nameOn: {
@@ -234,7 +234,7 @@ const makeStyles = (c: Palette) =>
     // Opaque page background so the pill cuts cleanly through the card border it sits on.
     breakPill: {
       fontFamily: fonts.bodyBold,
-      fontSize: 11,
+      fontSize: typeScale.label,
       lineHeight: 16,
       paddingHorizontal: 6,
       borderRadius: radii.pill,

@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { PlayerCard } from '@/features/stats/hooks/use-player-card';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, type Palette } from '@/theme/tokens';
+import { fonts, typeScale, type Palette } from '@/theme/tokens';
 
 interface CompareSideProps {
   card: PlayerCard;
@@ -77,16 +77,16 @@ const makeStyles = (c: Palette) =>
     name: {
       flexShrink: 1,
       fontFamily: fonts.bodyBold,
-      fontSize: 16,
+      fontSize: typeScale.lead,
       color: c.text,
     },
     rating: {
       fontFamily: fonts.display,
-      fontSize: 24,
+      fontSize: typeScale.display,
     },
     meta: {
       fontFamily: fonts.body,
-      fontSize: 11,
+      fontSize: typeScale.label,
       color: c.textMuted,
     },
   });

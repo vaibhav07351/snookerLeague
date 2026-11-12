@@ -14,7 +14,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { subscribeToasts, type ToastMessage } from '@/shared/ui/notify';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 const VISIBLE_MS = 3200;
 const ERROR_VISIBLE_MS = 5000;
@@ -150,12 +150,12 @@ const makeStyles = (c: Palette) =>
     title: {
       fontFamily: fonts.bodyBold,
       color: c.text,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
     },
     message: {
       fontFamily: fonts.body,
       color: c.textMuted,
-      fontSize: 13,
+      fontSize: typeScale.small,
       lineHeight: 18,
     },
   });

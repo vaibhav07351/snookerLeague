@@ -10,7 +10,7 @@ import { useLeagueStats } from '@/features/stats/hooks/use-league-stats';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 export function PlayerDetailScreen(): ReactNode {
   const styles = useStyles(makeStyles);
@@ -90,7 +90,7 @@ const makeStyles = (c: Palette) =>
     },
     compareText: {
       fontFamily: fonts.bodyBold,
-      fontSize: 11,
+      fontSize: typeScale.label,
       color: c.primary,
     },
   });

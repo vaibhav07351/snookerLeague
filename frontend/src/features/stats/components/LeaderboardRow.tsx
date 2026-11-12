@@ -6,7 +6,7 @@ import { FormPips } from '@/features/stats/components/FormPips';
 import { MovementBadge } from '@/features/stats/components/MovementBadge';
 import type { FormResult } from '@/features/stats/services/rating.service';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface LeaderboardRowProps {
   /** Null while still qualifying. */
@@ -132,7 +132,7 @@ const makeStyles = (c: Palette) =>
     rankText: {
       fontFamily: fonts.bodyBold,
       color: c.textMuted,
-      fontSize: 14,
+      fontSize: typeScale.body,
     },
     rankTextPodium: {
       color: c.primary,
@@ -144,17 +144,17 @@ const makeStyles = (c: Palette) =>
     name: {
       fontFamily: fonts.bodyBold,
       color: c.text,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
     },
     you: {
       fontFamily: fonts.bodyMedium,
       color: c.primary,
-      fontSize: 12,
+      fontSize: typeScale.caption,
     },
     sub: {
       fontFamily: fonts.body,
       color: c.textMuted,
-      fontSize: 12,
+      fontSize: typeScale.caption,
     },
     right: {
       alignItems: 'flex-end',
@@ -163,7 +163,7 @@ const makeStyles = (c: Palette) =>
     value: {
       fontFamily: fonts.bodyBold,
       color: c.text,
-      fontSize: 16,
+      fontSize: typeScale.lead,
     },
     valueMuted: {
       color: c.textMuted,

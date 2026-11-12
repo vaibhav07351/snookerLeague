@@ -6,7 +6,7 @@ import { TextField } from '@/shared/ui/TextField';
 import type { League } from '@/shared/types/domain';
 import { confirmAction } from '@/shared/utils/confirm';
 import { useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, makeTypography, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface DeleteLeaguePanelProps {
   league: League;
@@ -28,6 +28,7 @@ export function DeleteLeaguePanel({ league, busy, onDelete }: DeleteLeaguePanelP
       'Delete this league?',
       `"${league.name}" and all of its matches, races, players and stats are removed for everyone. This cannot be undone.`,
       'Continue',
+      { tone: 'danger' },
     );
     if (ok) {
       setTyped('');
@@ -104,12 +105,12 @@ const makeStyles = (c: Palette) =>
     },
     title: {
       fontFamily: fonts.bodyBold,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       color: c.text,
     },
     hint: {
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       lineHeight: 18,
       color: c.textMuted,
     },

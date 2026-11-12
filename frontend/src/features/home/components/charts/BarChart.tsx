@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 export interface BarDatum {
   label: string;
@@ -94,18 +94,18 @@ const makeStyles = (c: Palette) =>
     },
     value: {
       fontFamily: fonts.bodyBold,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.text,
     },
     label: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 11,
+      fontSize: typeScale.label,
       color: c.textMuted,
     },
     empty: {
       fontFamily: fonts.body,
       color: c.textMuted,
-      fontSize: 14,
+      fontSize: typeScale.body,
       lineHeight: 20,
       paddingVertical: spacing.md,
     },

@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import { TOUCH_TARGET, fonts, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface PagedListProps<T> {
   items: T[];
@@ -166,7 +166,7 @@ const makeStyles = (c: Palette) =>
     },
     summary: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.textMuted,
       minWidth: 90,
       textAlign: 'center',

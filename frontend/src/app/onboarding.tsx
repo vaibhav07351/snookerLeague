@@ -13,7 +13,7 @@ import * as leagueService from '@/features/league/services/league.service';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { notify } from '@/shared/ui/notify';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, makeTypography, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 /** First league: create one, or join a friend's with an invite code. */
 export default function OnboardingScreen(): ReactNode {
@@ -198,19 +198,19 @@ const makeStyles = (c: Palette) =>
     },
     modeTitle: {
       fontFamily: fonts.bodyBold,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       color: c.text,
     },
     modeBody: {
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       lineHeight: 18,
       color: c.textMuted,
     },
     note: {
       marginTop: spacing.md,
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       lineHeight: 18,
     },
   });

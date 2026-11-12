@@ -14,7 +14,7 @@ import { Chip } from '@/shared/ui/Chip';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { PagedList } from '@/shared/ui/PagedList';
 import { useStyles } from '@/theme/ThemeProvider';
-import { fonts, spacing, type Palette } from '@/theme/tokens';
+import { fonts, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 type DivisionFilter = 'all' | SnookerDivision;
 
@@ -106,7 +106,7 @@ const makeStyles = (c: Palette) =>
     hint: {
       flex: 1,
       fontFamily: fonts.body,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.textMuted,
     },
   });

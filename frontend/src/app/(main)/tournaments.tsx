@@ -10,8 +10,9 @@ import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { Tournament } from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
 import { EmptyState } from '@/shared/ui/EmptyState';
+import { LoadGate } from '@/shared/ui/LoadGate';
 import { useStyles } from '@/theme/ThemeProvider';
-import { fonts, spacing, type Palette } from '@/theme/tokens';
+import { fonts, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 /** The active league's tournaments, newest first. */
 export default function TournamentsScreen(): ReactNode {
@@ -22,7 +23,7 @@ export default function TournamentsScreen(): ReactNode {
   const reload = useCallback(async () => {
     setItems(league ? await tournamentService.listTournaments(league.id) : []);
   }, [league]);
-  useStoreReload(reload, league?.id ?? null);
+  const load = useStoreReload(reload, league?.id ?? null);
 
   return (
     <Screen>
@@ -32,34 +33,36 @@ export default function TournamentsScreen(): ReactNode {
         onPress={() => router.push('/tournament/new')}
         style={styles.create}
       />
-      {items.length === 0 ? (
-        <EmptyState
-          icon="git-network-outline"
-          title="No tournaments yet"
-          message="Run a knockout or a round robin with your league. Winners move on by themselves."
-        />
-      ) : (
-        <View style={styles.list}>
-          {items.map((t) => {
-            const { state } = tournamentService.stateOf(t);
-            return (
-              <Pressable
-                key={t.id}
-                accessibilityRole="button"
-                onPress={() => router.push(`/tournament/${t.id}`)}
-              >
-                <Card>
-                  <Text style={styles.name}>{t.name}</Text>
-                  <Text style={styles.meta}>
-                    {t.format === 'knockout' ? 'Knockout' : 'Round robin'} - {t.entrants.length}{' '}
-                    players - {state.completed ? 'Finished' : 'In progress'}
-                  </Text>
-                </Card>
-              </Pressable>
-            );
-          })}
-        </View>
-      )}
+      <LoadGate load={load} loadingLabel="Loading tournaments">
+        {items.length === 0 ? (
+          <EmptyState
+            icon="git-network-outline"
+            title="No tournaments yet"
+            message="Run a knockout or a round robin with your league. Winners move on by themselves."
+          />
+        ) : (
+          <View style={styles.list}>
+            {items.map((t) => {
+              const { state } = tournamentService.stateOf(t);
+              return (
+                <Pressable
+                  key={t.id}
+                  accessibilityRole="button"
+                  onPress={() => router.push(`/tournament/${t.id}`)}
+                >
+                  <Card>
+                    <Text style={styles.name}>{t.name}</Text>
+                    <Text style={styles.meta}>
+                      {t.format === 'knockout' ? 'Knockout' : 'Round robin'} - {t.entrants.length}{' '}
+                      players - {state.completed ? 'Finished' : 'In progress'}
+                    </Text>
+                  </Card>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+      </LoadGate>
     </Screen>
   );
 }
@@ -74,12 +77,12 @@ const makeStyles = (c: Palette) =>
     },
     name: {
       fontFamily: fonts.bodyBold,
-      fontSize: 16,
+      fontSize: typeScale.lead,
       color: c.text,
     },
     meta: {
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.textMuted,
       marginTop: 2,
     },

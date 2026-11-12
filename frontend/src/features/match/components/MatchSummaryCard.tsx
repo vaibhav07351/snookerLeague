@@ -8,7 +8,7 @@ import { Card } from '@/shared/ui/Card';
 import { formatDuration } from '@/shared/utils/datetime';
 import { sideColor } from '@/theme/palettes';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface MatchSummaryCardProps {
   summary: MatchSummary;
@@ -101,7 +101,7 @@ const makeStyles = (c: Palette) =>
   StyleSheet.create({
     title: {
       fontFamily: fonts.bodyBold,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       letterSpacing: 1.2,
       textTransform: 'uppercase',
       color: c.textMuted,
@@ -122,17 +122,17 @@ const makeStyles = (c: Palette) =>
     },
     totalValue: {
       fontFamily: fonts.display,
-      fontSize: 28,
+      fontSize: typeScale.displayLarge,
     },
     totalLabel: {
       fontFamily: fonts.bodyBold,
-      fontSize: 14,
+      fontSize: typeScale.body,
       color: c.text,
       textAlign: 'center',
     },
     totalHint: {
       fontFamily: fonts.body,
-      fontSize: 11,
+      fontSize: typeScale.label,
       color: c.textMuted,
     },
     topBreak: {
@@ -149,19 +149,19 @@ const makeStyles = (c: Palette) =>
     },
     topLabel: {
       fontFamily: fonts.bodyBold,
-      fontSize: 11,
+      fontSize: typeScale.label,
       letterSpacing: 1,
       textTransform: 'uppercase',
       color: c.textMuted,
     },
     topValue: {
       fontFamily: fonts.bodyBold,
-      fontSize: 17,
+      fontSize: typeScale.headline,
       color: c.text,
     },
     meta: {
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.textMuted,
     },
   });

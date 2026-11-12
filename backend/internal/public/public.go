@@ -30,11 +30,6 @@ import (
 //go:embed static/logo.png
 var static embed.FS
 
-// MatchSource loads a match with its league and player cards.
-type MatchSource interface {
-	PublicMatch(ctx context.Context, matchID string) (match, league syncmod.Doc, players []syncmod.Doc, err error)
-}
-
 // ProfileSource reads public profiles.
 type ProfileSource interface {
 	Get(ctx context.Context, userID string, kind community.Kind, id string) (json.RawMessage, error)
@@ -63,7 +58,7 @@ type Config struct {
 // Handler serves the public pages.
 type Handler struct {
 	cfg        Config
-	matches    MatchSource
+	games      GameSource
 	profiles   ProfileSource
 	tournament TournamentSource
 	removals   RemovalStore
@@ -77,8 +72,8 @@ type Handler struct {
 const pageViewsPerMinute = 120
 
 // NewHandler builds the public pages handler.
-func NewHandler(cfg Config, m MatchSource, p ProfileSource, t TournamentSource, r RemovalStore, minors MinorChecker) *Handler {
-	return &Handler{cfg: cfg, matches: m, profiles: p, tournament: t, removals: r, minors: minors,
+func NewHandler(cfg Config, g GameSource, p ProfileSource, t TournamentSource, r RemovalStore, minors MinorChecker) *Handler {
+	return &Handler{cfg: cfg, games: g, profiles: p, tournament: t, removals: r, minors: minors,
 		limiter: httpx.NewRateLimiter(5, time.Hour),
 		pages:   httpx.NewRateLimiter(pageViewsPerMinute, time.Minute)}
 }
@@ -87,7 +82,9 @@ func NewHandler(cfg Config, m MatchSource, p ProfileSource, t TournamentSource, 
 func (h *Handler) Routes(r chi.Router) {
 	r.Group(func(r chi.Router) {
 		r.Use(securityHeaders, h.pages.Middleware)
-		r.Get("/m/{id}", h.match)
+		r.Get("/m/{id}", h.resultPage(KindMatch))
+		r.Get("/r/{id}", h.resultPage(KindRace))
+		r.Get("/g/{id}", h.resultPage(KindGroup))
 		r.Get("/p/{uid}", h.player)
 		r.Get("/c/{city}", h.city)
 		r.Get("/t/{id}", h.tournamentPage)
@@ -98,6 +95,12 @@ func (h *Handler) Routes(r chi.Router) {
 	})
 	r.Get("/.well-known/assetlinks.json", h.assetLinks)
 	r.Get("/static/logo.png", h.logo)
+}
+
+// APIRoutes mounts the JSON endpoints the app reads without signing in, under /v1. They
+// share the page-view rate limit.
+func (h *Handler) APIRoutes(v1 chi.Router) {
+	v1.With(h.pages.Middleware).Get("/public/results/{kind}/{id}", h.resultJSON)
 }
 
 // securityHeaders: the pages are plain HTML with one inline stylesheet and no scripts, so
@@ -148,106 +151,6 @@ func (h *Handler) failed(w http.ResponseWriter, err error) {
 type message struct {
 	Heading    string
 	Paragraphs []string
-}
-
-// --- match ---
-
-type matchDoc struct {
-	ID             string   `json:"id"`
-	TeamA          []string `json:"teamA"`
-	TeamB          []string `json:"teamB"`
-	NamedLabel     *string  `json:"namedLabel"`
-	CrownsChampion bool     `json:"crownsChampion"`
-	UpdatedAt      string   `json:"updatedAt"`
-	Frames         []struct {
-		TeamAPoints float64 `json:"teamAPoints"`
-		TeamBPoints float64 `json:"teamBPoints"`
-		Winner      string  `json:"winner"`
-	} `json:"frames"`
-	Outcome struct {
-		Status      string `json:"status"`
-		Winner      string `json:"winner"`
-		ForfeitedBy string `json:"forfeitedBy"`
-		FramesA     int    `json:"framesA"`
-		FramesB     int    `json:"framesB"`
-	} `json:"outcome"`
-}
-
-type frameRow struct {
-	Number int
-	A, B   int
-	Winner string
-}
-
-type matchView struct {
-	ID, Label, League, When, SideA, SideB, Winner, Status string
-	FramesA, FramesB                                      int
-	Live                                                  bool
-	Frames                                                []frameRow
-}
-
-func (h *Handler) match(w http.ResponseWriter, r *http.Request) {
-	m, league, players, err := h.matches.PublicMatch(r.Context(), chi.URLParam(r, "id"))
-	if errors.Is(err, syncmod.ErrNotFound) {
-		h.notFound(w)
-		return
-	}
-	if err != nil {
-		h.failed(w, err)
-		return
-	}
-	var doc matchDoc
-	if err := json.Unmarshal(m.Data, &doc); err != nil {
-		h.failed(w, fmt.Errorf("decode match: %w", err))
-		return
-	}
-	names, err := CardNames(r.Context(), h.minors, players)
-	if err != nil {
-		h.failed(w, err)
-		return
-	}
-	side := func(ids []string) string {
-		var out []string
-		for _, id := range ids {
-			if n, ok := names[id]; ok {
-				out = append(out, n)
-			} else {
-				out = append(out, "Player")
-			}
-		}
-		return strings.Join(out, " & ")
-	}
-	var leagueDoc struct {
-		Name string `json:"name"`
-	}
-	_ = json.Unmarshal(league.Data, &leagueDoc) // a missing name just shows nothing
-	v := matchView{
-		ID: m.ID, League: leagueDoc.Name, SideA: side(doc.TeamA), SideB: side(doc.TeamB),
-		FramesA: doc.Outcome.FramesA, FramesB: doc.Outcome.FramesB, Live: doc.Outcome.Status == "in_progress",
-		Label: "Snooker match",
-	}
-	if doc.NamedLabel != nil && *doc.NamedLabel != "" {
-		v.Label = *doc.NamedLabel
-	} else if doc.CrownsChampion {
-		v.Label = "Title match"
-	}
-	if t, err := time.Parse(time.RFC3339Nano, doc.UpdatedAt); err == nil {
-		v.When = t.In(indiaTime).Format("2 Jan 2006")
-	}
-	switch doc.Outcome.Status {
-	case "completed":
-		v.Winner = doc.Outcome.Winner
-	case "forfeited":
-		v.Winner = doc.Outcome.Winner
-		v.Status = "Won by forfeit"
-	}
-	for i, f := range doc.Frames {
-		v.Frames = append(v.Frames, frameRow{Number: i + 1, A: int(f.TeamAPoints), B: int(f.TeamBPoints), Winner: f.Winner})
-	}
-	title := fmt.Sprintf("%s %d - %d %s", v.SideA, v.FramesA, v.FramesB, v.SideB)
-	h.render(w, http.StatusOK, matchPage, view{
-		Title: title + " | Snookit", Description: v.Label + " on Snookit", URL: h.cfg.BaseURL + "/m/" + m.ID, Data: v,
-	})
 }
 
 var indiaTime = time.FixedZone("IST", 5*60*60+30*60)

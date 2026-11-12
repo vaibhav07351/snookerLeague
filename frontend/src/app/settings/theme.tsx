@@ -9,7 +9,7 @@ import { SegmentedTabs } from '@/shared/ui/SegmentedTabs';
 import { DARK_THEME_ORDER, PALETTES, type ThemeId } from '@/theme/palettes';
 import { useStyles, useTheme } from '@/theme/ThemeProvider';
 import { THEME_MODE_LABELS, THEME_MODES, type ThemeMode } from '@/theme/theme-preference';
-import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, makeTypography, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 const MODE_ITEMS = THEME_MODES.map((key) => ({ key, label: THEME_MODE_LABELS[key] }));
 
@@ -155,6 +155,6 @@ const makeStyles = (c: Palette) =>
     optionName: {
       fontFamily: fonts.bodyBold,
       color: c.text,
-      fontSize: 16,
+      fontSize: typeScale.lead,
     },
   });

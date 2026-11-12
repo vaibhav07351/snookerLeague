@@ -6,7 +6,7 @@ import { ratingOf, type RatingTable } from '@/features/stats/services/rating.ser
 import type { Player } from '@/shared/types/domain';
 import { BottomSheet } from '@/shared/ui/BottomSheet';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import { TOUCH_TARGET, fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface PlayerPickerSheetProps {
   visible: boolean;
@@ -105,17 +105,17 @@ const makeStyles = (c: Palette) =>
     },
     name: {
       fontFamily: fonts.bodyBold,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       color: c.text,
     },
     you: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.primary,
     },
     meta: {
       fontFamily: fonts.body,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.textMuted,
     },
   });

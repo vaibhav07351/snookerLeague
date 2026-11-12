@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface ManualFrameFormProps {
   teamALabel: string;
@@ -153,13 +153,13 @@ const makeStyles = (c: Palette) =>
     heading: {
       fontFamily: fonts.bodyBold,
       color: c.text,
-      fontSize: 13,
+      fontSize: typeScale.small,
       letterSpacing: 0.4,
     },
     hint: {
       fontFamily: fonts.body,
       color: c.textMuted,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       lineHeight: 16,
     },
     ptsRow: {
@@ -173,7 +173,7 @@ const makeStyles = (c: Palette) =>
     label: {
       fontFamily: fonts.bodyMedium,
       color: c.textMuted,
-      fontSize: 11,
+      fontSize: typeScale.label,
     },
     input: {
       minHeight: 44,
@@ -185,7 +185,7 @@ const makeStyles = (c: Palette) =>
       color: c.text,
       fontFamily: fonts.bodyBold,
       // 16px on web avoids mobile Safari auto-zoom on focus.
-      fontSize: Platform.OS === 'web' ? 16 : 18,
+      fontSize: Platform.OS === 'web' ? typeScale.lead : typeScale.title3,
       paddingHorizontal: 10,
       textAlign: 'center',
     },
@@ -207,7 +207,7 @@ const makeStyles = (c: Palette) =>
     },
     winText: {
       fontFamily: fonts.bodyBold,
-      fontSize: 14,
+      fontSize: typeScale.body,
       textAlign: 'center',
     },
     disabled: {

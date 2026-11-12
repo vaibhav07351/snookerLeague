@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface LiveResumeCardProps {
   eyebrow: string;
@@ -113,20 +113,20 @@ const makeStyles = (c: Palette) =>
       flexShrink: 1,
       fontFamily: fonts.bodyBold,
       color: c.live,
-      fontSize: 11,
+      fontSize: typeScale.label,
       letterSpacing: 1,
       textTransform: 'uppercase',
     },
     title: {
       fontFamily: fonts.bodyBold,
       color: c.text,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       lineHeight: 20,
     },
     meta: {
       fontFamily: fonts.body,
       color: c.textMuted,
-      fontSize: 12,
+      fontSize: typeScale.caption,
     },
     cta: {
       flexDirection: 'row',
@@ -145,7 +145,7 @@ const makeStyles = (c: Palette) =>
     ctaText: {
       fontFamily: fonts.bodyBold,
       color: c.onPrimary,
-      fontSize: 13,
+      fontSize: typeScale.small,
     },
     ctaTextStale: {
       color: c.text,

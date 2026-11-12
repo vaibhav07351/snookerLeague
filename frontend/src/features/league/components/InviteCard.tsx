@@ -11,7 +11,15 @@ import { notify } from '@/shared/ui/notify';
 import type { League } from '@/shared/types/domain';
 import { confirmAction } from '@/shared/utils/confirm';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import {
+  TOUCH_TARGET,
+  fonts,
+  makeTypography,
+  radii,
+  spacing,
+  typeScale,
+  type Palette,
+} from '@/theme/tokens';
 
 interface InviteCardProps {
   league: League;
@@ -126,13 +134,13 @@ const makeStyles = (c: Palette) =>
     },
     code: {
       fontFamily: fonts.display,
-      fontSize: 22,
+      fontSize: typeScale.title1,
       letterSpacing: 3,
       color: c.text,
     },
     hint: {
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       lineHeight: 18,
       color: c.textMuted,
     },

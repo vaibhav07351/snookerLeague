@@ -18,7 +18,7 @@ import { Chip } from '@/shared/ui/Chip';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { notify } from '@/shared/ui/notify';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, makeTypography, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 const TARGET_PRESETS = [50, 75, 100] as const;
 
@@ -223,7 +223,7 @@ const makeStyles = (c: Palette) =>
     },
     label: {
       fontFamily: fonts.bodyBold,
-      fontSize: 11,
+      fontSize: typeScale.label,
       letterSpacing: 1,
       textTransform: 'uppercase',
       color: c.textMuted,
@@ -257,7 +257,7 @@ const makeStyles = (c: Palette) =>
     },
     targetText: {
       fontFamily: fonts.bodyBold,
-      fontSize: 16,
+      fontSize: typeScale.lead,
       color: c.text,
     },
     targetTextOn: {
@@ -293,11 +293,11 @@ const makeStyles = (c: Palette) =>
     switchLabel: {
       fontFamily: fonts.bodyBold,
       color: c.text,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
     },
     switchHint: {
       fontFamily: fonts.body,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.textMuted,
     },
   });

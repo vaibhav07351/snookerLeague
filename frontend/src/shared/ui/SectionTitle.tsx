@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, spacing, type Palette } from '@/theme/tokens';
+import { fonts, makeTypography, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface SectionTitleProps {
   title: string;
@@ -42,6 +42,6 @@ const makeStyles = (c: Palette) =>
     action: {
       fontFamily: fonts.bodyBold,
       color: c.primary,
-      fontSize: 13,
+      fontSize: typeScale.small,
     },
   });

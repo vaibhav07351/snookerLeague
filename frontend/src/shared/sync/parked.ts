@@ -33,6 +33,15 @@ export function parkedWritesOf(store: AppDataStore): PendingOp[] {
   return store.pendingOps.filter((op) => op.parked && (op.uid === undefined || op.uid === uid));
 }
 
+/** The signed-in account's writes still queued to send (not set aside). */
+export function waitingWritesOf(store: AppDataStore): PendingOp[] {
+  const uid = store.user?.uid;
+  if (!uid) {
+    return [];
+  }
+  return store.pendingOps.filter((op) => !op.parked && (op.uid === undefined || op.uid === uid));
+}
+
 function unparked(op: PendingOp): PendingOp {
   const next: PendingOp = { ...op, attempts: 0 };
   delete next.parked;

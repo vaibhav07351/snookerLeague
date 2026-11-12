@@ -3,7 +3,7 @@ import type { ComponentProps, ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 export interface CommunityTile {
   label: string;
@@ -78,12 +78,12 @@ const makeStyles = (c: Palette) =>
       flexShrink: 1,
       fontFamily: fonts.bodyBold,
       color: c.text,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
     },
     hint: {
       fontFamily: fonts.body,
       color: c.textMuted,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       lineHeight: 16,
     },
   });

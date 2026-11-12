@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Polyline } from 'react-native-svg';
 
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, type Palette } from '@/theme/tokens';
+import { fonts, typeScale, type Palette } from '@/theme/tokens';
 
 interface RatingSparkProps {
   /** Rating after each recent result, oldest first. */
@@ -54,7 +54,7 @@ const makeStyles = (c: Palette) =>
   StyleSheet.create({
     empty: {
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.textMuted,
     },
     scale: {
@@ -63,7 +63,7 @@ const makeStyles = (c: Palette) =>
     },
     scaleText: {
       fontFamily: fonts.body,
-      fontSize: 11,
+      fontSize: typeScale.label,
       color: c.textMuted,
     },
   });

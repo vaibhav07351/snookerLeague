@@ -8,7 +8,7 @@ import { Chip } from '@/shared/ui/Chip';
 import { FULL_RACK_REDS } from '@/shared/types/domain';
 import { Stepper } from '@/shared/ui/Stepper';
 import { useStyles } from '@/theme/ThemeProvider';
-import { fonts, spacing, type Palette } from '@/theme/tokens';
+import { fonts, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface MidwaySetupProps {
   teamALabel: string;
@@ -134,19 +134,19 @@ const makeStyles = (c: Palette) =>
     },
     title: {
       fontFamily: fonts.bodyBold,
-      fontSize: 17,
+      fontSize: typeScale.headline,
       color: c.text,
     },
     hint: {
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       lineHeight: 18,
       color: c.textMuted,
     },
     section: {
       marginTop: spacing.xs,
       fontFamily: fonts.bodyBold,
-      fontSize: 11,
+      fontSize: typeScale.label,
       letterSpacing: 1,
       textTransform: 'uppercase',
       color: c.textMuted,

@@ -51,6 +51,22 @@ const matchBody = `{{define "body"}}
 <button type="submit">This is me, remove it</button></form>
 {{end}}`
 
+// standingsBody is a race or free-for-all: one row per player, best first.
+const standingsBody = `{{define "body"}}
+<h1>{{.Data.Label}}</h1>
+<p class="muted">{{.Data.Caption}}{{if .Data.League}} &middot; {{.Data.League}}{{end}} &middot; {{.Data.When}}{{if .Data.Live}} &middot; <b class="win">LIVE</b>{{end}}</p>
+<div class="card"><table>
+<tr><th>#</th><th>Player</th><th class="n">Result</th></tr>
+{{range .Data.Standings}}<tr><td>{{.Place}}</td><td class="{{if .Winner}}win{{end}}">{{.Name}}</td><td class="n">{{.Detail}}</td></tr>{{end}}
+</table></div>
+<a class="cta" href="{{.AppURL}}">Score your own games with Snookit</a>
+<h2>Is this you?</h2>
+<p class="muted">If you played in this game and don't want your name shown, ask us to remove it.</p>
+<form method="post" action="/remove-request"><input type="hidden" name="target" value="{{.Data.Kind}}:{{.Data.ID}}">
+<textarea name="message" rows="2" maxlength="500" placeholder="Which name is yours? (optional)"></textarea>
+<button type="submit">This is me, remove it</button></form>
+{{end}}`
+
 const playerBody = `{{define "body"}}
 <h1>{{.Data.Name}}</h1>
 <p class="muted">{{if .Data.City}}{{.Data.City}}{{end}}{{if .Data.Division}} &middot; {{.Data.Division}}{{end}}</p>
@@ -91,6 +107,7 @@ func page(body string) *template.Template {
 
 var (
 	matchPage      = page(matchBody)
+	standingsPage  = page(standingsBody)
 	playerPage     = page(playerBody)
 	cityPage       = page(cityBody)
 	tournamentPage = page(tournamentBody)

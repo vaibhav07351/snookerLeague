@@ -23,7 +23,6 @@ export type TourTargetId =
   | 'home.start-match'
   | 'home.log-race'
   | 'home.feed'
-  | 'nav.menu'
   | 'nav.tabs'
   | 'match-new.format'
   | 'match-new.sides'

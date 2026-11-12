@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface SparklineProps {
   values: number[];
@@ -96,7 +96,7 @@ const makeStyles = (c: Palette) =>
     empty: {
       fontFamily: fonts.body,
       color: c.textMuted,
-      fontSize: 14,
+      fontSize: typeScale.body,
     },
     tile: {
       flex: 1,
@@ -111,19 +111,19 @@ const makeStyles = (c: Palette) =>
     },
     tileLabel: {
       fontFamily: fonts.bodyBold,
-      fontSize: 11,
+      fontSize: typeScale.label,
       letterSpacing: 0.8,
       textTransform: 'uppercase',
       color: c.textMuted,
     },
     tileValue: {
       fontFamily: fonts.bodyBold,
-      fontSize: 24,
+      fontSize: typeScale.display,
       color: c.text,
     },
     tileHint: {
       fontFamily: fonts.body,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.textMuted,
     },
   });

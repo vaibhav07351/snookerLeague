@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { sideColor } from '@/theme/palettes';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 export interface FrameRankView {
   playerId: string;
@@ -129,14 +129,14 @@ const makeStyles = (c: Palette) =>
       flex: 1,
       minWidth: 0,
       fontFamily: fonts.bodyBold,
-      fontSize: 10,
+      fontSize: typeScale.micro,
       letterSpacing: 1.2,
       textTransform: 'uppercase',
       color: c.textMuted,
     },
     colLabel: {
       fontFamily: fonts.bodyBold,
-      fontSize: 10,
+      fontSize: typeScale.micro,
       letterSpacing: 0.3,
       textTransform: 'uppercase',
       color: c.textMuted,
@@ -165,7 +165,7 @@ const makeStyles = (c: Palette) =>
     rank: {
       width: 14,
       fontFamily: fonts.bodyBold,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.textMuted,
       textAlign: 'center',
     },
@@ -178,7 +178,7 @@ const makeStyles = (c: Palette) =>
       flex: 1,
       minWidth: 0,
       fontFamily: fonts.bodyMedium,
-      fontSize: 14,
+      fontSize: typeScale.body,
       color: c.text,
     },
     nameLeading: {
@@ -187,14 +187,14 @@ const makeStyles = (c: Palette) =>
     stat: {
       textAlign: 'right',
       fontFamily: fonts.bodyMedium,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.textMuted,
       fontVariant: ['tabular-nums'],
     },
     points: {
       textAlign: 'right',
       fontFamily: fonts.bodyBold,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       color: c.text,
       fontVariant: ['tabular-nums'],
     },

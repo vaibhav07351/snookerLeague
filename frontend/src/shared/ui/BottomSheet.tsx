@@ -29,7 +29,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { WEB_SHELL_MAX_WIDTH } from '@/shared/hooks/use-layout';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import { TOUCH_TARGET, fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 const OPEN_MS = 300;
 const CLOSE_MS = 220;
@@ -277,7 +277,7 @@ const makeStyles = (c: Palette) =>
     title: {
       flex: 1,
       fontFamily: fonts.bodyBold,
-      fontSize: 17,
+      fontSize: typeScale.headline,
       color: c.text,
     },
     close: {

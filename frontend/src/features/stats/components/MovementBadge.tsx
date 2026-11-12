@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { usePalette } from '@/theme/ThemeProvider';
-import { fonts } from '@/theme/tokens';
+import { fonts, typeScale } from '@/theme/tokens';
 
 interface MovementBadgeProps {
   /** Places gained (+) or lost (-) this week; null when unknown. */
@@ -41,6 +41,6 @@ const styles = StyleSheet.create({
   },
   text: {
     fontFamily: fonts.bodyBold,
-    fontSize: 11,
+    fontSize: typeScale.label,
   },
 });

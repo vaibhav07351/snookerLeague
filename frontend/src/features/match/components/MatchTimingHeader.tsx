@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text } from 'react-native';
 import { useLiveElapsed } from '@/shared/hooks/use-live-elapsed';
 import { formatDuration } from '@/shared/utils/datetime';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface MatchTimingHeaderProps {
   enabled: boolean;
@@ -77,7 +77,7 @@ const makeStyles = (c: Palette) =>
     label: {
       fontFamily: fonts.bodyBold,
       color: c.textMuted,
-      fontSize: 13,
+      fontSize: typeScale.small,
       minWidth: 36,
       textAlign: 'center',
       fontVariant: ['tabular-nums'],

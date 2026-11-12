@@ -12,7 +12,7 @@ import { useLayout } from '@/shared/hooks/use-layout';
 import { BottomSheet } from '@/shared/ui/BottomSheet';
 import { KeyValueRow } from '@/shared/ui/KeyValueRow';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, spacing, type Palette } from '@/theme/tokens';
+import { fonts, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 const TITLES: Record<DetailKey, string> = {
   rating: 'Rating',
@@ -134,7 +134,7 @@ const makeStyles = (c: Palette) =>
   StyleSheet.create({
     note: {
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       lineHeight: 19,
       color: c.textMuted,
       marginTop: spacing.xs,

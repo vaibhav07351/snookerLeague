@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import { TOUCH_TARGET, fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 interface StepperProps {
   label: string;
@@ -61,7 +61,7 @@ const makeStyles = (c: Palette) =>
     },
     label: {
       fontFamily: fonts.bodyBold,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.textMuted,
     },
     row: {
@@ -83,7 +83,7 @@ const makeStyles = (c: Palette) =>
       flex: 1,
       textAlign: 'center',
       fontFamily: fonts.bodyBold,
-      fontSize: 18,
+      fontSize: typeScale.title3,
       color: c.text,
       fontVariant: ['tabular-nums'],
     },

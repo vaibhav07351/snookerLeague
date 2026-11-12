@@ -46,7 +46,7 @@ module.exports = ({ config }) => ({
       {
         action: 'VIEW',
         autoVerify: true,
-        data: ['/m/', '/p/', '/c/', '/t/', '/claim/'].map((pathPrefix) => ({
+        data: ['/m/', '/r/', '/g/', '/p/', '/c/', '/t/', '/claim/'].map((pathPrefix) => ({
           scheme: 'https',
           host: 'snookit.duckdns.org',
           pathPrefix,

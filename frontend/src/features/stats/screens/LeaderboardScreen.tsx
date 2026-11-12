@@ -23,7 +23,7 @@ import { LoadingState } from '@/shared/ui/LoadingState';
 import { PagedList } from '@/shared/ui/PagedList';
 import { SegmentedTabs } from '@/shared/ui/SegmentedTabs';
 import { useStyles } from '@/theme/ThemeProvider';
-import { fonts, spacing, type Palette } from '@/theme/tokens';
+import { fonts, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 type Tab = BoardKey | 'city';
 
@@ -231,7 +231,7 @@ const makeStyles = (c: Palette) =>
     },
     hint: {
       fontFamily: fonts.body,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.textMuted,
     },
     hintOn: {
@@ -240,7 +240,7 @@ const makeStyles = (c: Palette) =>
     },
     allShown: {
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.textMuted,
       textAlign: 'center',
       paddingVertical: spacing.md,

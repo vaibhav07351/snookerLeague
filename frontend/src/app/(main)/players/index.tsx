@@ -16,10 +16,19 @@ import { useStoreReload } from '@/shared/hooks/use-store-reload';
 import type { Player } from '@/shared/types/domain';
 import { Card } from '@/shared/ui/Card';
 import { EmptyState } from '@/shared/ui/EmptyState';
+import { LoadGate } from '@/shared/ui/LoadGate';
 import { notify } from '@/shared/ui/notify';
 import { confirmAction } from '@/shared/utils/confirm';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import {
+  TOUCH_TARGET,
+  fonts,
+  makeTypography,
+  radii,
+  spacing,
+  typeScale,
+  type Palette,
+} from '@/theme/tokens';
 
 export default function PlayersScreen(): ReactNode {
   const styles = useStyles(makeStyles);
@@ -39,7 +48,7 @@ export default function PlayersScreen(): ReactNode {
     setPlayers(await playersService.listPlayers(leagueId));
   }, [leagueId]);
 
-  useStoreReload(reload, leagueId ?? null);
+  const load = useStoreReload(reload, leagueId ?? null);
   useAutoTour('players', leagueId != null);
 
   async function savePlayer(): Promise<void> {
@@ -133,77 +142,79 @@ export default function PlayersScreen(): ReactNode {
           style={styles.cancel}
         />
       ) : null}
-      <FlatList
-        data={players}
-        keyExtractor={(item) => item.id}
-        style={styles.listFlex}
-        contentContainerStyle={styles.list}
-        keyboardShouldPersistTaps="handled"
-        ListEmptyComponent={
-          <EmptyState
-            icon="people-outline"
-            title="No players yet"
-            message="Add your friends above. Guests don't need the app."
-          />
-        }
-        renderItem={({ item }) => {
-          const mine = Boolean(user?.uid && item.authUid === user.uid);
-          const canDelete = Boolean(user?.uid && user.uid === league.createdByUid && !mine);
-          const isEditing = editingId === item.id;
-          return (
-            <Card tone={isEditing ? 'highlight' : 'default'} style={styles.row}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Open ${item.displayName}`}
-                style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
-                onPress={() => router.push(`/(main)/players/${item.id}`)}
-              >
-                <Text style={styles.name} numberOfLines={1}>
-                  {item.displayName}
-                </Text>
-                <Text style={styles.meta} numberOfLines={2}>
-                  {item.kind === 'guest' ? 'Guest' : 'Member'} · W {item.stats.standard.winPct}% ·
-                  1st {item.stats.race.firstPct}% · HB {item.stats.standard.highestBreak || '-'}
-                </Text>
-              </Pressable>
-              <View style={styles.actions}>
-                {item.kind === 'guest' && !item.authUid && user && !user.isDemo ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Send ${item.displayName} a link to claim this player`}
-                    onPress={() => {
-                      shareClaimLink(item.id, item.displayName).catch((error: unknown) => {
-                        notify.error('Could not send the link', toUserMessage(error));
-                      });
-                    }}
-                    style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
-                  >
-                    <Ionicons name="paper-plane-outline" size={20} color={palette.textMuted} />
-                  </Pressable>
-                ) : null}
+      <LoadGate load={load} loadingLabel="Loading players" errorTitle="Couldn't load players">
+        <FlatList
+          data={players}
+          keyExtractor={(item) => item.id}
+          style={styles.listFlex}
+          contentContainerStyle={styles.list}
+          keyboardShouldPersistTaps="handled"
+          ListEmptyComponent={
+            <EmptyState
+              icon="people-outline"
+              title="No players yet"
+              message="Add your friends above. Guests don't need the app."
+            />
+          }
+          renderItem={({ item }) => {
+            const mine = Boolean(user?.uid && item.authUid === user.uid);
+            const canDelete = Boolean(user?.uid && user.uid === league.createdByUid && !mine);
+            const isEditing = editingId === item.id;
+            return (
+              <Card tone={isEditing ? 'highlight' : 'default'} style={styles.row}>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`Edit ${item.displayName}`}
-                  onPress={() => startEdit(item)}
-                  style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+                  accessibilityLabel={`Open ${item.displayName}`}
+                  style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
+                  onPress={() => router.push(`/(main)/players/${item.id}`)}
                 >
-                  <Ionicons name="create-outline" size={20} color={palette.textMuted} />
+                  <Text style={styles.name} numberOfLines={1}>
+                    {item.displayName}
+                  </Text>
+                  <Text style={styles.meta} numberOfLines={2}>
+                    {item.kind === 'guest' ? 'Guest' : 'Member'} · W {item.stats.standard.winPct}% ·
+                    1st {item.stats.race.firstPct}% · HB {item.stats.standard.highestBreak || '-'}
+                  </Text>
                 </Pressable>
-                {canDelete ? (
+                <View style={styles.actions}>
+                  {item.kind === 'guest' && !item.authUid && user && !user.isDemo ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Send ${item.displayName} a link to claim this player`}
+                      onPress={() => {
+                        shareClaimLink(item.id, item.displayName).catch((error: unknown) => {
+                          notify.error('Could not send the link', toUserMessage(error));
+                        });
+                      }}
+                      style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+                    >
+                      <Ionicons name="paper-plane-outline" size={20} color={palette.textMuted} />
+                    </Pressable>
+                  ) : null}
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel={`Delete ${item.displayName}`}
-                    onPress={() => void removePlayer(item)}
+                    accessibilityLabel={`Edit ${item.displayName}`}
+                    onPress={() => startEdit(item)}
                     style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
                   >
-                    <Ionicons name="trash-outline" size={20} color={palette.danger} />
+                    <Ionicons name="create-outline" size={20} color={palette.textMuted} />
                   </Pressable>
-                ) : null}
-              </View>
-            </Card>
-          );
-        }}
-      />
+                  {canDelete ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Delete ${item.displayName}`}
+                      onPress={() => void removePlayer(item)}
+                      style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+                    >
+                      <Ionicons name="trash-outline" size={20} color={palette.danger} />
+                    </Pressable>
+                  ) : null}
+                </View>
+              </Card>
+            );
+          }}
+        />
+      </LoadGate>
     </Screen>
   );
 }
@@ -255,13 +266,13 @@ const makeStyles = (c: Palette) =>
     name: {
       fontFamily: fonts.bodyBold,
       color: c.text,
-      fontSize: 17,
+      fontSize: typeScale.headline,
     },
     meta: {
       fontFamily: fonts.body,
       color: c.textMuted,
       marginTop: 2,
-      fontSize: 13,
+      fontSize: typeScale.small,
     },
     actions: {
       flexDirection: 'row',

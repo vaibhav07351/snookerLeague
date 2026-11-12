@@ -5,7 +5,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Button } from '@/shared/ui/Button';
 import type { BoardKey, NextTarget } from '@/features/stats/services/leaderboard.service';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 /** Room the card needs; the list only shows it when this much space is free. */
 export const NEXT_TARGET_HEIGHT = 112;
@@ -93,12 +93,12 @@ const makeStyles = (c: Palette) =>
     title: {
       flex: 1,
       fontFamily: fonts.bodyBold,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       color: c.text,
     },
     body: {
       fontFamily: fonts.body,
-      fontSize: 13,
+      fontSize: typeScale.small,
       lineHeight: 18,
       color: c.textMuted,
     },

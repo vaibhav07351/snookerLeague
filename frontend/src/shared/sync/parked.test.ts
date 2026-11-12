@@ -178,6 +178,18 @@ describe('set-aside writes', () => {
     expect(parked.parkedWritesOf(s).map((o) => o.opId)).toEqual(['op_p1']);
   });
 
+  it("counts the signed-in account's queued writes as waiting, never the set-aside ones", () => {
+    const { parked, store } = fresh();
+    const setAside = parkedOp(player());
+    const queued = { ...parkedOp(player({ id: 'p2' })), parked: undefined };
+    const untagged = { ...parkedOp(player({ id: 'p3' })), parked: undefined, uid: undefined };
+    const other = { ...parkedOp(player({ id: 'p4' })), parked: undefined, uid: 'u2' };
+    const s = { ...store.emptyStore(), user, pendingOps: [setAside, queued, untagged, other] };
+
+    expect(parked.waitingWritesOf(s).map((o) => o.opId)).toEqual(['op_p2', 'op_p3']);
+    expect(parked.waitingWritesOf({ ...s, user: null })).toEqual([]);
+  });
+
   it('Retry puts the write back in the queue and sends it', async () => {
     const { store, parked } = fresh();
     await store.loadStore();

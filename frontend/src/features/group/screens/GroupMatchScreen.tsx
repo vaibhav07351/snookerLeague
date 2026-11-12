@@ -1,33 +1,34 @@
 import { router, useNavigation } from 'expo-router';
 import { useLayoutEffect, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { GroupFrameEndRow } from '@/features/group/components/GroupFrameEndRow';
 import { GroupLiveBoard } from '@/features/group/components/GroupLiveBoard';
-import { GroupResult } from '@/features/group/components/GroupResult';
+import { GroupResult, groupWinReasonText } from '@/features/group/components/GroupResult';
 import { useGroupMatch } from '@/features/group/hooks/use-group-match';
+import { groupResultView } from '@/features/group/services/group-result';
+import { LiveScoreboard } from '@/features/match/components/LiveScoreboard';
+import { FinishedGame } from '@/features/result/components/FinishedGame';
+import { PublicResultScreen } from '@/features/result/components/PublicResultScreen';
 import { RulesButton } from '@/features/rules/components/RulesButton';
 import { freeForAllRules } from '@/features/rules/services/rules';
-import { LiveScoreboard } from '@/features/match/components/LiveScoreboard';
 import { haptic } from '@/shared/feedback/haptics';
-import { useLayout } from '@/shared/hooks/use-layout';
 import { useKeepScreenOn } from '@/shared/hooks/use-keep-screen-on';
 import { Button } from '@/shared/ui/Button';
 import { ClockPill } from '@/shared/ui/ClockPill';
-import { EmptyState } from '@/shared/ui/EmptyState';
+import { ErrorState } from '@/shared/ui/ErrorState';
+import { LiveGameHeader } from '@/shared/ui/LiveGameHeader';
+import { LoadingState } from '@/shared/ui/LoadingState';
 import { PlayingOrderTiles } from '@/shared/ui/PlayingOrderTiles';
 import { Screen } from '@/shared/ui/Screen';
 import { confirmAction } from '@/shared/utils/confirm';
-import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, radii, spacing, type Palette } from '@/theme/tokens';
+import { useStyles } from '@/theme/ThemeProvider';
+import { fonts, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 /** Live scoring and result of a free-for-all match (3 to 8 players, each for themselves). */
 export function GroupMatchScreen({ groupId }: { groupId: string | undefined }): ReactNode {
   const styles = useStyles(makeStyles);
-  const typography = useStyles(makeTypography);
-  const palette = usePalette();
-  const { scale } = useLayout();
-  const { group, shortName, fullName, standings, live, canManage, busy, actions } =
+  const { group, load, shortName, fullName, standings, live, canManage, busy, actions } =
     useGroupMatch(groupId);
 
   // Rules and the frame clock sit on the right of the screen header, as in a two-sided match.
@@ -56,35 +57,27 @@ export function GroupMatchScreen({ groupId }: { groupId: string | undefined }): 
   if (group === undefined) {
     return (
       <Screen>
-        <View style={styles.loading}>
-          <ActivityIndicator color={palette.primary} />
-          <Text style={typography.subtitle}>Loading match…</Text>
-        </View>
+        {load.status === 'error' ? (
+          <ErrorState title="Couldn't load this match" onRetry={load.retry} />
+        ) : (
+          <LoadingState label="Loading match" />
+        )}
       </Screen>
     );
   }
   if (group === null) {
-    return (
-      <Screen>
-        <EmptyState
-          icon="alert-circle-outline"
-          title="Match not found"
-          message="It may have been deleted."
-          actionLabel="Go home"
-          onAction={() => router.replace('/')}
-        />
-      </Screen>
-    );
+    // Not on this phone: a shared link from another league, or not synced yet.
+    return <PublicResultScreen kind="group" id={groupId} />;
   }
 
-  const frameNumber = group.frames.length + 1;
-  const inProgress = live != null;
+  const g = group;
+  const frameNumber = g.frames.length + 1;
 
   async function endFrame(winnerId: string): Promise<void> {
     if (!live) {
       return;
     }
-    const line = group!.turnOrder.map((id) => `${shortName(id)} ${live.points[id] ?? 0}`);
+    const line = g.turnOrder.map((id) => `${shortName(id)} ${live.points[id] ?? 0}`);
     const ok = await confirmAction(
       `Frame to ${fullName(winnerId)}?`,
       `End frame ${frameNumber} at ${line.join(', ')}. You can undo this.`,
@@ -117,91 +110,106 @@ export function GroupMatchScreen({ groupId }: { groupId: string | undefined }): 
     }
   }
 
-  return (
-    <Screen
-      footer={
-        !inProgress && group.frames.length > 0 && canManage ? (
-          <Button
-            label="Reopen last frame"
-            icon="arrow-undo"
-            variant="secondary"
-            loading={busy}
-            onPress={() => void reopen()}
-          />
-        ) : undefined
-      }
-    >
-      <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text style={typography.label} numberOfLines={1}>
-            {group.namedLabel ?? `Free-for-all · ${group.playerIds.length} players`}
-          </Text>
-          <Text style={[styles.title, { fontSize: scale(24) }]} numberOfLines={1}>
-            {inProgress
-              ? `Frame ${Math.min(frameNumber, group.bestOf)} of ${group.bestOf}`
-              : 'Final'}
-          </Text>
-        </View>
-        <View style={[styles.statusPill, !inProgress && styles.statusPillDone]}>
-          {inProgress ? <View style={styles.liveDot} /> : null}
-          <Text style={[styles.statusText, !inProgress && styles.statusTextDone]}>
-            {inProgress ? 'Live' : 'Finished'}
-          </Text>
-        </View>
-      </View>
-
-      {live ? (
-        <>
-          <View style={styles.tables}>
-            <PlayingOrderTiles
-              tiles={group.turnOrder.map((id) => ({
-                id,
-                name: shortName(id),
-                points: live.points[id] ?? 0,
-              }))}
-              atTableId={live.atTablePlayerId}
-              currentBreak={live.currentBreak}
-              onSelect={actions.selectPlayer}
-            />
-            <GroupLiveBoard
-              seatOrder={group.turnOrder}
-              points={live.points}
-              foulPoints={live.foulPoints}
-              standings={standings}
-              nameOf={shortName}
-            />
-          </View>
-          <LiveScoreboard
-            table={live.table}
-            deficit={live.deficit}
-            canUndo={(group.openFrame?.shots.length ?? 0) > 0 || group.frames.length > 0}
-            onPot={actions.pot}
-            onFoul={actions.foul}
-            onEndVisit={actions.endVisit}
-            onFreeBall={actions.freeBall}
-            onUndo={() => void actions.undo()}
-            foulLabel={(pts) =>
-              `Foul ${pts}: taken off ${shortName(live.atTablePlayerId)}, any shortfall to everyone else`
-            }
-            frameRow={
-              <GroupFrameEndRow
-                leaders={live.leaders}
-                hasScore={Object.values(live.points).some((p) => p > 0)}
-                disabled={busy}
-                nameOf={shortName}
-                onEndFrame={(id) => void endFrame(id)}
+  const result = groupResultView(g, standings, fullName);
+  if (result || !live) {
+    return (
+      <Screen>
+        {result ? (
+          <FinishedGame
+            view={result}
+            detail={groupWinReasonText(standings, g.winnerId)}
+            details={
+              <GroupResult
+                winnerId={g.winnerId}
+                standings={standings}
+                frames={g.frames}
+                nameOf={fullName}
               />
             }
+            more={
+              canManage
+                ? (afterClose) => (
+                    <View style={styles.moreButtons}>
+                      {g.frames.length > 0 ? (
+                        <Button
+                          label="Reopen last frame"
+                          icon="arrow-undo"
+                          variant="secondary"
+                          loading={busy}
+                          onPress={() => afterClose(() => void reopen())}
+                        />
+                      ) : null}
+                      <Button
+                        label="Delete match"
+                        icon="trash-outline"
+                        variant="danger"
+                        onPress={() => afterClose(() => void remove())}
+                      />
+                    </View>
+                  )
+                : null
+            }
           />
-        </>
-      ) : (
-        <GroupResult
-          winnerId={group.winnerId}
-          standings={standings}
-          frames={group.frames}
-          nameOf={fullName}
+        ) : (
+          // Live but between frames (no frame open): the table so far.
+          <GroupResult
+            winnerId={g.winnerId}
+            standings={standings}
+            frames={g.frames}
+            nameOf={fullName}
+          />
+        )}
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen>
+      <LiveGameHeader
+        label={g.namedLabel ?? `Free-for-all · ${g.playerIds.length} players`}
+        title={`Frame ${Math.min(frameNumber, g.bestOf)} of ${g.bestOf}`}
+      />
+      <View style={styles.tables}>
+        <PlayingOrderTiles
+          tiles={g.turnOrder.map((id) => ({
+            id,
+            name: shortName(id),
+            points: live.points[id] ?? 0,
+          }))}
+          atTableId={live.atTablePlayerId}
+          currentBreak={live.currentBreak}
+          onSelect={actions.selectPlayer}
         />
-      )}
+        <GroupLiveBoard
+          seatOrder={g.turnOrder}
+          points={live.points}
+          foulPoints={live.foulPoints}
+          standings={standings}
+          nameOf={shortName}
+        />
+      </View>
+      <LiveScoreboard
+        table={live.table}
+        deficit={live.deficit}
+        canUndo={(g.openFrame?.shots.length ?? 0) > 0 || g.frames.length > 0}
+        onPot={actions.pot}
+        onFoul={actions.foul}
+        onEndVisit={actions.endVisit}
+        onFreeBall={actions.freeBall}
+        onUndo={() => void actions.undo()}
+        foulLabel={(pts) =>
+          `Foul ${pts}: taken off ${shortName(live.atTablePlayerId)}, any shortfall to everyone else`
+        }
+        frameRow={
+          <GroupFrameEndRow
+            leaders={live.leaders}
+            hasScore={Object.values(live.points).some((p) => p > 0)}
+            disabled={busy}
+            nameOf={shortName}
+            onEndFrame={(id) => void endFrame(id)}
+          />
+        }
+      />
 
       {canManage ? (
         <Pressable
@@ -218,63 +226,18 @@ export function GroupMatchScreen({ groupId }: { groupId: string | undefined }): 
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
-    // Playing order on top, ranked leaderboard below, as in the two-sided match.
     headerRight: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 2,
     },
+    // Playing order on top, ranked leaderboard below, as in the two-sided match.
     tables: {
       gap: spacing.sm,
       marginBottom: spacing.md,
     },
-    loading: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
+    moreButtons: {
       gap: spacing.sm,
-      paddingVertical: spacing.xxl,
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-      marginTop: spacing.sm,
-      marginBottom: spacing.md,
-    },
-    headerText: {
-      flex: 1,
-      minWidth: 0,
-    },
-    title: {
-      fontFamily: fonts.display,
-      color: c.text,
-    },
-    statusPill: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-      borderRadius: radii.pill,
-      backgroundColor: c.cardRaised,
-    },
-    statusPillDone: {
-      backgroundColor: c.successSoft,
-    },
-    liveDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: c.live,
-    },
-    statusText: {
-      fontFamily: fonts.bodyBold,
-      fontSize: 12,
-      color: c.text,
-    },
-    statusTextDone: {
-      color: c.success,
     },
     deleteLink: {
       alignSelf: 'center',
@@ -284,7 +247,7 @@ const makeStyles = (c: Palette) =>
     },
     deleteText: {
       fontFamily: fonts.bodyMedium,
-      fontSize: 13,
+      fontSize: typeScale.small,
       color: c.danger,
     },
     pressed: {

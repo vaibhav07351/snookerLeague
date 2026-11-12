@@ -9,7 +9,7 @@ import { confirmAction } from '@/shared/utils/confirm';
 import { formatDuration } from '@/shared/utils/datetime';
 import { sideColor } from '@/theme/palettes';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 export interface FramePlayerLine {
   playerId: string;
@@ -280,7 +280,7 @@ const makeStyles = (c: Palette) =>
     empty: {
       fontFamily: fonts.body,
       color: c.textMuted,
-      fontSize: 14,
+      fontSize: typeScale.body,
     },
     card: {
       borderRadius: radii.md,
@@ -302,23 +302,23 @@ const makeStyles = (c: Palette) =>
     },
     frameNo: {
       fontFamily: fonts.bodyBold,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       letterSpacing: 1,
       textTransform: 'uppercase',
       color: c.textMuted,
     },
     score: {
       fontFamily: fonts.display,
-      fontSize: 18,
+      fontSize: typeScale.title3,
       color: c.text,
     },
     winner: {
       fontFamily: fonts.bodyBold,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
     },
     notes: {
       fontFamily: fonts.body,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.textMuted,
     },
     lines: {
@@ -335,7 +335,7 @@ const makeStyles = (c: Palette) =>
     },
     action: {
       fontFamily: fonts.bodyBold,
-      fontSize: 13,
+      fontSize: typeScale.small,
     },
     editRow: {
       flexDirection: 'row',

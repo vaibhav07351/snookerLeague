@@ -13,7 +13,7 @@ import { haptic } from '@/shared/feedback/haptics';
 import { useLayout } from '@/shared/hooks/use-layout';
 import type { BallValue } from '@/shared/types/domain';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import { TOUCH_TARGET, fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 /** Screen gutters (2 x 16) plus the cloth panel's own padding (2 x 8). */
 const HORIZONTAL_CHROME = spacing.md * 2 + spacing.sm * 2;
@@ -170,7 +170,7 @@ const makeStyles = (c: Palette) =>
       minWidth: 0,
       fontFamily: fonts.bodyMedium,
       color: c.textMuted,
-      fontSize: 14,
+      fontSize: typeScale.body,
     },
     atTableName: {
       fontFamily: fonts.bodyBold,
@@ -187,12 +187,12 @@ const makeStyles = (c: Palette) =>
     breakText: {
       fontFamily: fonts.bodyBold,
       color: c.primary,
-      fontSize: 12,
+      fontSize: typeScale.caption,
     },
     hint: {
       fontFamily: fonts.body,
       color: c.textFaint,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       lineHeight: 16,
     },
     cloth: {
@@ -237,7 +237,7 @@ const makeStyles = (c: Palette) =>
     actionText: {
       fontFamily: fonts.bodyBold,
       color: c.text,
-      fontSize: 14,
+      fontSize: typeScale.body,
     },
     actionTextMuted: {
       color: c.textMuted,
@@ -268,6 +268,6 @@ const makeStyles = (c: Palette) =>
     foulText: {
       fontFamily: fonts.bodyBold,
       color: c.danger,
-      fontSize: 13,
+      fontSize: typeScale.small,
     },
   });

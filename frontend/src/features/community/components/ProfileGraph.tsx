@@ -14,7 +14,15 @@ import { Button } from '@/shared/ui/Button';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { notify } from '@/shared/ui/notify';
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, makeTypography, radii, spacing, TOUCH_TARGET, type Palette } from '@/theme/tokens';
+import {
+  TOUCH_TARGET,
+  fonts,
+  makeTypography,
+  radii,
+  spacing,
+  typeScale,
+  type Palette,
+} from '@/theme/tokens';
 
 /** QR codes must stay dark-on-white in every theme so any camera can scan them. */
 const QR_BACKGROUND = '#FFFFFF';
@@ -190,12 +198,12 @@ const makeStyles = (c: Palette) =>
     },
     followCount: {
       fontFamily: fonts.bodyBold,
-      fontSize: 20,
+      fontSize: typeScale.title2,
       color: c.text,
     },
     followLabel: {
       fontFamily: fonts.body,
-      fontSize: 12,
+      fontSize: typeScale.caption,
       color: c.textMuted,
     },
     completeHead: {
@@ -218,7 +226,7 @@ const makeStyles = (c: Palette) =>
     percent: {
       fontFamily: fonts.bodyBold,
       color: c.text,
-      fontSize: 13,
+      fontSize: typeScale.small,
     },
     todo: {
       flexDirection: 'row',
@@ -235,7 +243,7 @@ const makeStyles = (c: Palette) =>
       minWidth: 0,
       fontFamily: fonts.body,
       color: c.text,
-      fontSize: 14,
+      fontSize: typeScale.body,
     },
     todoAction: {
       flexDirection: 'row',
@@ -245,7 +253,7 @@ const makeStyles = (c: Palette) =>
     todoHint: {
       fontFamily: fonts.bodyBold,
       color: c.primary,
-      fontSize: 12,
+      fontSize: typeScale.caption,
     },
     todoPending: {
       color: c.textFaint,
@@ -262,7 +270,7 @@ const makeStyles = (c: Palette) =>
     qrHint: {
       fontFamily: fonts.body,
       color: QR_FOREGROUND,
-      fontSize: 12,
+      fontSize: typeScale.caption,
     },
     actions: {
       gap: spacing.sm,

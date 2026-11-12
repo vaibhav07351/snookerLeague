@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { usePalette, useStyles } from '@/theme/ThemeProvider';
-import { fonts, radii, spacing, type Palette } from '@/theme/tokens';
+import { fonts, radii, spacing, typeScale, type Palette } from '@/theme/tokens';
 
 /** Which way is better for this stat; 'neutral' highlights nobody. */
 export type Better = 'higher' | 'lower' | 'neutral';
@@ -102,7 +102,7 @@ const makeStyles = (c: Palette) =>
     value: {
       flex: 1,
       fontFamily: fonts.bodyMedium,
-      fontSize: 15,
+      fontSize: typeScale.bodyLarge,
       color: c.textMuted,
     },
     valueRight: {
@@ -114,7 +114,7 @@ const makeStyles = (c: Palette) =>
     },
     label: {
       fontFamily: fonts.bodyBold,
-      fontSize: 10,
+      fontSize: typeScale.micro,
       letterSpacing: 0.7,
       textTransform: 'uppercase',
       color: c.textMuted,
