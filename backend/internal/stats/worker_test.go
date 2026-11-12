@@ -3,30 +3,85 @@ package stats
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
+	"time"
 )
 
-type memRepo struct {
-	dirty     []string
-	leagues   map[string]LeagueData
-	standings map[string][]Standing
-	failLoad  bool
+type dirtyRow struct {
+	markedAt time.Time
+	attempts int
+	retryAt  time.Time
 }
 
-func (m *memRepo) ClaimDirty(_ context.Context, limit int) ([]string, error) {
-	n := min(limit, len(m.dirty))
-	out := m.dirty[:n]
-	m.dirty = m.dirty[n:]
-	return out, nil
+type memRepo struct {
+	dirty     map[string]*dirtyRow
+	leagues   map[string]LeagueData
+	standings map[string][]Standing
+	// failLoad lists leagues whose Load fails ("*" fails every league).
+	failLoad []string
+	// onLoad runs inside Load, to simulate a write landing during a recompute.
+	onLoad func(id string)
+	clock  time.Time
+}
+
+func newMemRepo(dirty ...string) *memRepo {
+	m := &memRepo{dirty: map[string]*dirtyRow{}, leagues: map[string]LeagueData{},
+		standings: map[string][]Standing{}, clock: time.Unix(1_000, 0)}
+	for _, id := range dirty {
+		_ = m.MarkDirty(context.Background(), id)
+	}
+	return m
+}
+
+func (m *memRepo) tick() time.Time {
+	m.clock = m.clock.Add(time.Millisecond)
+	return m.clock
+}
+
+func (m *memRepo) ClaimDirty(_ context.Context, limit int) ([]DirtyLeague, error) {
+	var out []DirtyLeague
+	for id, row := range m.dirty {
+		if row.retryAt.IsZero() || !row.retryAt.After(time.Now()) {
+			out = append(out, DirtyLeague{ID: id, MarkedAt: row.markedAt, Attempts: row.attempts})
+		}
+	}
+	slices.SortFunc(out, func(a, b DirtyLeague) int { return a.MarkedAt.Compare(b.MarkedAt) })
+	return out[:min(limit, len(out))], nil
+}
+
+func (m *memRepo) ClearDirty(_ context.Context, id string, markedAt time.Time) error {
+	if row, ok := m.dirty[id]; ok {
+		if row.markedAt.Equal(markedAt) {
+			delete(m.dirty, id)
+		} else {
+			row.attempts, row.retryAt = 0, time.Time{}
+		}
+	}
+	return nil
+}
+
+func (m *memRepo) DeferDirty(_ context.Context, id string, attempts int, retryAt time.Time) error {
+	if row, ok := m.dirty[id]; ok {
+		row.attempts, row.retryAt = attempts, retryAt
+	}
+	return nil
 }
 
 func (m *memRepo) MarkDirty(_ context.Context, id string) error {
-	m.dirty = append(m.dirty, id)
+	if row, ok := m.dirty[id]; ok {
+		row.markedAt = m.tick()
+		return nil
+	}
+	m.dirty[id] = &dirtyRow{markedAt: m.tick()}
 	return nil
 }
 
 func (m *memRepo) Load(_ context.Context, id string) (LeagueData, bool, error) {
-	if m.failLoad {
+	if m.onLoad != nil {
+		m.onLoad(id)
+	}
+	if slices.Contains(m.failLoad, id) || slices.Contains(m.failLoad, "*") {
 		return LeagueData{}, false, errors.New("db down")
 	}
 	d, ok := m.leagues[id]
@@ -55,17 +110,14 @@ func won(id, a, b, at string) Match {
 }
 
 func TestWorkerStoresStandingsAndCityRanks(t *testing.T) {
-	repo := &memRepo{
-		dirty:     []string{"city_pune"},
-		standings: map[string][]Standing{},
-		leagues: map[string]LeagueData{"city_pune": {
-			Kind: "city", CityID: "pune",
-			Cards: []Card{{ID: "c1", AuthUID: "u1"}, {ID: "c2", AuthUID: "u2"}, {ID: "g1"}},
-			Matches: []Match{
-				won("m1", "c1", "c2", "2026-01-01"), won("m2", "c1", "c2", "2026-01-02"),
-				won("m3", "c1", "g1", "2026-01-03"),
-			},
-		}},
+	repo := newMemRepo("city_pune")
+	repo.leagues["city_pune"] = LeagueData{
+		Kind: "city", CityID: "pune",
+		Cards: []Card{{ID: "c1", AuthUID: "u1"}, {ID: "c2", AuthUID: "u2"}, {ID: "g1"}},
+		Matches: []Match{
+			won("m1", "c1", "c2", "2026-01-01"), won("m2", "c1", "c2", "2026-01-02"),
+			won("m3", "c1", "g1", "2026-01-03"),
+		},
 	}
 	ranks := memRanks{}
 	if err := NewWorker(repo, ranks, nil, nil).RunOnce(context.Background()); err != nil {
@@ -85,13 +137,62 @@ func TestWorkerStoresStandingsAndCityRanks(t *testing.T) {
 	}
 }
 
-func TestAFailedLeagueGoesBackOnTheQueue(t *testing.T) {
-	repo := &memRepo{dirty: []string{"lg1"}, standings: map[string][]Standing{}, failLoad: true}
+func TestAFailedLeagueStaysQueuedAndWaits(t *testing.T) {
+	repo := newMemRepo("lg1")
+	repo.failLoad = []string{"*"}
 	if err := NewWorker(repo, memRanks{}, nil, nil).RunOnce(context.Background()); err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if len(repo.dirty) != 1 || repo.dirty[0] != "lg1" {
-		t.Fatalf("league must be requeued, queue = %v", repo.dirty)
+	row, ok := repo.dirty["lg1"]
+	if !ok {
+		t.Fatal("a failed league must stay on the queue")
+	}
+	if row.attempts != 1 || !row.retryAt.After(time.Now()) {
+		t.Fatalf("a failed league must wait before its next try, got %+v", row)
+	}
+}
+
+func TestOneFailingLeagueDoesNotDropTheRestOfTheBatch(t *testing.T) {
+	repo := newMemRepo("bad", "good1", "good2")
+	repo.failLoad = []string{"bad"}
+	repo.leagues["good1"] = LeagueData{Cards: []Card{{ID: "a"}}}
+	repo.leagues["good2"] = LeagueData{Cards: []Card{{ID: "b"}}}
+
+	if err := NewWorker(repo, memRanks{}, nil, nil).RunOnce(context.Background()); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if len(repo.standings["good1"]) != 1 || len(repo.standings["good2"]) != 1 {
+		t.Fatalf("the healthy leagues must be computed, got %v", repo.standings)
+	}
+	if _, ok := repo.dirty["bad"]; !ok || len(repo.dirty) != 1 {
+		t.Fatalf("only the failing league may stay queued, queue = %v", repo.dirty)
+	}
+}
+
+func TestAWriteDuringTheRecomputeKeepsTheLeagueQueued(t *testing.T) {
+	repo := newMemRepo("lg1")
+	repo.leagues["lg1"] = LeagueData{Cards: []Card{{ID: "a"}}}
+	marked := false
+	repo.onLoad = func(id string) {
+		if !marked {
+			marked = true
+			_ = repo.MarkDirty(context.Background(), id) // a match was saved meanwhile
+		}
+	}
+
+	if err := NewWorker(repo, memRanks{}, nil, nil).RunOnce(context.Background()); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !marked || len(repo.dirty) != 0 {
+		t.Fatalf("the league must be recomputed again after the new write, queue = %v", repo.dirty)
+	}
+}
+
+func TestRetryDelayDoublesUpToAnHour(t *testing.T) {
+	got := []time.Duration{retryDelay(1), retryDelay(2), retryDelay(3), retryDelay(20)}
+	want := []time.Duration{30 * time.Second, time.Minute, 2 * time.Minute, time.Hour}
+	if !slices.Equal(got, want) {
+		t.Fatalf("retryDelay = %v, want %v", got, want)
 	}
 }
 

@@ -1,6 +1,6 @@
 import { ApiError } from '@/shared/api/client';
 import { getCommunityDoc } from '@/shared/api/community-api';
-import { fetchInvite, pullPage } from '@/shared/api/sync-api';
+import { fetchInvite, pullPage, type ServerDoc } from '@/shared/api/sync-api';
 import { logger } from '@/shared/logging/logger';
 import { getStore, updateStore } from '@/shared/storage/local-store';
 import { applyServerDocs } from '@/shared/sync/apply';
@@ -77,6 +77,24 @@ export async function pullLeague(leagueId: string): Promise<void> {
     }
     since = page.cursor;
   }
+}
+
+/**
+ * One league's complete history, held in memory instead of merged page by page, for callers
+ * that must treat it as the full server truth. Throws rather than return a partial history.
+ */
+export async function fetchLeagueHistory(leagueId: string): Promise<ServerDoc[]> {
+  const docs: ServerDoc[] = [];
+  let since = 0;
+  for (let pages = 0; pages < MAX_PAGES_PER_PULL; pages += 1) {
+    const page = await pullPage(since, leagueId);
+    docs.push(...page.docs);
+    if (!page.hasMore) {
+      return docs;
+    }
+    since = page.cursor;
+  }
+  throw new Error('League history is too long to fetch in one go');
 }
 
 /** The user's private settings saved on the server, or null for a first sign-in. */

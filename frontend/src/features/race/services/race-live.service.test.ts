@@ -78,6 +78,29 @@ describe('race turn order', () => {
   });
 });
 
+describe('quick taps', () => {
+  it('keeps every shot when two are recorded at the same moment', async () => {
+    const { race, live, store } = fresh();
+    await store.loadStore();
+    const created = await race.createRace({
+      leagueId: 'lg1',
+      createdByUid: 'u1',
+      playerIds: ['ravi', 'amit'],
+      targetScore: 100,
+      namedLabel: null,
+      crownsRaceChampion: false,
+    });
+
+    // Not awaited one by one: both taps start before the first is saved.
+    await Promise.all([live.recordPot(created.id, 1), live.recordPot(created.id, 7)]);
+
+    const saved = store.getStore().races.find((r) => r.id === created.id)!;
+    expect(saved.liveShots).toHaveLength(2);
+    // A red counts 10 in a race, so the two pots make 10 + 7.
+    expect(saved.entrants.find((e) => e.playerId === 'ravi')?.score).toBe(17);
+  });
+});
+
 describe('race scoring after fouls', () => {
   async function twoPlayerRace(target: number) {
     const { race, live, store } = fresh();

@@ -10,6 +10,7 @@ import { applyPlayerStats } from '@/features/stats/services/stats.service';
 import { AppError } from '@/shared/errors/app-error';
 import { logger } from '@/shared/logging/logger';
 import { createId, nowIso } from '@/shared/utils/id';
+import { serializeWrite } from '@/shared/utils/serialize-write';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { scheduleSync, type ScheduleItem } from '@/shared/sync';
 import type {
@@ -207,11 +208,20 @@ export async function persistRace(race: Race, event?: FeedEvent): Promise<Race> 
   return race;
 }
 
-export async function setEntrantScore(
-  raceId: string,
-  playerId: string,
-  score: number,
-): Promise<Race> {
+/**
+ * Run writes to one race one at a time, in call order (see shared serializeWrite), so two
+ * quick taps can never both read the same race and lose a change. Never call one wrapped
+ * function from inside another for the same race: it would wait for itself.
+ */
+export function serializeRaceWrite<T>(raceId: string, write: () => Promise<T>): Promise<T> {
+  return serializeWrite(`race:${raceId}`, write);
+}
+
+export function setEntrantScore(raceId: string, playerId: string, score: number): Promise<Race> {
+  return serializeRaceWrite(raceId, () => writeEntrantScore(raceId, playerId, score));
+}
+
+async function writeEntrantScore(raceId: string, playerId: string, score: number): Promise<Race> {
   if (!Number.isFinite(score)) {
     throw new AppError('VALIDATION', 'Score must be a number');
   }
@@ -255,27 +265,29 @@ export async function setEntrantScore(
   return updated;
 }
 
-export async function adjustEntrantScore(
-  raceId: string,
-  playerId: string,
-  delta: number,
-): Promise<Race> {
-  if (!Number.isFinite(delta) || delta === 0) {
-    throw new AppError('VALIDATION', 'Score change must be a number');
-  }
-  await loadStore();
-  const race = getStore().races.find((r) => r.id === raceId);
-  if (!race) {
-    throw new AppError('NOT_FOUND', 'Race not found');
-  }
-  const current = race.entrants.find((e) => e.playerId === playerId);
-  if (!current) {
-    throw new AppError('NOT_FOUND', 'Player is not in this race');
-  }
-  return setEntrantScore(raceId, playerId, current.score + Math.trunc(delta));
+export function adjustEntrantScore(raceId: string, playerId: string, delta: number): Promise<Race> {
+  return serializeRaceWrite(raceId, async () => {
+    if (!Number.isFinite(delta) || delta === 0) {
+      throw new AppError('VALIDATION', 'Score change must be a number');
+    }
+    await loadStore();
+    const race = getStore().races.find((r) => r.id === raceId);
+    if (!race) {
+      throw new AppError('NOT_FOUND', 'Race not found');
+    }
+    const current = race.entrants.find((e) => e.playerId === playerId);
+    if (!current) {
+      throw new AppError('NOT_FOUND', 'Player is not in this race');
+    }
+    return writeEntrantScore(raceId, playerId, current.score + Math.trunc(delta));
+  });
 }
 
-export async function markDnf(raceId: string, playerId: string): Promise<Race> {
+export function markDnf(raceId: string, playerId: string): Promise<Race> {
+  return serializeRaceWrite(raceId, () => writeDnf(raceId, playerId));
+}
+
+async function writeDnf(raceId: string, playerId: string): Promise<Race> {
   await loadStore();
   const race = getStore().races.find((r) => r.id === raceId);
   if (!race) {
@@ -304,7 +316,11 @@ export async function markDnf(raceId: string, playerId: string): Promise<Race> {
 }
 
 /** Put a mistaken "didn't finish" entrant back into the race (in progress only). */
-export async function undoDnf(raceId: string, playerId: string): Promise<Race> {
+export function undoDnf(raceId: string, playerId: string): Promise<Race> {
+  return serializeRaceWrite(raceId, () => writeUndoDnf(raceId, playerId));
+}
+
+async function writeUndoDnf(raceId: string, playerId: string): Promise<Race> {
   await loadStore();
   const race = getStore().races.find((r) => r.id === raceId);
   if (!race) {
@@ -354,7 +370,11 @@ export function placesForUnfinished(entrants: RaceEntrant[]): Map<string, number
   return places;
 }
 
-export async function completeRace(raceId: string): Promise<Race> {
+export function completeRace(raceId: string): Promise<Race> {
+  return serializeRaceWrite(raceId, () => writeCompleteRace(raceId));
+}
+
+async function writeCompleteRace(raceId: string): Promise<Race> {
   await loadStore();
   const race = getStore().races.find((r) => r.id === raceId);
   if (!race) {
@@ -395,7 +415,14 @@ export async function completeRace(raceId: string): Promise<Race> {
   return updated;
 }
 
-export async function submitFinalStandings(
+export function submitFinalStandings(
+  raceId: string,
+  standings: Array<{ playerId: string; score: number; place: number | 'dnf' }>,
+): Promise<Race> {
+  return serializeRaceWrite(raceId, () => writeFinalStandings(raceId, standings));
+}
+
+async function writeFinalStandings(
   raceId: string,
   standings: Array<{ playerId: string; score: number; place: number | 'dnf' }>,
 ): Promise<Race> {

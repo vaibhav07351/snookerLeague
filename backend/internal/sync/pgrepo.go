@@ -280,9 +280,13 @@ func (t *pgTx) PlayerCardsOf(ctx context.Context, userID string) ([]Doc, error) 
 	return scanDocs(rows)
 }
 
+// MarkDirty refreshes marked_at when the league is already queued, so a stats recompute that
+// is running right now sees the mark changed and runs again (stats/pgrepo.go ClearDirty).
+// clock_timestamp, not now(): now() is when this transaction started.
 func (t *pgTx) MarkDirty(ctx context.Context, leagueID string) error {
 	if _, err := t.tx.Exec(ctx,
-		`INSERT INTO stats_dirty (league_id) VALUES ($1) ON CONFLICT (league_id) DO NOTHING`, leagueID); err != nil {
+		`INSERT INTO stats_dirty (league_id) VALUES ($1)
+		 ON CONFLICT (league_id) DO UPDATE SET marked_at = clock_timestamp()`, leagueID); err != nil {
 		return fmt.Errorf("mark dirty: %w", err)
 	}
 	return nil

@@ -9,6 +9,7 @@ import {
   asPlayer,
   asRace,
   asTournament,
+  sameJson,
   versionKey,
 } from '@/shared/sync/mappers';
 import {
@@ -76,7 +77,60 @@ export function localRowOf(doc: ServerDoc): LocalRow | null {
   }
 }
 
-function mergeDocs(s: AppDataStore, docs: ServerDoc[]): AppDataStore {
+/** The store without the rows whose id is in `ids`, in every synced collection. */
+function withoutRows(s: AppDataStore, ids: ReadonlySet<string>): AppDataStore {
+  const rows: Partial<Record<RowKey, { id: string }[]>> = {};
+  for (const key of Object.values(ROW_KEY)) {
+    rows[key] = (s[key] as { id: string }[]).filter((r) => !ids.has(r.id));
+  }
+  return { ...s, ...rows, leagues: s.leagues.filter((l) => !ids.has(l.id)) } as AppDataStore;
+}
+
+/** A pulled document whose row went through the merge, kept to decide on its version. */
+interface MergedDoc {
+  doc: ServerDoc;
+  row: LocalRow;
+  key: RowKey | 'leagues';
+}
+
+/**
+ * Record a document's server version only when this phone now holds exactly the server's
+ * copy. When the local copy won (a write still queued, or a newer local edit), the old
+ * version is kept, so the next upload is answered with a conflict and merged with the
+ * server's changes instead of silently replacing them.
+ */
+function recordMergedVersions(
+  next: AppDataStore,
+  merged: MergedDoc[],
+  pending: ReadonlySet<string>,
+  serverVersions: Record<string, number>,
+): void {
+  const indexes = new Map<RowKey | 'leagues', Map<string, unknown>>();
+  const indexOf = (key: RowKey | 'leagues'): Map<string, unknown> => {
+    let index = indexes.get(key);
+    if (!index) {
+      index = new Map((next[key] as { id: string }[]).map((r) => [r.id, r]));
+      indexes.set(key, index);
+    }
+    return index;
+  };
+  for (const { doc, row, key } of merged) {
+    const stored = indexOf(key).get(doc.id);
+    const tookServerCopy = stored ? stored === row || sameJson(stored, row) : !pending.has(doc.id);
+    if (tookServerCopy) {
+      serverVersions[versionKey(doc.entity, doc.id)] = doc.version;
+    }
+  }
+}
+
+function mergeDocs(
+  current: AppDataStore,
+  docs: ServerDoc[],
+  replaceIds: ReadonlySet<string>,
+): AppDataStore {
+  // Rows being replaced lose their local copy first, so the server copy comes in fresh (and
+  // a row the server does not have is removed).
+  const s = replaceIds.size > 0 ? withoutRows(current, replaceIds) : current;
   const pending = pendingDocIdsOf(s.pendingOps);
   const serverVersions = { ...s.serverVersions };
   const leagues: League[] = [];
@@ -88,14 +142,22 @@ function mergeDocs(s: AppDataStore, docs: ServerDoc[]): AppDataStore {
   const tournaments: Tournament[] = [];
   const deletedLeagues: string[] = [];
   const deleted = new Map<RowKey, Set<string>>();
+  const merged: MergedDoc[] = [];
 
   for (const doc of docs) {
-    serverVersions[versionKey(doc.entity, doc.id)] = doc.version;
+    const vKey = versionKey(doc.entity, doc.id);
+    const known = serverVersions[vKey];
+    if (known !== undefined && doc.version < known && !replaceIds.has(doc.id)) {
+      // An older copy arriving late (for example a slow live message): never go back.
+      continue;
+    }
     if (!isKnownKind(doc.entity)) {
+      serverVersions[vKey] = doc.version;
       continue;
     }
     const row = localRowOf(doc);
     if (!row) {
+      serverVersions[vKey] = doc.version;
       if (doc.entity === 'league') {
         deletedLeagues.push(doc.id);
       } else {
@@ -104,6 +166,7 @@ function mergeDocs(s: AppDataStore, docs: ServerDoc[]): AppDataStore {
       }
       continue;
     }
+    merged.push({ doc, row, key: doc.entity === 'league' ? 'leagues' : ROW_KEY[doc.entity] });
     switch (doc.entity) {
       case 'league':
         leagues.push(row as League);
@@ -131,7 +194,6 @@ function mergeDocs(s: AppDataStore, docs: ServerDoc[]): AppDataStore {
 
   let next: AppDataStore = {
     ...s,
-    serverVersions,
     leagues: leagues.length > 0 ? mergeLeagues(s.leagues, leagues, pending) : s.leagues,
     players: players.length > 0 ? mergePlayers(s.players, players, pending) : s.players,
     matches: matches.length > 0 ? mergeMatches(s.matches, matches, pending) : s.matches,
@@ -146,6 +208,8 @@ function mergeDocs(s: AppDataStore, docs: ServerDoc[]): AppDataStore {
         ? mergeTournaments(s.tournaments, tournaments, pending)
         : s.tournaments,
   };
+  recordMergedVersions(next, merged, pending, serverVersions);
+  next = { ...next, serverVersions };
   // Deleted on the server: remove here too, with any queued write the server would refuse.
   for (const [key, ids] of deleted) {
     next = {
@@ -160,12 +224,28 @@ function mergeDocs(s: AppDataStore, docs: ServerDoc[]): AppDataStore {
   return next;
 }
 
+export interface ApplyOptions {
+  /**
+   * Ids whose server copy replaces this phone's copy outright, removing the row when the
+   * server has none. Only pass with a league's full history (a pull from version 0).
+   */
+  replaceIds?: ReadonlySet<string>;
+  /** Extra change made in the same store update (for example removing discarded writes). */
+  alsoChange?: (s: AppDataStore) => AppDataStore;
+}
+
+const NO_IDS: ReadonlySet<string> = new Set();
+
 /** Merge pulled documents into this phone's store (queued local writes win until sent). */
-export async function applyServerDocs(docs: ServerDoc[]): Promise<void> {
-  if (docs.length === 0) {
+export async function applyServerDocs(
+  docs: ServerDoc[],
+  options: ApplyOptions = {},
+): Promise<void> {
+  const { replaceIds = NO_IDS, alsoChange } = options;
+  if (docs.length === 0 && replaceIds.size === 0 && !alsoChange) {
     return;
   }
-  await updateStore((s) => mergeDocs(s, docs));
+  await updateStore((s) => mergeDocs(alsoChange ? alsoChange(s) : s, docs, replaceIds));
 }
 
 /**

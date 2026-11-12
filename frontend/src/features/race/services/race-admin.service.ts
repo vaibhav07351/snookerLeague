@@ -1,3 +1,4 @@
+import { serializeRaceWrite } from '@/features/race/services/race.service';
 import { applyPlayerStats } from '@/features/stats/services/stats.service';
 import { AppError } from '@/shared/errors/app-error';
 import { logger } from '@/shared/logging/logger';
@@ -44,7 +45,12 @@ const RACE_RESULT_TYPES: ReadonlySet<FeedEvent['type']> = new Set(['race_won', '
  * when this race crowned them, its result posts are withdrawn, and the delete is synced so it
  * disappears on every device.
  */
-export async function deleteRace(raceId: string): Promise<void> {
+export function deleteRace(raceId: string): Promise<void> {
+  // After any shot still being saved, so a late save can't bring the race back.
+  return serializeRaceWrite(raceId, () => writeDeleteRace(raceId));
+}
+
+async function writeDeleteRace(raceId: string): Promise<void> {
   await loadStore();
   const race = getStore().races.find((r) => r.id === raceId);
   if (!race) {

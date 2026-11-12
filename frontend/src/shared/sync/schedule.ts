@@ -1,14 +1,28 @@
+import { ApiError } from '@/shared/api/client';
 import { createId, nowIso } from '@/shared/utils/id';
 import { logger } from '@/shared/logging/logger';
 import { getStore, loadStore, updateStore } from '@/shared/storage/local-store';
 import { isOnline } from '@/shared/sync/connectivity';
-import { isNetworkError, isPermanentWriteError, syncErrorMeta } from '@/shared/sync/sync-errors';
+import {
+  isNetworkError,
+  isPermanentWriteError,
+  isTransientError,
+  RejectedWriteError,
+  syncErrorMeta,
+} from '@/shared/sync/sync-errors';
 import { setCloudReachable } from '@/shared/sync/sync-status';
 import { notify } from '@/shared/ui/notify';
 import { shouldCloudSync } from '@/shared/sync/cloud-session';
-import { isBatchable, pushDocBatch, pushSingle, type PushOutcome } from '@/shared/sync/push';
+import {
+  isBatchable,
+  pushDocBatch,
+  pushSingle,
+  wireSize,
+  type PushOutcome,
+} from '@/shared/sync/push';
 import type {
   CloudUserProfile,
+  ParkedWrite,
   PendingOp,
   SessionUser,
   SyncAction,
@@ -152,16 +166,18 @@ async function removePending(opIds: string[]): Promise<void> {
   }));
 }
 
-async function bumpAttempts(opId: string): Promise<void> {
+async function updatePending(opIds: string[], change: (op: PendingOp) => PendingOp): Promise<void> {
+  if (opIds.length === 0) {
+    return;
+  }
+  const idSet = new Set(opIds);
   await updateStore((s) => ({
     ...s,
-    pendingOps: s.pendingOps.map((op) =>
-      op.opId === opId ? { ...op, attempts: op.attempts + 1 } : op,
-    ),
+    pendingOps: s.pendingOps.map((op) => (idSet.has(op.opId) ? change(op) : op)),
   }));
 }
 
-function toOp(item: ScheduleItem): PendingOp {
+function toOp(item: ScheduleItem, uid: string | undefined): PendingOp {
   return {
     opId: createId('op'),
     entity: item.entity,
@@ -171,9 +187,25 @@ function toOp(item: ScheduleItem): PendingOp {
     payload: item.payload,
     updatedAt: item.updatedAt ?? nowIso(),
     attempts: 0,
+    ...(uid ? { uid } : {}),
     ...(item.fieldsOnly ? { fieldsOnly: item.fieldsOnly } : {}),
     ...(item.membership ? { membership: item.membership } : {}),
   };
+}
+
+/**
+ * Give queued writes from builds that did not record an account to `uid` (call on sign-out,
+ * so the next account on this phone never sends them). Pure; callers save the result.
+ */
+export function tagQueuedWrites(ops: PendingOp[], uid: string): PendingOp[] {
+  return ops.some((op) => op.uid === undefined)
+    ? ops.map((op) => (op.uid === undefined ? { ...op, uid } : op))
+    : ops;
+}
+
+/** Whether this account's session may send the write now (set-aside writes wait for the user). */
+export function isSendable(op: PendingOp, uid: string): boolean {
+  return !op.parked && (op.uid === undefined || op.uid === uid);
 }
 
 /**
@@ -184,7 +216,7 @@ function toOp(item: ScheduleItem): PendingOp {
 export async function scheduleSync(items: ScheduleItem[]): Promise<void> {
   await loadStore();
   const user = getStore().user;
-  const ops = sortPendingOps(items.map(toOp));
+  const ops = sortPendingOps(items.map((item) => toOp(item, user?.uid)));
   if (!shouldCloudSync(user)) {
     // Keep offline queue when we have a Google user but Auth token isn't ready yet.
     if (user && !user.isDemo) {
@@ -225,30 +257,93 @@ let flushAgain = false;
 
 /** Writes per batched push (the server accepts up to 100). */
 const MAX_BATCH = 50;
-/** A write that keeps meeting newer server copies is given up after this many tries. */
+/**
+ * JSON characters per batched push. The server refuses bodies over 1 MB; names in other
+ * scripts take 2-3 bytes per character, so stay well under it.
+ */
+const MAX_BATCH_CHARS = 600_000;
+/** A write that keeps meeting newer server copies is set aside after this many tries. */
 const MAX_ATTEMPTS = 5;
+/** Server errors in a row before a write is set aside, so it stops blocking the queue. */
+const MAX_FAILURES = 5;
+
+/** Lowered when a whole batch fails, so the next try sends fewer writes; reset on success. */
+let batchLimit = MAX_BATCH;
+
+/** Wait after a failed send: doubles each time, reset by the next successful send. */
+const FIRST_RETRY_MS = 5_000;
+const MAX_RETRY_MS = { network: 60_000, server: 5 * 60_000 } as const;
+let retryDelayMs = 0;
+let retryAt = 0;
+
+function backOff(kind: keyof typeof MAX_RETRY_MS): void {
+  retryDelayMs = Math.min(
+    retryDelayMs === 0 ? FIRST_RETRY_MS : retryDelayMs * 2,
+    MAX_RETRY_MS[kind],
+  );
+  retryAt = Date.now() + retryDelayMs;
+}
+
+function sendSucceeded(): void {
+  retryDelayMs = 0;
+  retryAt = 0;
+  batchLimit = MAX_BATCH;
+  setCloudReachable(true);
+}
+
+const docKeyOf = (op: PendingOp): string => `${op.entity}:${op.docId}`;
 
 /**
- * The next writes to send together: consecutive plain league-document writes, each for a
- * different document (a second write for the same document must wait for the first's
- * new version).
+ * The next writes to send together: consecutive plain league-document writes this account
+ * may send, each for a different document (a second write for the same document must wait
+ * for the first's new version), within the count and size limits.
  */
-function takeBatch(queue: PendingOp[]): PendingOp[] {
-  const first = queue[0];
+function takeBatch(queue: PendingOp[], uid: string): PendingOp[] {
+  const sendable = queue.filter((op) => isSendable(op, uid));
+  const first = sendable[0];
   if (!first || !isBatchable(first)) {
     return first ? [first] : [];
   }
-  const batch: PendingOp[] = [];
-  const docs = new Set<string>();
-  for (const op of queue) {
-    const key = `${op.entity}:${op.docId}`;
-    if (!isBatchable(op) || docs.has(key) || batch.length >= MAX_BATCH) {
+  const batch: PendingOp[] = [first];
+  const docs = new Set([docKeyOf(first)]);
+  let chars = 0;
+  for (const op of sendable.slice(1)) {
+    if (!isBatchable(op) || docs.has(docKeyOf(op)) || batch.length >= batchLimit) {
       break;
     }
-    docs.add(key);
+    // Sizes are only worked out once a second write joins, so a lone write costs nothing.
+    if (chars === 0) {
+      chars = wireSize(first);
+    }
+    const size = wireSize(op);
+    if (chars + size > MAX_BATCH_CHARS) {
+      break;
+    }
+    chars += size;
+    docs.add(docKeyOf(op));
     batch.push(op);
   }
   return batch;
+}
+
+/** Set a write aside: kept on this phone and in the queue, but never sent until retried. */
+async function park(op: PendingOp, parked: Omit<ParkedWrite, 'at'>): Promise<void> {
+  logger.error('sync.schedule', 'Write set aside', {
+    entity: op.entity,
+    docId: op.docId,
+    action: op.action,
+    reason: parked.reason,
+    code: parked.code,
+  });
+  await updatePending([op.opId], (p) => ({ ...p, parked: { ...parked, at: nowIso() } }));
+  noticeParked();
+}
+
+function refusalOf(error: unknown): { code?: string; message: string } {
+  if (error instanceof RejectedWriteError || error instanceof ApiError) {
+    return { code: error.code, message: error.message };
+  }
+  return { message: 'The server refused this change.' };
 }
 
 async function settle(batch: PendingOp[], outcomes: PushOutcome[]): Promise<void> {
@@ -264,16 +359,14 @@ async function settle(batch: PendingOp[], outcomes: PushOutcome[]): Promise<void
         done.push(op.opId);
         break;
       case 'rejected':
-        reportRejectedWrite(op, syncErrorMeta(outcome.error));
-        done.push(op.opId);
+        await park(op, { reason: 'rejected', ...refusalOf(outcome.error) });
         break;
       case 'retry':
         if (op.attempts + 1 >= MAX_ATTEMPTS) {
-          logger.error('sync.flush', 'Write kept conflicting; dropped', {
-            entity: op.entity,
-            docId: op.docId,
+          await park(op, {
+            reason: 'conflict',
+            message: 'Kept meeting newer changes made on another phone.',
           });
-          done.push(op.opId);
           break;
         }
         await updateStore((s) => ({
@@ -294,15 +387,73 @@ async function settle(batch: PendingOp[], outcomes: PushOutcome[]): Promise<void
   await removePending(done);
 }
 
-export async function flushPending(): Promise<void> {
+/**
+ * What a failed send means for the queue. Returns true when the pass should carry on with the
+ * next writes, false when it should stop and wait for the backoff.
+ */
+async function handleSendFailure(batch: PendingOp[], error: unknown): Promise<boolean> {
+  const head = batch[0]!;
+  const meta = {
+    ...syncErrorMeta(error),
+    entity: head.entity,
+    docId: head.docId,
+    batch: batch.length,
+  };
+  if (isTransientError(error)) {
+    // Offline, signed out or told to slow down: nothing is wrong with the writes themselves.
+    if (isNetworkError(error)) {
+      setCloudReachable(false);
+      // A big batch can time out on a slow connection every time: send less on the next try.
+      batchLimit = Math.max(1, Math.floor(batch.length / 2));
+    }
+    backOff('network');
+    logger.warn('sync.flush', 'Send failed; will retry', meta);
+    return false;
+  }
+  if (batch.length > 1) {
+    // The batch as a whole failed (too big, or one write in it): try again in smaller pieces
+    // so the culprit ends up alone, and never give up on the others.
+    batchLimit = Math.max(1, Math.floor(batch.length / 2));
+    logger.warn('sync.flush', 'Batch failed; retrying in smaller batches', meta);
+    if (isPermanentWriteError(error)) {
+      return true;
+    }
+    backOff('server');
+    return false;
+  }
+  if (isPermanentWriteError(error)) {
+    await park(head, { reason: 'rejected', ...refusalOf(error) });
+    return true;
+  }
+  // A server error on this one write.
+  logger.error('sync.flush', 'Send failed', meta);
+  backOff('server');
+  const failures = (head.failures ?? 0) + 1;
+  if (failures >= MAX_FAILURES) {
+    await park(head, { reason: 'failing', message: 'The server could not save this change.' });
+    return true;
+  }
+  await updatePending([head.opId], (p) => ({ ...p, failures }));
+  return false;
+}
+
+/**
+ * Send queued writes, oldest first, until the queue is empty or sending must wait. After a
+ * failure the next automatic tries are spaced out; `force` (reconnect, the user's Retry) skips
+ * that wait.
+ */
+export async function flushPending(options: { force?: boolean } = {}): Promise<void> {
   if (flushing) {
     // A pass is running; make sure it looks at the queue once more before it stops.
     flushAgain = true;
     return;
   }
+  if (!options.force && Date.now() < retryAt) {
+    return;
+  }
   await loadStore();
   const user = getStore().user;
-  if (!shouldCloudSync(user) || !isOnline()) {
+  if (!user || !shouldCloudSync(user) || !isOnline()) {
     return;
   }
 
@@ -310,7 +461,7 @@ export async function flushPending(): Promise<void> {
   try {
     for (;;) {
       await updateStore((s) => ({ ...s, pendingOps: sortPendingOps(s.pendingOps) }));
-      const batch = takeBatch(getStore().pendingOps);
+      const batch = takeBatch(getStore().pendingOps, user.uid);
       const next = batch[0];
       if (!next) {
         break;
@@ -318,27 +469,13 @@ export async function flushPending(): Promise<void> {
       try {
         const outcomes = isBatchable(next) ? await pushDocBatch(batch) : [await pushSingle(next)];
         await settle(batch, outcomes);
-        setCloudReachable(true);
+        sendSucceeded();
       } catch (error) {
-        if (isPermanentWriteError(error)) {
-          // The server will never accept this write: drop it so it cannot block the queue.
-          reportRejectedWrite(next, syncErrorMeta(error));
-          await removePending([next.opId]);
-          continue;
+        if (!(await handleSendFailure(batch, error))) {
+          // Retried after the backoff, on reconnect or on the user's Retry: never in a tight loop.
+          flushAgain = false;
+          break;
         }
-        await bumpAttempts(next.opId);
-        if (isNetworkError(error)) {
-          setCloudReachable(false);
-        }
-        // Retried on the next write, reconnect or app start, not in a tight loop.
-        flushAgain = false;
-        logger.error('sync.flush', 'Pending op failed', {
-          ...syncErrorMeta(error),
-          entity: next.entity,
-          docId: next.docId,
-          attempts: next.attempts + 1,
-        });
-        break;
       }
     }
   } finally {
@@ -350,24 +487,25 @@ export async function flushPending(): Promise<void> {
   }
 }
 
-let lastRejectNoticeAt = 0;
+let lastParkedNoticeAt = 0;
 
-/** Log a write the server refused, and tell the user once in a while (not per document). */
-function reportRejectedWrite(op: PendingOp, meta: ReturnType<typeof syncErrorMeta>): void {
-  logger.error('sync.schedule', 'Write rejected by server; dropped', {
-    ...meta,
-    entity: op.entity,
-    docId: op.docId,
-    action: op.action,
-  });
+/** Tell the user a change was set aside, once in a while (not per document). */
+function noticeParked(): void {
   const now = Date.now();
-  if (now - lastRejectNoticeAt > 60_000) {
-    lastRejectNoticeAt = now;
+  if (now - lastParkedNoticeAt > 60_000) {
+    lastParkedNoticeAt = now;
     notify.error(
       'A change was not saved online',
-      'You may not have permission for it (for example, someone else is scoring). It stays on this phone only.',
+      'It is kept on this phone. Use Retry or Discard in the bar at the top of the screen.',
     );
   }
+}
+
+/** Forget the backoff and batch narrowing (tests, and a fresh sign-in). */
+export function resetSendBackoff(): void {
+  retryDelayMs = 0;
+  retryAt = 0;
+  batchLimit = MAX_BATCH;
 }
 
 export { buildCloudUserPayload };

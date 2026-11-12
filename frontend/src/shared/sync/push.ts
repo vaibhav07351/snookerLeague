@@ -104,6 +104,19 @@ function documentFor(op: PendingOp): Record<string, unknown> {
   return { ...toJsonObject(base ?? payload), ...pick(payload, op.fieldsOnly) };
 }
 
+/** Ids, version and field names around each document in a push request. */
+const OP_OVERHEAD_CHARS = 256;
+
+/**
+ * Rough size of one write in a push request, in JSON characters. Used to keep a batch well
+ * under the server's 1 MB body limit; it serializes the document, so only call it when a
+ * batch holds more than one write.
+ */
+export function wireSize(op: PendingOp): number {
+  const doc = op.action === 'upsert' ? JSON.stringify(documentFor(op)).length : 0;
+  return doc + OP_OVERHEAD_CHARS;
+}
+
 function toPushOp(op: PendingOp): PushOp {
   const entity = op.entity as DocEntity;
   const leagueId = entity === 'league' ? op.docId : (op.leagueId ?? '');

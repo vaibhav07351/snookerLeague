@@ -10,7 +10,7 @@ import {
   RACE_FOUL_POINTS,
   withRaceDefaults,
 } from '@/features/race/services/race-helpers';
-import { nextPlace, persistRace } from '@/features/race/services/race.service';
+import { nextPlace, persistRace, serializeRaceWrite } from '@/features/race/services/race.service';
 import { AppError } from '@/shared/errors/app-error';
 import { logger } from '@/shared/logging/logger';
 import { getStore, loadStore } from '@/shared/storage/local-store';
@@ -91,7 +91,11 @@ async function appendShot(
   return updated;
 }
 
-export async function setAtTablePlayer(raceId: string, playerId: string): Promise<Race> {
+export function setAtTablePlayer(raceId: string, playerId: string): Promise<Race> {
+  return serializeRaceWrite(raceId, () => writeAtTablePlayer(raceId, playerId));
+}
+
+async function writeAtTablePlayer(raceId: string, playerId: string): Promise<Race> {
   const race = await requireLiveRace(raceId);
   const target = race.entrants.find((e) => e.playerId === playerId);
   if (!target || target.place !== null) {
@@ -110,7 +114,11 @@ export async function setAtTablePlayer(raceId: string, playerId: string): Promis
   return updated;
 }
 
-export async function recordPot(raceId: string, ball: BallValue): Promise<Race> {
+export function recordPot(raceId: string, ball: BallValue): Promise<Race> {
+  return serializeRaceWrite(raceId, () => writePot(raceId, ball));
+}
+
+async function writePot(raceId: string, ball: BallValue): Promise<Race> {
   const parsed = ballSchema.safeParse(ball);
   if (!parsed.success) {
     throw new AppError('VALIDATION', 'Invalid pot');
@@ -136,7 +144,11 @@ export async function recordPot(raceId: string, ball: BallValue): Promise<Race> 
   return appendShot({ ...race, entrants }, shot, nextId);
 }
 
-export async function recordFoul(raceId: string, points: number): Promise<Race> {
+export function recordFoul(raceId: string, points: number): Promise<Race> {
+  return serializeRaceWrite(raceId, () => writeFoul(raceId, points));
+}
+
+async function writeFoul(raceId: string, points: number): Promise<Race> {
   const parsed = foulSchema.safeParse(points);
   if (!parsed.success) {
     throw new AppError('VALIDATION', 'Foul must be 4 or 10 points');
@@ -176,14 +188,18 @@ async function recordTurnEnd(raceId: string, kind: 'miss' | 'safety'): Promise<R
 }
 
 export function recordMiss(raceId: string): Promise<Race> {
-  return recordTurnEnd(raceId, 'miss');
+  return serializeRaceWrite(raceId, () => recordTurnEnd(raceId, 'miss'));
 }
 
 export function recordSafety(raceId: string): Promise<Race> {
-  return recordTurnEnd(raceId, 'safety');
+  return serializeRaceWrite(raceId, () => recordTurnEnd(raceId, 'safety'));
 }
 
-export async function undoLast(raceId: string): Promise<Race> {
+export function undoLast(raceId: string): Promise<Race> {
+  return serializeRaceWrite(raceId, () => writeUndo(raceId));
+}
+
+async function writeUndo(raceId: string): Promise<Race> {
   const race = await requireLiveRace(raceId);
   const shots = race.liveShots ?? [];
   const last = shots[shots.length - 1];

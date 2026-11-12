@@ -14,7 +14,7 @@ import { logger } from '@/shared/logging/logger';
 import { clearSessionPreferences } from '@/shared/storage/preferences';
 import { createId, nowIso } from '@/shared/utils/id';
 import { emptyStore, getStore, loadStore, updateStore } from '@/shared/storage/local-store';
-import { scheduleUserProfileSync, syncAfterGoogleSignIn } from '@/shared/sync';
+import { scheduleUserProfileSync, syncAfterGoogleSignIn, tagQueuedWrites } from '@/shared/sync';
 import { stopWatchingActiveLeague } from '@/shared/sync/watch';
 import type { AppDataStore, SessionUser } from '@/shared/types/domain';
 
@@ -188,13 +188,15 @@ export async function signOut(): Promise<void> {
       logger.warn('auth.service', 'Server sign-out failed', apiErrorMeta(error));
     }
   }
-  // Sync bookkeeping belongs to the account: the next sign-in pulls from the start.
+  // Sync bookkeeping belongs to the account: the next sign-in pulls from the start. Unsent
+  // writes stay on this phone, marked as this account's, so only this account sends them.
   await updateStore((s) => ({
     ...s,
     user: null,
     activeLeagueId: null,
     serverVersions: {},
     syncCursor: 0,
+    pendingOps: s.user ? tagQueuedWrites(s.pendingOps, s.user.uid) : s.pendingOps,
   }));
   await clearSessionPreferences();
   logger.info('auth.service', 'Signed out');

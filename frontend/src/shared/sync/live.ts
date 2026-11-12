@@ -70,7 +70,12 @@ export function watchMatchLive(matchId: string): () => void {
       }
       if (msg.type === 'match' && msg.doc) {
         backoff = 1_000;
-        void applyServerDocs([msg.doc]);
+        applyServerDocs([msg.doc]).catch((error: unknown) => {
+          logger.error('sync.live', 'Could not store a live update', {
+            matchId,
+            shape: error instanceof Error ? error.name : 'unknown',
+          });
+        });
       } else if (msg.type === 'error' && msg.code && FINAL_CODES.has(msg.code)) {
         logger.info('sync.live', 'Live watch refused', { matchId, code: msg.code });
         stopped = true;

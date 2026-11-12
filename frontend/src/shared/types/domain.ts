@@ -607,11 +607,31 @@ export interface PendingOp {
   /** Full document for upsert; null for delete. */
   payload: unknown | null;
   updatedAt: string;
+  /** Times the server held a newer copy and the write was merged and resent. */
   attempts: number;
   /** Write only these top-level fields (e.g. match settings), never the whole document. */
   fieldsOnly?: string[];
   /** League membership change for one person (join or leave), applied atomically. */
   membership?: { add?: string; remove?: string };
+  /**
+   * The account that made the change; only that account's session sends it, so a write made
+   * before signing out never travels under the next account. Missing on older queued writes.
+   */
+  uid?: string;
+  /** Server errors (not network problems) met while sending, used to set aside a stuck write. */
+  failures?: number;
+  /** Set aside: never sent automatically, kept until the user retries or discards it. */
+  parked?: ParkedWrite;
+}
+
+/** Why a queued write was set aside instead of being sent. */
+export interface ParkedWrite {
+  /** rejected: the server said no. conflict: kept meeting newer copies. failing: server errors. */
+  reason: 'rejected' | 'conflict' | 'failing';
+  /** The server's error code, when it gave one. */
+  code?: string;
+  message: string;
+  at: string;
 }
 
 /** Amateur snooker age band, derived from date of birth. */

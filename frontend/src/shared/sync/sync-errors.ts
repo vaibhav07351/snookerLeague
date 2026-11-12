@@ -35,6 +35,21 @@ export function isNetworkError(error: unknown): boolean {
   return error instanceof NetworkError;
 }
 
+/** 401 sign in again, 408 timeout, 429 slow down, 502-504 the server is restarting or down. */
+const TRANSIENT_STATUSES = new Set([401, 408, 429, 502, 503, 504]);
+
+/**
+ * Failures that say nothing about the write itself: no network, the session needs a new
+ * sign-in, the server asked us to slow down or is briefly unavailable. Wait and try again,
+ * never give up on the write.
+ */
+export function isTransientError(error: unknown): boolean {
+  if (isNetworkError(error)) {
+    return true;
+  }
+  return error instanceof ApiError && TRANSIENT_STATUSES.has(error.status);
+}
+
 /** Error fields that are safe to put in logs. */
 export function syncErrorMeta(error: unknown): { shape: string; status?: number; code?: string } {
   if (error instanceof RejectedWriteError) {

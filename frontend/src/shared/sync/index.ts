@@ -45,7 +45,7 @@ export async function syncAfterGoogleSignIn(user: SessionUser): Promise<void> {
   await scheduleUserProfileSync();
   await uploadLocalOnlyLeagues(user);
   if (isOnline()) {
-    await flushPending();
+    await flushPending({ force: true });
   }
   watchActiveLeague(getStore().activeLeagueId);
 }
@@ -141,7 +141,8 @@ async function reconnect(): Promise<void> {
     return;
   }
   await uploadLocalOnlyLeagues(user);
-  await flushPending();
+  // Back online: send now instead of waiting out the backoff from the failures while offline.
+  await flushPending({ force: true });
   try {
     await pullChanges();
     setCloudReachable(true);
@@ -193,4 +194,5 @@ export function stopSyncRuntime(): void {
 }
 
 export { scheduleSync, scheduleUserProfileSync, flushPending, shouldCloudSync };
+export { tagQueuedWrites } from '@/shared/sync/schedule';
 export type { ScheduleItem } from '@/shared/sync/schedule';

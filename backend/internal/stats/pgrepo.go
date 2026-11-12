@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,27 +16,64 @@ type PGRepository struct{ pool *pgxpool.Pool }
 // NewPGRepository builds the Postgres repository.
 func NewPGRepository(pool *pgxpool.Pool) *PGRepository { return &PGRepository{pool: pool} }
 
-// ClaimDirty takes up to limit leagues off the queue. SKIP LOCKED keeps two workers from
-// taking the same league.
-func (r *PGRepository) ClaimDirty(ctx context.Context, limit int) ([]string, error) {
+// ClaimDirty returns up to limit queued leagues that are due, the longest-waiting first. Rows
+// stay on the queue until ClearDirty, so nothing is lost if the worker stops mid-pass.
+func (r *PGRepository) ClaimDirty(ctx context.Context, limit int) ([]DirtyLeague, error) {
 	rows, err := r.pool.Query(ctx,
-		`DELETE FROM stats_dirty WHERE league_id IN (
-		     SELECT league_id FROM stats_dirty ORDER BY marked_at LIMIT $1 FOR UPDATE SKIP LOCKED)
-		 RETURNING league_id`, limit)
+		`SELECT league_id, marked_at, attempts FROM stats_dirty
+		  WHERE retry_at IS NULL OR retry_at <= now()
+		  ORDER BY marked_at LIMIT $1`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("claim dirty: %w", err)
 	}
-	return pgx.CollectRows(rows, pgx.RowTo[string])
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (DirtyLeague, error) {
+		var d DirtyLeague
+		err := row.Scan(&d.ID, &d.MarkedAt, &d.Attempts)
+		return d, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("read dirty leagues: %w", err)
+	}
+	return out, nil
 }
 
-// MarkDirty puts a league (back) on the queue.
-func (r *PGRepository) MarkDirty(ctx context.Context, leagueID string) error {
+// ClearDirty takes a recomputed league off the queue. A league marked again since markedAt
+// (a write landed during the recompute) stays queued, with its failure count reset.
+func (r *PGRepository) ClearDirty(ctx context.Context, leagueID string, markedAt time.Time) error {
 	if _, err := r.pool.Exec(ctx,
-		`INSERT INTO stats_dirty (league_id) VALUES ($1) ON CONFLICT (league_id) DO NOTHING`, leagueID); err != nil {
+		`DELETE FROM stats_dirty WHERE league_id = $1 AND marked_at = $2`, leagueID, markedAt); err != nil {
+		return fmt.Errorf("clear dirty: %w", err)
+	}
+	if _, err := r.pool.Exec(ctx,
+		`UPDATE stats_dirty SET attempts = 0, retry_at = NULL WHERE league_id = $1`, leagueID); err != nil {
+		return fmt.Errorf("reset dirty attempts: %w", err)
+	}
+	return nil
+}
+
+// DeferDirty keeps a league that failed on the queue and makes it wait until retryAt.
+func (r *PGRepository) DeferDirty(ctx context.Context, leagueID string, attempts int, retryAt time.Time) error {
+	if _, err := r.pool.Exec(ctx,
+		`UPDATE stats_dirty SET attempts = $2, retry_at = $3 WHERE league_id = $1`,
+		leagueID, attempts, retryAt); err != nil {
+		return fmt.Errorf("defer dirty: %w", err)
+	}
+	return nil
+}
+
+// MarkDirty puts a league on the queue, or refreshes its mark when it is already there so a
+// recompute that is running now knows to run again.
+func (r *PGRepository) MarkDirty(ctx context.Context, leagueID string) error {
+	if _, err := r.pool.Exec(ctx, markDirtySQL, leagueID); err != nil {
 		return fmt.Errorf("mark dirty: %w", err)
 	}
 	return nil
 }
+
+// markDirtySQL refreshes marked_at on conflict, like the sync module's MarkDirty (which runs
+// inside a sync transaction). clock_timestamp, not now(): now() is the transaction's start.
+const markDirtySQL = `INSERT INTO stats_dirty (league_id) VALUES ($1)
+	ON CONFLICT (league_id) DO UPDATE SET marked_at = clock_timestamp()`
 
 // Load reads the league's live documents.
 func (r *PGRepository) Load(ctx context.Context, leagueID string) (LeagueData, bool, error) {

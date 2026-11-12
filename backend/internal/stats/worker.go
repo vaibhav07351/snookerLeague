@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"math"
 	"time"
+
+	"github.com/vaibhav/snookit-server/internal/platform/httpx"
 )
 
 // Card is a league player card as the worker needs it.
@@ -44,10 +46,23 @@ type CityRank struct {
 	Maximums     int
 }
 
+// DirtyLeague is one league waiting for a recompute.
+type DirtyLeague struct {
+	ID string
+	// MarkedAt is when a write last queued it; a later mark means "run again".
+	MarkedAt time.Time
+	// Attempts counts failed recomputes in a row.
+	Attempts int
+}
+
 // Repository is the worker's persistence boundary.
 type Repository interface {
-	// ClaimDirty removes and returns up to limit queued league ids.
-	ClaimDirty(ctx context.Context, limit int) ([]string, error)
+	// ClaimDirty returns up to limit due leagues, longest-waiting first, without removing them.
+	ClaimDirty(ctx context.Context, limit int) ([]DirtyLeague, error)
+	// ClearDirty removes a recomputed league unless it was marked again after markedAt.
+	ClearDirty(ctx context.Context, leagueID string, markedAt time.Time) error
+	// DeferDirty keeps a failed league queued and makes it wait until retryAt.
+	DeferDirty(ctx context.Context, leagueID string, attempts int, retryAt time.Time) error
 	MarkDirty(ctx context.Context, leagueID string) error
 	// Load returns the league's live documents; ok is false when the league is gone.
 	Load(ctx context.Context, leagueID string) (data LeagueData, ok bool, err error)
@@ -193,26 +208,67 @@ func (w *Worker) Run(ctx context.Context) {
 	}
 }
 
-// RunOnce recomputes every queued league once. A league that fails goes back on the queue.
+const (
+	// maxBatchesPerRun bounds one run: a league written to during its own recompute stays due,
+	// and is picked up again on the next tick rather than in a loop here.
+	maxBatchesPerRun = 20
+	firstRetryDelay  = 30 * time.Second
+	maxRetryDelay    = time.Hour
+	// reportAfter failures in a row, a league is reported as broken (Sentry, when on).
+	reportAfter = 3
+)
+
+// retryDelay doubles with each failure in a row, up to maxRetryDelay.
+func retryDelay(attempts int) time.Duration {
+	d := firstRetryDelay
+	for i := 1; i < attempts && d < maxRetryDelay; i++ {
+		d *= 2
+	}
+	return min(d, maxRetryDelay)
+}
+
+// RunOnce recomputes the queued leagues that are due. A league stays queued until its
+// recompute succeeds; one that fails waits (longer each time) while the others carry on.
 func (w *Worker) RunOnce(ctx context.Context) error {
-	for {
-		ids, err := w.repo.ClaimDirty(ctx, batchSize)
+	for range maxBatchesPerRun {
+		batch, err := w.repo.ClaimDirty(ctx, batchSize)
 		if err != nil {
 			return fmt.Errorf("claim dirty leagues: %w", err)
 		}
-		if len(ids) == 0 {
+		if len(batch) == 0 {
 			return nil
 		}
-		for _, id := range ids {
-			if err := w.recompute(ctx, id); err != nil {
-				slog.Error("recompute league failed", "league", id, "error", err)
-				if requeueErr := w.repo.MarkDirty(ctx, id); requeueErr != nil {
-					return fmt.Errorf("requeue %s: %w", id, requeueErr)
+		for _, d := range batch {
+			if err := w.recompute(ctx, d.ID); err != nil {
+				if ctx.Err() != nil {
+					return nil // shutting down: the league is still queued for next time
 				}
-				return nil // try again on the next pass, not in a tight loop
+				if err := w.deferLeague(ctx, d, err); err != nil {
+					return err
+				}
+				continue
+			}
+			if err := w.repo.ClearDirty(ctx, d.ID, d.MarkedAt); err != nil {
+				return fmt.Errorf("clear %s: %w", d.ID, err)
 			}
 		}
 	}
+	return nil
+}
+
+// deferLeague logs a failed recompute and makes the league wait before its next try.
+func (w *Worker) deferLeague(ctx context.Context, d DirtyLeague, cause error) error {
+	attempts := d.Attempts + 1
+	wait := retryDelay(attempts)
+	slog.Error("recompute league failed", "league", d.ID, "attempts", attempts,
+		"retry_in", wait.String(), "error", cause)
+	if attempts >= reportAfter && httpx.ReportError != nil {
+		httpx.ReportError(ctx, fmt.Errorf("stats for league %s failed %d times: %w", d.ID, attempts, cause))
+	}
+	if err := w.repo.DeferDirty(ctx, d.ID, attempts, time.Now().Add(wait)); err != nil {
+		return fmt.Errorf("defer %s: %w", d.ID, err)
+	}
+	return nil
 }
 
 func (w *Worker) recompute(ctx context.Context, leagueID string) error {
