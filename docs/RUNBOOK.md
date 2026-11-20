@@ -67,28 +67,30 @@ so the previous image still works with the newer database.
 
 ## Restore a backup
 
-Backups: `~/backups/snookit-YYYY-MM-DD.sql.gz`, nightly at 03:00 UTC, 7 days kept.
+Backups: `~/backups/snookit-YYYY-MM-DD.sql.gz.gpg` (encrypted), nightly at 03:00 UTC, 7 days
+kept, and the same files on the off-VM remote (`BACKUP_REMOTE` in `deploy/backup.env`).
+`restore.sh` decrypts with the passphrase file named in `backup.env`; older plain `.sql.gz`
+files work too.
 
-**Practise first** (once a month): restore into a scratch database and look around.
+**Practise first** (once a month): restore into a scratch database. It prints the number of
+users and documents and the newest change, then removes the scratch copy. The live database
+is not touched.
 
 ```bash
 cd ~/snookit-backend/deploy
-docker compose exec postgres createdb -U snookit restore_check
-gunzip -c ~/backups/snookit-YYYY-MM-DD.sql.gz | docker compose exec -T postgres psql -q -U snookit -d restore_check
-docker compose exec postgres psql -U snookit -d restore_check -c "SELECT count(*) FROM users; SELECT count(*) FROM docs;"
-docker compose exec postgres dropdb -U snookit restore_check
+./restore.sh ~/backups/snookit-YYYY-MM-DD.sql.gz.gpg
+./restore.sh offsite:snookit-backups/snookit-YYYY-MM-DD.sql.gz.gpg
 ```
 
-**For real** (this replaces the live database; every change since the backup is lost):
+The second line proves the off-VM copy opens too (use your own remote name).
+
+**For real** (this replaces the live database; every change since the backup is lost). It asks
+you to type RESTORE, saves the current database as `~/backups/pre-restore-<time>.sql.gz.gpg`,
+stops the API, restores, and starts the API again:
 
 ```bash
 cd ~/snookit-backend/deploy
-docker compose stop api
-docker compose exec postgres dropdb -U snookit snookit
-docker compose exec postgres createdb -U snookit snookit
-gunzip -c ~/backups/snookit-YYYY-MM-DD.sql.gz | docker compose exec -T postgres psql -q -U snookit -d snookit
-docker compose start api
-docker compose logs api --tail 10
+./restore.sh ~/backups/snookit-YYYY-MM-DD.sql.gz.gpg --into-live
 ```
 
 Phones keep their own copies and re-send anything newer when they next sync.
@@ -121,7 +123,8 @@ support (for example `4.1.0`), then `docker compose up -d api`. Older apps show 
 
 If the VM is lost: create an Ubuntu Arm VM (Always Free shape), install Docker, then follow
 `docs/DEPLOY_BACKEND.md` from Step 2. Restore the newest backup copy you have off the VM
-(see "Backups off the VM" below) with "Restore a backup / For real". Point DuckDNS at the new IP.
+(see "Backups off the VM" below) with "Restore a backup / For real": first install rclone
+and gpg, put back `backup.env`, the passphrase file and the rclone config (`rclone config`). Point DuckDNS at the new IP.
 
 ## VM security (one-time, needs sudo)
 
@@ -152,14 +155,17 @@ Security Lists), only ports 22, 80 and 443 should be open. Postgres publishes no
 
 ## Backups off the VM
 
-The nightly backup stays on the VM's own disk, which does not survive losing the VM. Until an
-automatic copy exists, copy the newest file to the PC now and then (**PC**):
+`backup.sh` copies each night's encrypted file to `BACKUP_REMOTE` with rclone and deletes remote
+files older than 7 days (setup: `docs/DEPLOY_BACKEND.md` Step 11). Check it now and then:
 
-```powershell
-scp -i "D:\Project Apps\ironcoach\Resources\ssh-key-2026-09-22.key" "ubuntu@140.245.8.153:~/backups/snookit-*.sql.gz" "D:\Backups\snookit\"
+```bash
+journalctl -u snookit-backup.service --no-pager -n 5
+rclone ls offsite:snookit-backups
 ```
 
-Treat these files as private: they contain every user's data.
+The journal should end with `copied off the VM: ...`. A line `WARNING: BACKUP_REMOTE is not set`
+means there is no copy off the VM. The passphrase lives in `~/.snookit-backup-pass` and in your
+password manager; without it no backup can be opened, so never keep it only on the VM.
 
 ## Review reports and removal requests
 

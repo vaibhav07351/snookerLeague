@@ -1,3 +1,4 @@
 deploy/.env
 *.test
 bin/
+deploy/backup.env

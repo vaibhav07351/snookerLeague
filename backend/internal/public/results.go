@@ -345,7 +345,8 @@ func (h *Handler) resultPage(kind string) http.HandlerFunc {
 		}
 		h.render(w, http.StatusOK, tmpl, view{
 			Title: resultTitle(res) + " | Snookit", Description: res.Label + " on Snookit",
-			URL: h.cfg.BaseURL + kindPath[kind] + res.ID, Data: res,
+			URL: h.cfg.BaseURL + kindPath[kind] + res.ID, Data: res, NoIndex: true,
+			Image: h.cfg.BaseURL + kindPath[kind] + res.ID + "/card.png?v=" + cardVersion(res),
 		})
 	}
 }

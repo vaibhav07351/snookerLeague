@@ -40,7 +40,8 @@ func (h *Handler) previewClaim(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	preview, err := h.svc.PreviewClaimLink(r.Context(), req.Token)
+	claims, _ := auth.ClaimsFrom(r.Context())
+	preview, err := h.svc.PreviewClaimLink(r.Context(), claims.Subject, req.Token)
 	if err != nil {
 		httpx.WriteError(w, r, asAPIError(err))
 		return

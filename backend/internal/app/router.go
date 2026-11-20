@@ -13,6 +13,7 @@ import (
 	"github.com/vaibhav/snookit-server/internal/account"
 	"github.com/vaibhav/snookit-server/internal/auth"
 	"github.com/vaibhav/snookit-server/internal/community"
+	"github.com/vaibhav/snookit-server/internal/events"
 	"github.com/vaibhav/snookit-server/internal/live"
 	"github.com/vaibhav/snookit-server/internal/platform/config"
 	"github.com/vaibhav/snookit-server/internal/platform/httpx"
@@ -52,8 +53,10 @@ func NewRouter(cfg config.Config, pool *pgxpool.Pool) http.Handler {
 		issuer, cfg.RefreshTokenTTL, cfg.RefreshGrace,
 	)
 	authHandler := auth.NewHandler(authSvc)
+	eventsSvc := events.NewService(events.NewPGStore(pool))
 	syncSvc := sync.NewService(sync.NewPGStore(pool))
 	syncSvc.SetClaims(sync.NewPGClaims(pool))
+	syncSvc.SetEvents(eventsSvc)
 	hub := live.NewHub()
 	syncSvc.SetPublisher(hub)
 	liveHandler := live.NewHandler(hub, authSvc, syncSvc, webOrigins)
@@ -71,12 +74,14 @@ func NewRouter(cfg config.Config, pool *pgxpool.Pool) http.Handler {
 		AndroidPackage:      androidPackage,
 		AndroidFingerprints: cfg.AndroidCertSHA256,
 	}, syncSvc, communitySvc, tournament.NewPublicPages(syncSvc, communityRepo), public.NewPGRemovals(pool), communityRepo)
-	accountHandler := account.NewHandler(account.NewService(authSvc, syncSvc, communitySvc), cfg.SupportEmail)
+	publicHandler.SetCities(communityRepo)
+	accountHandler := account.NewHandler(account.NewService(authSvc, syncSvc, communitySvc, eventsSvc), cfg.SupportEmail)
+	eventsHandler := events.NewHandler(eventsSvc)
 	authLimiter := httpx.NewRateLimiter(authRateLimit, authRateWindow)
 	userLimiter := httpx.NewRateLimiter(userRateLimit, userRateWindow)
 
 	r := chi.NewRouter()
-	r.Use(httpx.RequestIDMiddleware, httpx.Recoverer, httpx.CORS(webOrigins))
+	r.Use(httpx.RequestIDMiddleware, httpx.AccessLog, httpx.Recoverer, httpx.CORS(webOrigins))
 	r.Get("/healthz", healthHandler(pool))
 	accountHandler.PublicRoutes(r)
 	publicHandler.Routes(r)
@@ -99,6 +104,7 @@ func NewRouter(cfg config.Config, pool *pgxpool.Pool) http.Handler {
 			communityHandler.ProtectedRoutes(protected)
 			accountHandler.ProtectedRoutes(protected)
 			statsHandler.ProtectedRoutes(protected)
+			eventsHandler.ProtectedRoutes(protected)
 		})
 	})
 	return r

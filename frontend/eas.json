@@ -13,24 +13,26 @@
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "android": {
         "buildType": "apk"
       },
       "env": {
         "EXPO_PUBLIC_USE_LOCAL_DATA": "false",
         "EXPO_PUBLIC_API_URL": "https://snookit.duckdns.org",
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        "SENTRY_ALLOW_FAILURE": "true"
       }
     },
     "production": {
       "autoIncrement": true,
+      "channel": "production",
       "android": {
         "buildType": "app-bundle"
       },
       "env": {
         "EXPO_PUBLIC_USE_LOCAL_DATA": "false",
         "EXPO_PUBLIC_API_URL": "https://snookit.duckdns.org",
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        "SENTRY_ALLOW_FAILURE": "true"
       }
     }
   },

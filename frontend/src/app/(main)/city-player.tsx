@@ -12,6 +12,7 @@ import * as profileService from '@/features/community/services/profile.service';
 import { Button } from '@/shared/ui/Button';
 import { Screen } from '@/shared/ui/Screen';
 import * as cityHubService from '@/features/league/services/city-hub.service';
+import { usePushOffer } from '@/features/notifications/hooks/use-push-offer';
 import * as playersService from '@/features/players/services/players.service';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { useLayout } from '@/shared/hooks/use-layout';
@@ -35,6 +36,7 @@ export default function CityPlayerScreen(): ReactNode {
   const { scale } = useLayout();
   const { uid } = useLocalSearchParams<{ uid: string }>();
   const { user } = useSession();
+  const offerPush = usePushOffer();
   const [profile, setProfile] = useState<PlayerProfile | null>(null);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [busy, setBusy] = useState(false);
@@ -66,6 +68,7 @@ export default function CityPlayerScreen(): ReactNode {
       } else {
         await followService.followPlayer(uid);
         setFollowing(true);
+        void offerPush('followed');
       }
     } catch (error) {
       notify.error('Could not update follow', toUserMessage(error));
@@ -90,6 +93,7 @@ export default function CityPlayerScreen(): ReactNode {
     try {
       await challengeService.createChallenge({ toUid: uid, cityId: user.cityId });
       notify.success('Challenge sent', 'They will see it in Community.');
+      void offerPush('challenge_sent');
     } catch (error) {
       notify.error('Could not challenge', toUserMessage(error));
     } finally {

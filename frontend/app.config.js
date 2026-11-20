@@ -14,6 +14,17 @@ module.exports = ({ config }) => ({
   scheme: 'snooker',
   userInterfaceStyle: 'automatic',
   newArchEnabled: true,
+  // Patch updates (EAS Update): JavaScript-only fixes reach installed apps without a store
+  // release. The fingerprint policy gives each set of native code its own runtime version,
+  // so an update is only ever sent to builds whose native code it was made for.
+  runtimeVersion: { policy: 'fingerprint' },
+  updates: {
+    url: 'https://u.expo.dev/66106947-8796-4241-8d9a-de50e4f04021',
+    // Start with the copy already on the phone; a new update downloads in the background and
+    // is used from the next launch, so a slow network never holds up opening the app.
+    checkAutomatically: 'ON_LOAD',
+    fallbackToCacheTimeout: 0,
+  },
   splash: {
     image: './assets/splash-icon.png',
     resizeMode: 'contain',
@@ -66,7 +77,10 @@ module.exports = ({ config }) => ({
     'expo-splash-screen',
     '@react-native-google-signin/google-signin',
     'expo-secure-store',
+    // Uploads source maps during EAS builds so crash reports show real file names and lines.
+    // Needs SENTRY_ORG, SENTRY_PROJECT and SENTRY_AUTH_TOKEN as EAS environment variables.
     '@sentry/react-native/expo',
+    'expo-updates',
     'expo-notifications',
     [
       'expo-location',

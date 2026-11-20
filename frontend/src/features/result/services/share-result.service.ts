@@ -4,6 +4,7 @@ import { Platform, Share, type View } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 
 import type { ResultKind } from '@/features/result/types/result.types';
+import { trackEvent } from '@/shared/analytics/track';
 import { getApiBaseUrl } from '@/shared/config/env';
 import { AppError } from '@/shared/errors/app-error';
 import { logger } from '@/shared/logging/logger';
@@ -18,6 +19,10 @@ export function resultShareUrl(kind: ResultKind, id: string): string {
   return `${getApiBaseUrl() || DEFAULT_PUBLIC_BASE}/${PATH[kind]}/${encodeURIComponent(id)}`;
 }
 
+function trackShare(kind: ResultKind, id: string): void {
+  trackEvent({ name: 'share_tapped', ref: id, props: { kind } });
+}
+
 /** Share the result link as text (works everywhere, including the web build). */
 export async function shareResultLink(
   kind: ResultKind,
@@ -25,6 +30,7 @@ export async function shareResultLink(
   summary: string,
 ): Promise<void> {
   const url = resultShareUrl(kind, id);
+  trackShare(kind, id);
   try {
     await Share.share({ message: `${summary}\n${url}`, url });
   } catch (error) {
@@ -50,6 +56,7 @@ export async function shareResultCard(
     await shareResultLink(kind, id, summary);
     return;
   }
+  trackShare(kind, id);
   try {
     const uri = await captureRef(card, { format: 'png', quality: 1, result: 'tmpfile' });
     await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: summary });

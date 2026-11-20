@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -198,4 +199,42 @@ func (r *PGRepository) RemoveDeviceToken(ctx context.Context, token string) erro
 		return fmt.Errorf("remove push token: %w", err)
 	}
 	return nil
+}
+
+// CityEntry is a city that has a public ranking page, with the time its board last changed.
+type CityEntry struct {
+	ID        string
+	UpdatedAt time.Time
+}
+
+// minRankedGames matches the city page: players with fewer games are not listed there.
+const minRankedGames = 3
+
+// PublicCities lists the cities whose ranking page shows at least one player (for the
+// sitemap), most players first, at most limit.
+func (r *PGRepository) PublicCities(ctx context.Context, limit int) ([]CityEntry, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT city_id, max(updated_at) FROM community_docs
+		  WHERE kind = 'profile' AND city_id <> ''
+		    AND CASE WHEN jsonb_typeof(data->'played') = 'number'
+		             THEN (data->>'played')::double precision ELSE 0 END >= $1
+		  GROUP BY city_id
+		  ORDER BY count(*) DESC, city_id
+		  LIMIT $2`, minRankedGames, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list public cities: %w", err)
+	}
+	defer rows.Close()
+	var out []CityEntry
+	for rows.Next() {
+		var c CityEntry
+		if err := rows.Scan(&c.ID, &c.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan public city: %w", err)
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read public cities: %w", err)
+	}
+	return out, nil
 }

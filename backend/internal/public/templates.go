@@ -11,7 +11,12 @@ const layout = `{{define "layout"}}<!doctype html>
 <meta name="description" content="{{.Description}}">
 <meta property="og:title" content="{{.Title}}">
 <meta property="og:description" content="{{.Description}}">
-<meta property="og:image" content="{{.BaseURL}}/static/logo.png">
+{{if .NoIndex}}<meta name="robots" content="noindex">{{end}}
+{{if .Image}}<meta property="og:image" content="{{.Image}}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+{{else}}<meta property="og:image" content="{{.BaseURL}}/static/logo.png">{{end}}
 <meta property="og:type" content="website">
 {{if .URL}}<meta property="og:url" content="{{.URL}}">{{end}}
 <link rel="icon" href="/static/logo.png">

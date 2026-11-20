@@ -35,6 +35,8 @@ var (
 	ErrForbidden    = &APIError{Status: http.StatusForbidden, Code: "forbidden", Message: "You can't do that."}
 	ErrNotFound     = &APIError{Status: http.StatusNotFound, Code: "not_found", Message: "Not found."}
 	ErrRateLimited  = &APIError{Status: http.StatusTooManyRequests, Code: "rate_limited", Message: "Too many requests. Try again shortly."}
+	// ErrTooLarge answers a body over maxBodyBytes, so a client can tell "send less" from "malformed".
+	ErrTooLarge = &APIError{Status: http.StatusRequestEntityTooLarge, Code: "too_large", Message: "Request body is too large."}
 )
 
 // BadRequest builds a 400 with a caller-supplied message.
@@ -75,6 +77,10 @@ func DecodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return ErrTooLarge
+		}
 		return BadRequest("Invalid request body.")
 	}
 	return nil

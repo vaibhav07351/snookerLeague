@@ -65,6 +65,7 @@ type Handler struct {
 	minors     MinorChecker
 	limiter    *httpx.RateLimiter
 	pages      *httpx.RateLimiter
+	cities     CityLister
 }
 
 // Page views per visitor (IP) per minute. Generous for people, a brake on scrapers: every
@@ -85,6 +86,10 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Get("/m/{id}", h.resultPage(KindMatch))
 		r.Get("/r/{id}", h.resultPage(KindRace))
 		r.Get("/g/{id}", h.resultPage(KindGroup))
+		r.Get("/m/{id}/card.png", h.resultImage(KindMatch))
+		r.Get("/r/{id}/card.png", h.resultImage(KindRace))
+		r.Get("/g/{id}/card.png", h.resultImage(KindGroup))
+		r.Get("/sitemap.xml", h.sitemap)
 		r.Get("/p/{uid}", h.player)
 		r.Get("/c/{city}", h.city)
 		r.Get("/t/{id}", h.tournamentPage)
@@ -93,6 +98,7 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Get("/privacy", h.privacy)
 		r.With(h.limiter.Middleware).Post("/remove-request", h.removeRequest)
 	})
+	r.Get("/robots.txt", h.robots)
 	r.Get("/.well-known/assetlinks.json", h.assetLinks)
 	r.Get("/static/logo.png", h.logo)
 }
@@ -123,7 +129,12 @@ type view struct {
 	BaseURL     string
 	URL         string
 	AppURL      string
-	Data        any
+	// Image is the link preview picture ("" uses the logo). A generated card is 1200x630.
+	Image string
+	// NoIndex keeps a page out of search results while link previews still work: results and
+	// tournaments of private leagues are shared by link, not advertised.
+	NoIndex bool
+	Data    any
 }
 
 func (h *Handler) render(w http.ResponseWriter, status int, t *template.Template, v view) {
@@ -268,7 +279,7 @@ func (h *Handler) tournamentPage(w http.ResponseWriter, r *http.Request) {
 	}
 	h.render(w, http.StatusOK, tournamentPage, view{
 		Title: b.Name + " | Snookit", Description: "Tournament bracket on Snookit.",
-		URL: h.cfg.BaseURL + "/t/" + chi.URLParam(r, "id"), Data: b,
+		URL: h.cfg.BaseURL + "/t/" + chi.URLParam(r, "id"), Data: b, NoIndex: true,
 	})
 }
 
@@ -277,7 +288,7 @@ func (h *Handler) tournamentPage(w http.ResponseWriter, r *http.Request) {
 // claimPage is where a claim link lands when the app is not installed (with the app, Android
 // App Links open the app straight away).
 func (h *Handler) claimPage(w http.ResponseWriter, _ *http.Request) {
-	h.render(w, http.StatusOK, messagePage, view{Title: "Claim your player - Snookit", Data: message{
+	h.render(w, http.StatusOK, messagePage, view{Title: "Claim your player - Snookit", NoIndex: true, Data: message{
 		Heading: "Claim your player",
 		Paragraphs: []string{
 			"A friend added you to their Snookit league. Install Snookit, sign in with Google, then open this link again to take over your player card and its match history.",

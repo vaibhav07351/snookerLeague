@@ -1,8 +1,10 @@
 package httpx
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -57,6 +59,23 @@ func TestRecovererTurnsPanicInto500(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("want 500, got %d", rec.Code)
+	}
+}
+
+func TestDecodeJSONTellsTooLargeFromMalformed(t *testing.T) {
+	var dst struct {
+		Name string `json:"name"`
+	}
+	big := `{"name":"` + strings.Repeat("a", maxBodyBytes) + `"}`
+	rec := httptest.NewRecorder()
+	err := DecodeJSON(rec, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(big)), &dst)
+	if !errors.Is(err, ErrTooLarge) {
+		t.Fatalf("an oversized body must answer too_large, got %v", err)
+	}
+	err = DecodeJSON(rec, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"name":`)), &dst)
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusBadRequest {
+		t.Fatalf("a malformed body must answer 400, got %v", err)
 	}
 }
 

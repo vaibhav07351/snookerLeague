@@ -69,6 +69,19 @@ export function seedPositions(size: number): number[] {
   return pos;
 }
 
+/**
+ * A random draw: the same players in a fair random order (Fisher-Yates), used as the seed
+ * order when the organiser picks "Random draw". `random` returns [0, 1) like Math.random.
+ */
+export function drawOrder<T>(items: readonly T[], random: () => number = Math.random): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1));
+    [out[i], out[j]] = [out[j]!, out[i]!];
+  }
+  return out;
+}
+
 function bracketSize(entrants: number): number {
   let size = 2;
   while (size < entrants) {

@@ -118,6 +118,9 @@ func authorize(ctx context.Context, tx Tx, userID string, op Op, current *Doc) (
 	case EntityPlayer:
 		return authorizePlayer(userID, role, op, cur, next, league.str("kind") == "city"), nil
 	case EntityMatch:
+		if rej, err := checkFixtureTag(ctx, tx, op, cur, next); rej != nil || err != nil {
+			return rej, err
+		}
 		ok, err := confirmingOwnResult(ctx, tx, userID, op, cur, next)
 		if err != nil {
 			return nil, err

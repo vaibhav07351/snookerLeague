@@ -194,3 +194,85 @@ func TestOneAccountCanOwnOnlySoManyLeagues(t *testing.T) {
 	extra := `{"id":"lgx","name":"L","kind":"club","createdByUid":"u","inviteCode":"CODEXX"}`
 	wantStatus(t, push1(t, svc, "u", op(EntityLeague, "lgx", "lgx", 0, extra)), StatusRejected, "limit_reached")
 }
+
+func TestAStaleConfirmationIsMergedWhileTheResultIsTheSame(t *testing.T) {
+	svc, store := setup(t)
+	push1(t, svc, "member", op(EntityPlayer, "pa", "lg1", 0, `{"id":"pa","leagueId":"lg1","authUid":"member"}`))
+	push1(t, svc, "other", op(EntityPlayer, "pb", "lg1", 0, `{"id":"pb","leagueId":"lg1","authUid":"other"}`))
+	base := `{"id":"m1","leagueId":"lg1","createdByUid":"member","scorerUid":"member","teamA":["pa"],"teamB":["pb"],%s"outcome":{"status":"completed","winner":"%s"}}`
+	done := push1(t, svc, "member", op(EntityMatch, "m1", "lg1", 0, fmt.Sprintf(base, "", "a")))
+	// The scorer renames the match; the opponent's phone has not seen that yet.
+	renamed := push1(t, svc, "member", op(EntityMatch, "m1", "lg1", done.Version, fmt.Sprintf(base, `"namedLabel":"Final",`, "a")))
+	wantStatus(t, renamed, StatusApplied, "")
+
+	stale := push1(t, svc, "other", op(EntityMatch, "m1", "lg1", done.Version, fmt.Sprintf(base, `"confirmedByUids":["other"],`, "a")))
+	wantStatus(t, stale, StatusConflict, conflictCode)
+	if stale.Current == nil || stale.Current.Version != renamed.Version {
+		t.Fatalf("the conflict must carry the server's copy, got %+v", stale.Current)
+	}
+	// The phone lays its confirmation over the server's copy and sends it again.
+	rebased := push1(t, svc, "other", op(EntityMatch, "m1", "lg1", renamed.Version, fmt.Sprintf(base, `"namedLabel":"Final","confirmedByUids":["other"],`, "a")))
+	wantStatus(t, rebased, StatusApplied, "")
+	got := storedFields(t, store, EntityMatch, "m1")
+	if list := strList(got["confirmedByUids"]); len(list) != 1 || list[0] != "other" || got.str("namedLabel") != "Final" {
+		t.Fatalf("want the rename and the confirmation, got %v", got)
+	}
+
+	// A stranger to the match gets no such merge.
+	wantStatus(t, push1(t, svc, "owner", op(EntityMatch, "m1", "lg1", rebased.Version, fmt.Sprintf(base, `"namedLabel":"Final","confirmedByUids":["other","x"],`, "a"))), StatusApplied, "")
+	if list := strList(storedFields(t, store, EntityMatch, "m1")["confirmedByUids"]); len(list) != 1 {
+		t.Fatalf("nobody can add someone else's confirmation, got %v", list)
+	}
+}
+
+func TestAStaleConfirmationOfAChangedResultIsRefused(t *testing.T) {
+	svc, store := setup(t)
+	push1(t, svc, "other", op(EntityPlayer, "pb", "lg1", 0, `{"id":"pb","leagueId":"lg1","authUid":"other"}`))
+	base := `{"id":"m1","leagueId":"lg1","createdByUid":"member","scorerUid":"member","teamA":["pa"],"teamB":["pb"],%s"outcome":{"status":"completed","winner":"%s"}}`
+	done := push1(t, svc, "member", op(EntityMatch, "m1", "lg1", 0, fmt.Sprintf(base, "", "a")))
+	wantStatus(t, push1(t, svc, "member", op(EntityMatch, "m1", "lg1", done.Version, fmt.Sprintf(base, "", "b"))), StatusApplied, "")
+
+	stale := push1(t, svc, "other", op(EntityMatch, "m1", "lg1", done.Version, fmt.Sprintf(base, `"confirmedByUids":["other"],`, "a")))
+	wantStatus(t, stale, StatusRejected, "result_changed")
+	if list := strList(storedFields(t, store, EntityMatch, "m1")["confirmedByUids"]); len(list) != 0 {
+		t.Fatalf("a changed result must stay unconfirmed, got %v", list)
+	}
+}
+
+func TestASecondConfirmationKeepsTheFirst(t *testing.T) {
+	svc, store := setup(t)
+	push1(t, svc, "other", op(EntityPlayer, "pb", "lg1", 0, `{"id":"pb","leagueId":"lg1","authUid":"other"}`))
+	push1(t, svc, "owner", op(EntityPlayer, "pc", "lg1", 0, `{"id":"pc","leagueId":"lg1","authUid":"owner"}`))
+	base := `{"id":"m1","leagueId":"lg1","createdByUid":"member","scorerUid":"member","teamA":["pa"],"teamB":["pb","pc"],%s"outcome":{"status":"completed","winner":"a"}}`
+	done := push1(t, svc, "member", op(EntityMatch, "m1", "lg1", 0, fmt.Sprintf(base, "")))
+	first := push1(t, svc, "other", op(EntityMatch, "m1", "lg1", done.Version, fmt.Sprintf(base, `"confirmedByUids":["other"],`)))
+	wantStatus(t, first, StatusApplied, "")
+	// The second player's phone still has the empty list: it sends only itself.
+	second := push1(t, svc, "owner", op(EntityMatch, "m1", "lg1", first.Version, fmt.Sprintf(base, `"confirmedByUids":["owner"],`)))
+	wantStatus(t, second, StatusApplied, "")
+	if list := strList(storedFields(t, store, EntityMatch, "m1")["confirmedByUids"]); len(list) != 2 || list[0] != "other" || list[1] != "owner" {
+		t.Fatalf("want both confirmations, got %v", list)
+	}
+}
+
+func TestATournamentFixtureMustBeBetweenItsEntrants(t *testing.T) {
+	svc, _ := setup(t)
+	match := `{"id":"%s","leagueId":"lg1","createdByUid":"other","teamA":["%s"],"teamB":["%s"],%s"outcome":{"status":"completed","winner":"a"}}`
+	tag := `"tournamentId":"tn1","round":0,"slot":0,`
+
+	// The tournament has not reached the server yet: the fixture is retried, not refused.
+	wantStatus(t, push1(t, svc, "other", op(EntityMatch, "m1", "lg1", 0, fmt.Sprintf(match, "m1", "pa", "pb", tag))), StatusConflict, conflictCode)
+
+	wantStatus(t, push1(t, svc, "member", op(EntityTournament, "tn1", "lg1", 0,
+		`{"id":"tn1","leagueId":"lg1","name":"Cup","format":"knockout","entrants":["pa","pb"],"bestOf":3,"createdByUid":"member"}`)), StatusApplied, "")
+	wantStatus(t, push1(t, svc, "other", op(EntityMatch, "m2", "lg1", 0, fmt.Sprintf(match, "m2", "pa", "px", tag))), StatusRejected, "forbidden")
+	fixture := push1(t, svc, "other", op(EntityMatch, "m1", "lg1", 0, fmt.Sprintf(match, "m1", "pa", "pb", tag)))
+	wantStatus(t, fixture, StatusApplied, "")
+
+	// An ordinary match can't be moved into the bracket later, and a fixture can't change slot.
+	plain := push1(t, svc, "other", op(EntityMatch, "m3", "lg1", 0, fmt.Sprintf(match, "m3", "pa", "pb", "")))
+	wantStatus(t, plain, StatusApplied, "")
+	wantStatus(t, push1(t, svc, "other", op(EntityMatch, "m3", "lg1", plain.Version, fmt.Sprintf(match, "m3", "pa", "pb", tag))), StatusRejected, "forbidden")
+	moved := `"tournamentId":"tn1","round":1,"slot":0,`
+	wantStatus(t, push1(t, svc, "other", op(EntityMatch, "m1", "lg1", fixture.Version, fmt.Sprintf(match, "m1", "pa", "pb", moved))), StatusRejected, "forbidden")
+}

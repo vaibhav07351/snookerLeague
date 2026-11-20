@@ -31,6 +31,7 @@ type Service struct {
 	store     Store
 	publisher Publisher
 	claims    ClaimStore
+	events    EventRecorder
 	now       func() time.Time
 }
 
@@ -99,6 +100,9 @@ func (s *Service) applyOne(ctx context.Context, userID string, op Op) (OpResult,
 		}
 		s.publisher.Publish(d)
 	}
+	if result.Status == StatusApplied && op.Action == ActionUpsert {
+		s.recordGameFinished(ctx, userID, op, saved)
+	}
 	return result, nil
 }
 
@@ -135,6 +139,9 @@ func (s *Service) apply(ctx context.Context, tx Tx, userID string, op Op) (OpRes
 	if isMatchUpsert {
 		if op.Data, err = pinServerFinishedAt(cur, op.Data); err != nil {
 			return OpResult{}, nil, err
+		}
+		if res, err := staleConfirmationAnswer(ctx, tx, userID, op, current, cur); err != nil || res != nil {
+			return deref(res), nil, err
 		}
 	}
 	if rej, err := authorize(ctx, tx, userID, op, current); err != nil {
@@ -193,6 +200,46 @@ func (s *Service) apply(ctx context.Context, tx Tx, userID string, op Op) (OpRes
 	return result, stored.Data, nil
 }
 
+// staleConfirmationAnswer handles an opponent confirming from a copy that is behind the
+// server's (the scorer renamed the match, or someone else confirmed, meanwhile). The permission
+// check would refuse it, because the old copy looks like an edit of the match. Instead: while
+// the result is the one they saw, answer with a conflict so the phone lays its confirmation
+// over the newer copy and sends it again; when the result changed, say so. nil means the write
+// is not such a confirmation and takes the normal path.
+func staleConfirmationAnswer(ctx context.Context, tx Tx, userID string, op Op, current *Doc, cur fields) (*OpResult, error) {
+	if current == nil || current.Deleted || op.BaseVersion == current.Version {
+		return nil, nil
+	}
+	next, err := decodeFields(op.Data)
+	if err != nil {
+		return nil, nil //nolint:nilerr // invalid JSON is refused by the permission check
+	}
+	adding, sameResult := staleConfirmation(userID, cur, next)
+	if !adding {
+		return nil, nil
+	}
+	role, err := tx.Role(ctx, op.LeagueID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("load role: %w", err)
+	}
+	if role == RoleNone {
+		return nil, nil
+	}
+	if !sameResult {
+		res := refused(op, "result_changed", "The result changed after you saw it. Check it and confirm again.")
+		return &res, nil
+	}
+	return &OpResult{OpID: op.OpID, Status: StatusConflict, Code: conflictCode,
+		Message: conflictReason, Current: current}, nil
+}
+
+func deref(r *OpResult) OpResult {
+	if r == nil {
+		return OpResult{}
+	}
+	return *r
+}
+
 // storedBody is the document body to save for an upsert: the phone's body, with the fields
 // the server owns put right (league members, match confirmations and finish time).
 func (s *Service) storedBody(ctx context.Context, tx Tx, userID string, op Op, cur fields) (json.RawMessage, error) {
@@ -209,7 +256,11 @@ func (s *Service) storedBody(ctx context.Context, tx Tx, userID string, op Op, c
 		if err != nil {
 			return nil, err
 		}
-		return settleMatchFields(cur, next, confirming, s.now())
+		confirmer := ""
+		if confirming {
+			confirmer = userID
+		}
+		return settleMatchFields(cur, next, confirmer, s.now())
 	}
 	return op.Data, nil
 }

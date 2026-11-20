@@ -1,33 +1,33 @@
-import { useNavigation } from 'expo-router';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { StyleSheet, Text } from 'react-native';
 
 import { useSession } from '@/features/auth/hooks/use-session';
 import { maybeAskForRating } from '@/features/home/services/rating-prompt.service';
 import { FrameLeaderStrip } from '@/features/match/components/FrameLeaderStrip';
-import type { FrameRankView } from '@/features/match/components/FrameLiveRanks';
 import { LiveScoreboard } from '@/features/match/components/LiveScoreboard';
 import { MatchConfirmBanner } from '@/features/match/components/MatchConfirmBanner';
 import { MatchFramesSheet } from '@/features/match/components/MatchFramesSheet';
 import { MatchMoreSheet } from '@/features/match/components/MatchMoreSheet';
-import { MatchScoreHeader, type ScoreSideView } from '@/features/match/components/MatchScoreHeader';
-import { MatchTimingHeader } from '@/features/match/components/MatchTimingHeader';
+import { MatchScoreHeader } from '@/features/match/components/MatchScoreHeader';
 import { MidwaySetup } from '@/features/match/components/MidwaySetup';
 import { ScoringStatus } from '@/features/match/components/ScoringStatus';
 import { useMatchActions } from '@/features/match/hooks/use-match-actions';
+import { useMatchHeader } from '@/features/match/hooks/use-match-header';
 import { matchAdmin, matchService, useMatchScreen } from '@/features/match/hooks/use-match-screen';
 import { matchResultView } from '@/features/match/services/match-result';
-import { summarizeMatch } from '@/features/match/services/match-summary';
+import {
+  liveFrameRanks,
+  matchBarActions,
+  scoreSideView,
+} from '@/features/match/services/match-screen-views';
 import { PublicResultScreen } from '@/features/result/components/PublicResultScreen';
-import { ResultActionBar, type ResultAction } from '@/features/result/components/ResultActionBar';
+import { ResultActionBar } from '@/features/result/components/ResultActionBar';
 import { ResultCelebration } from '@/features/result/components/ResultCelebration';
-import { RulesButton } from '@/features/rules/components/RulesButton';
-import { matchRules } from '@/features/rules/services/rules';
 import { TourTarget } from '@/features/tour/components/TourTarget';
 import { useAutoTour } from '@/features/tour/hooks/use-tour';
 import { useKeepScreenOn } from '@/shared/hooks/use-keep-screen-on';
 import { Card } from '@/shared/ui/Card';
-import { HeaderBack, useSafeBack } from '@/shared/ui/HeaderBack';
+import { useSafeBack } from '@/shared/ui/HeaderBack';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { notify } from '@/shared/ui/notify';
 import { Screen } from '@/shared/ui/Screen';
@@ -43,7 +43,6 @@ interface MatchScreenProps {
 
 /** A two-sided match: live scoring while it is played, the shared result card once over. */
 export function MatchScreen({ matchId, startMidway }: MatchScreenProps): ReactNode {
-  const navigation = useNavigation();
   const styles = useStyles(makeStyles);
   const palette = usePalette();
   const s = useMatchScreen(matchId);
@@ -56,9 +55,6 @@ export function MatchScreen({ matchId, startMidway }: MatchScreenProps): ReactNo
   const { user } = useSession();
 
   const inProgress = match?.outcome.status === 'in_progress';
-  const timingOn = match?.timingEnabled === true;
-  const frameStartedAt = match?.frameStartedAt ?? null;
-  const id = match?.id;
 
   // After a win or a century, maybe ask for a store rating (once per finished match here;
   // the service limits it to once every 90 days).
@@ -74,52 +70,9 @@ export function MatchScreen({ matchId, startMidway }: MatchScreenProps): ReactNo
   // The phone must not dim or lock between shots while someone is scoring here.
   useKeepScreenOn(inProgress && canScore, 'match-scoring');
 
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      title: match ? match.namedLabel || (match.crownsChampion ? 'Title match' : 'Match') : 'Match',
-      headerLeft: () => <HeaderBack fallback="/(main)" />,
-      headerRight: match
-        ? () => (
-            <View style={styles.headerRight}>
-              <RulesButton
-                iconOnly
-                rules={matchRules(
-                  matchService.oddBestOf(match.bestOf),
-                  matchService.matchFormatOf(match),
-                )}
-              />
-              {inProgress && id ? (
-                <MatchTimingHeader
-                  enabled={timingOn}
-                  startedAt={frameStartedAt}
-                  disabled={busy || !canScore}
-                  onToggle={(next) =>
-                    void run('Could not change the timer', () =>
-                      matchService.setMatchTiming(id, next),
-                    )
-                  }
-                />
-              ) : null}
-            </View>
-          )
-        : undefined,
-    });
-  }, [navigation, match, id, inProgress, timingOn, frameStartedAt, busy, canScore, run, styles]);
+  useMatchHeader(match, s);
 
-  // The live frame's per-player points (short names).
-  const liveRanks = useMemo<FrameRankView[]>(() => {
-    if (!match?.openFrame) {
-      return [];
-    }
-    return summarizeMatch({ ...match, frames: [] }, true).players.map((p) => ({
-      playerId: p.playerId,
-      name: shortName(p.playerId),
-      side: p.side,
-      scored: p.scored,
-      foulPoints: p.foulPoints,
-      highestBreak: p.highestBreak,
-    }));
-  }, [match, shortName]);
+  const liveRanks = useMemo(() => liveFrameRanks(match, shortName), [match, shortName]);
 
   // Teach scoring before the first shot only, so it never interrupts a frame in play.
   const freshScoreboard =
@@ -148,27 +101,9 @@ export function MatchScreen({ matchId, startMidway }: MatchScreenProps): ReactNo
   const finished = !inProgress;
   const fullA = s.sideLabel('a');
   const fullB = s.sideLabel('b');
-  const livePoints = new Map(liveRanks.map((r) => [r.playerId, r.scored]));
-  const hbByPlayer = new Map(s.summary?.players.map((p) => [p.playerId, p.highestBreak]) ?? []);
   const result = matchResultView(m, { sideA: fullA, sideB: fullB });
 
-  const sideView = (side: 'a' | 'b'): ScoreSideView => {
-    const ids = side === 'a' ? m.teamA : m.teamB;
-    const last = m.frames[m.frames.length - 1];
-    const live = open ? (side === 'a' ? open.teamAPoints : open.teamBPoints) : null;
-    const lastPts = side === 'a' ? (last?.teamAPoints ?? 0) : (last?.teamBPoints ?? 0);
-    return {
-      side,
-      framePoints: live ?? lastPts,
-      frames: side === 'a' ? m.outcome.framesA : m.outcome.framesB,
-      players: ids.map((pid) => ({
-        id: pid,
-        name: shortName(pid),
-        framePoints: livePoints.get(pid) ?? 0,
-        highestBreak: hbByPlayer.get(pid) ?? 0,
-      })),
-    };
-  };
+  const sideView = (side: 'a' | 'b') => scoreSideView(m, side, shortName, liveRanks, s.summary);
 
   const deficit = open
     ? Math.max(
@@ -214,36 +149,16 @@ export function MatchScreen({ matchId, startMidway }: MatchScreenProps): ReactNo
       (m.teamA.includes(p.id) || m.teamB.includes(p.id)),
   );
   const canRematch = result != null && (iPlayed || canScore || s.canManage);
-  const barActions: ResultAction[] = [
-    ...(canRematch
-      ? [
-          {
-            key: 'rematch',
-            label: 'Rematch',
-            icon: 'refresh' as const,
-            disabled: busy,
-            onPress: () => void actions.rematch(),
-          },
-        ]
-      : []),
-    {
-      key: 'frames',
-      // Finished, the short label keeps four buttons on one line on the narrowest phones.
-      label: !finished && m.frames.length > 0 ? `Frames (${m.frames.length})` : 'Frames',
-      icon: 'list-outline',
-      onPress: () => setShowFrames(true),
-    },
-    ...(canScore || s.canManage
-      ? [
-          {
-            key: 'more',
-            label: 'More',
-            icon: 'ellipsis-horizontal' as const,
-            onPress: () => setShowMore(true),
-          },
-        ]
-      : []),
-  ];
+  const barActions = matchBarActions({
+    match: m,
+    finished,
+    canRematch,
+    canOpenMore: canScore || s.canManage,
+    busy,
+    onRematch: () => void actions.rematch(),
+    onFrames: () => setShowFrames(true),
+    onMore: () => setShowMore(true),
+  });
 
   return (
     <Screen contentStyle={styles.content}>
@@ -344,11 +259,6 @@ export function MatchScreen({ matchId, startMidway }: MatchScreenProps): ReactNo
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
-    headerRight: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 2,
-    },
     content: {
       gap: spacing.md,
     },

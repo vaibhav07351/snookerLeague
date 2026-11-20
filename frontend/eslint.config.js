@@ -14,9 +14,15 @@ export default [
       'dist-web/**',
       'app.config.js',
       'babel.config.js',
+      'metro.config.js',
     ],
   },
   js.configs.recommended,
+  {
+    // Node scripts run with `node`, not in the app.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: { process: 'readonly', console: 'readonly' } },
+  },
   {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {

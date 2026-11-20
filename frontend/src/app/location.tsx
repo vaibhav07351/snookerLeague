@@ -11,6 +11,7 @@ import { Screen } from '@/shared/ui/Screen';
 import { TextField } from '@/shared/ui/TextField';
 import { useCityPicker } from '@/features/location/hooks/use-city-picker';
 import * as locationService from '@/features/location/services/location.service';
+import { usePushOffer } from '@/features/notifications/hooks/use-push-offer';
 import { toUserMessage } from '@/shared/errors/app-error';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { useSafeBack } from '@/shared/ui/HeaderBack';
@@ -35,6 +36,7 @@ export default function LocationScreen(): ReactNode {
   const picker = useCityPicker();
   const { detection } = picker;
   const [busy, setBusy] = useState(false);
+  const offerPush = usePushOffer();
   // A city (or a demo skip) is already on file: this screen was opened to change it.
   const isEditing = Boolean(user?.cityId) || user?.citySkipped === true;
   const currentCityId = user?.cityId ?? null;
@@ -49,9 +51,13 @@ export default function LocationScreen(): ReactNode {
       if (isEditing) {
         notify.success('City updated', city.name);
         goBack();
-        return;
+      } else {
+        router.replace('/');
       }
-      router.replace('/');
+      if (city.id !== currentCityId && !user?.isDemo) {
+        // Joining a city board is when other players can first challenge you.
+        void offerPush('city_joined');
+      }
     } catch (error) {
       notify.error('Could not save city', toUserMessage(error));
     } finally {

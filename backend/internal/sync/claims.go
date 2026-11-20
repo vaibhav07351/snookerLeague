@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/vaibhav/snookit-server/internal/events"
 )
 
 // Claim links (phase 4): a league member creates a link for a guest card; whoever opens it
@@ -105,11 +107,12 @@ type ClaimPreview struct {
 
 // PreviewClaimLink says which card and league a link would give, without using it up, so the
 // app can ask "Join Pune Cue Club as Rahul?" first.
-func (s *Service) PreviewClaimLink(ctx context.Context, token string) (ClaimPreview, error) {
+func (s *Service) PreviewClaimLink(ctx context.Context, userID, token string) (ClaimPreview, error) {
 	if s.claims == nil {
 		return ClaimPreview{}, errors.New("claim links are not configured")
 	}
 	var preview ClaimPreview
+	var cardID, leagueID string
 	err := s.store.InTx(ctx, func(tx Tx) error {
 		link, err := s.claims.ClaimLinkForUpdate(ctx, tx, hashToken(token))
 		if errors.Is(err, ErrNotFound) {
@@ -138,11 +141,13 @@ func (s *Service) PreviewClaimLink(ctx context.Context, token string) (ClaimPrev
 			return err
 		}
 		preview = ClaimPreview{PlayerName: c.str("displayName"), LeagueName: l.str("name")}
+		cardID, leagueID = card.ID, league.ID
 		return nil
 	})
 	if err != nil {
 		return ClaimPreview{}, fmt.Errorf("preview claim link: %w", err)
 	}
+	s.record(ctx, events.Event{Name: events.ClaimOpened, UserID: userID, LeagueID: leagueID, Ref: cardID})
 	return preview, nil
 }
 
@@ -202,5 +207,6 @@ func (s *Service) RedeemClaimLink(ctx context.Context, userID, token string) (le
 	if err != nil {
 		return Doc{}, Doc{}, fmt.Errorf("redeem claim link: %w", err)
 	}
+	s.record(ctx, events.Event{Name: events.ClaimDone, UserID: userID, LeagueID: card.LeagueID, Ref: card.ID})
 	return league, card, nil
 }

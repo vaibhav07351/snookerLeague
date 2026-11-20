@@ -26,7 +26,12 @@ const FORMATS = [
   { key: 'round_robin', label: 'Round robin' },
 ] as const;
 
-/** Set up a tournament: name, format, frames per match, and players in seed order. */
+const SEEDINGS = [
+  { key: 'ordered', label: 'Seeded' },
+  { key: 'random', label: 'Random draw' },
+] as const;
+
+/** Set up a tournament: name, format, frames per match, and players seeded or drawn. */
 export default function NewTournamentScreen(): ReactNode {
   const styles = useStyles(makeStyles);
   const { user, league } = useSession();
@@ -35,6 +40,8 @@ export default function NewTournamentScreen(): ReactNode {
   const [format, setFormat] = useState<TournamentFormat>('knockout');
   const [bestOf, setBestOf] = useState(3);
   const [entrants, setEntrants] = useState<string[]>([]);
+  const [seeding, setSeeding] = useState<tournamentService.Seeding>('ordered');
+  const seeded = seeding === 'ordered';
   const [busy, setBusy] = useState(false);
 
   const reload = useCallback(async () => {
@@ -59,6 +66,7 @@ export default function NewTournamentScreen(): ReactNode {
         format,
         entrants,
         bestOf,
+        seeding,
       });
       router.replace(`/tournament/${t.id}`);
     } catch (error) {
@@ -104,15 +112,20 @@ export default function NewTournamentScreen(): ReactNode {
         </Text>
         <RulesButton rules={tournamentRules(format, bestOf)} />
       </View>
-      <Text style={styles.heading}>Players, in seed order</Text>
-      <Text style={styles.hint}>Tap in order of strength: first tap is the top seed.</Text>
+      <Text style={styles.heading}>Players</Text>
+      <SegmentedTabs items={SEEDINGS} value={seeding} onChange={setSeeding} style={styles.block} />
+      <Text style={styles.hint}>
+        {seeded
+          ? 'Tap in order of strength: first tap is the top seed.'
+          : 'Tap everyone who plays. The draw is made when you create the tournament.'}
+      </Text>
       <View style={styles.chips}>
         {players.map((p) => {
           const seed = entrants.indexOf(p.id);
           return (
             <Chip
               key={p.id}
-              label={seed >= 0 ? `${seed + 1}. ${p.displayName}` : p.displayName}
+              label={seeded && seed >= 0 ? `${seed + 1}. ${p.displayName}` : p.displayName}
               selected={seed >= 0}
               onPress={() => toggle(p.id)}
             />

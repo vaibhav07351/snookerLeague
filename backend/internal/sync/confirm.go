@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"slices"
 	"time"
 )
@@ -28,8 +27,10 @@ func confirmingOwnResult(ctx context.Context, tx Tx, userID string, op Op, cur, 
 			return false, nil
 		}
 	}
+	// The phone's list may be behind (someone else confirmed meanwhile): what counts is that it
+	// adds this user. settleMatchFields saves the stored list plus this user, never the phone's.
 	before, after := strList(cur["confirmedByUids"]), strList(next["confirmedByUids"])
-	if slices.Contains(before, userID) || !reflect.DeepEqual(append(before, userID), after) {
+	if slices.Contains(before, userID) || !slices.Contains(after, userID) {
 		return false, nil
 	}
 	var outcome struct {
@@ -99,12 +100,15 @@ func pinServerFinishedAt(cur fields, data json.RawMessage) (json.RawMessage, err
 }
 
 // settleMatchFields sets the match fields the server owns before saving:
-//   - confirmedByUids: only an opponent's own confirmation adds to it (confirming); any other
-//     write keeps the stored list, emptied on a new match or when the result changed.
+//   - confirmedByUids: only an opponent's own confirmation adds to it (confirmer is their user
+//     id, "" for any other write); any other write keeps the stored list, emptied on a new
+//     match or when the result changed.
 //   - serverFinishedAt: stamped when the match first becomes finished, kept while it stays
 //     finished, removed when it is reopened.
-func settleMatchFields(cur, next fields, confirming bool, now time.Time) (json.RawMessage, error) {
-	if !confirming {
+func settleMatchFields(cur, next fields, confirmer string, now time.Time) (json.RawMessage, error) {
+	if confirmer != "" {
+		next["confirmedByUids"] = append(strList(cur["confirmedByUids"]), confirmer)
+	} else {
 		keep := []string{}
 		if cur != nil && !resultChanged(cur, next) {
 			keep = strList(cur["confirmedByUids"])
@@ -127,6 +131,19 @@ func settleMatchFields(cur, next fields, confirming bool, now time.Time) (json.R
 		return nil, fmt.Errorf("encode match: %w", err)
 	}
 	return out, nil
+}
+
+// staleConfirmation looks at a match write made from an old copy. adding: the write puts the
+// user's own confirmation on a finished match. sameResult: the result they saw is still the
+// stored one, so the confirmation can be merged onto the newer copy; otherwise they must look
+// at the new result first.
+func staleConfirmation(userID string, cur, next fields) (adding, sameResult bool) {
+	if cur == nil || !isFinished(cur.outcomeStatus()) {
+		return false, false
+	}
+	adding = !slices.Contains(strList(cur["confirmedByUids"]), userID) &&
+		slices.Contains(strList(next["confirmedByUids"]), userID)
+	return adding, adding && !resultChanged(cur, next)
 }
 
 func strList(v any) []string {

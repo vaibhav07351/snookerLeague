@@ -3,6 +3,7 @@ import { z } from 'zod';
 import * as matchService from '@/features/match/services/match.service';
 import {
   deriveTournament,
+  drawOrder,
   roundName,
   type TournamentState,
 } from '@/features/tournament/services/bracket';
@@ -24,7 +25,11 @@ const createSchema = z.object({
     .max(32)
     .refine((ids) => new Set(ids).size === ids.length, 'Each player can enter once'),
   bestOf: z.number().int().min(1).max(35),
+  seeding: z.enum(['ordered', 'random']),
 });
+
+/** How entrants are placed: in the order they were picked (top seed first), or drawn at random. */
+export type Seeding = z.infer<typeof createSchema>['seeding'];
 
 /** Round robin grows as n*(n-1)/2 fixtures; past 12 players that is over 60 matches. */
 const MAX_ROUND_ROBIN = 12;
@@ -54,6 +59,7 @@ export async function createTournament(input: {
   format: TournamentFormat;
   entrants: string[];
   bestOf: number;
+  seeding: Seeding;
 }): Promise<Tournament> {
   const parsed = createSchema.safeParse(input);
   if (!parsed.success) {
@@ -83,7 +89,10 @@ export async function createTournament(input: {
     leagueId: parsed.data.leagueId,
     name: parsed.data.name,
     format: parsed.data.format,
-    entrants: parsed.data.entrants,
+    // The draw is made once, here, and stored as the seed order, so every phone and the public
+    // page show the same bracket.
+    entrants:
+      parsed.data.seeding === 'random' ? drawOrder(parsed.data.entrants) : parsed.data.entrants,
     bestOf: parsed.data.bestOf,
     createdByUid: parsed.data.uid,
     createdAt: now,
@@ -100,7 +109,10 @@ export async function createTournament(input: {
       updatedAt: tournament.updatedAt,
     },
   ]);
-  logger.info('tournament.service', 'Tournament created', { tournamentId: tournament.id });
+  logger.info('tournament.service', 'Tournament created', {
+    tournamentId: tournament.id,
+    seeding: parsed.data.seeding,
+  });
   return tournament;
 }
 

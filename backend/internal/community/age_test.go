@@ -48,3 +48,21 @@ func TestUnder18PlayersCannotPostPublicly(t *testing.T) {
 		t.Fatalf("want ErrAdultsOnly, got %v", err)
 	}
 }
+
+func TestSavingADateOfBirthUpdatesTheProfileAtOnce(t *testing.T) {
+	svc, repo := newSvc() // today is 2026-10-31
+	mustPut(t, svc, "kid", KindProfile, "kid", `{"uid":"kid","cityId":"pune","division":"open"}`)
+	if repo.rows[key(KindProfile, "kid")].CityID != "pune" {
+		t.Fatal("setup: the profile starts on the city board")
+	}
+	mustPut(t, svc, "kid", KindUser, "kid", `{"uid":"kid","dateOfBirth":"2012-05-01"}`)
+	saved := repo.rows[key(KindProfile, "kid")]
+	if !strings.Contains(string(saved.Data), `"division":"u16"`) || saved.CityID != "" {
+		t.Fatalf("the profile must leave the city board when the date of birth is saved: %s city=%q", saved.Data, saved.CityID)
+	}
+	// A later settings save without the date keeps the saved one, and the profile stays hidden.
+	mustPut(t, svc, "kid", KindUser, "kid", `{"uid":"kid","cityId":"pune"}`)
+	if repo.rows[key(KindProfile, "kid")].CityID != "" {
+		t.Fatal("the profile must stay off the city board")
+	}
+}

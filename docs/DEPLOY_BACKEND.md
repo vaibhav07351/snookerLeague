@@ -265,15 +265,49 @@ because it is issued to Google's own client, not to yours.
 ## Step 11 (VM): nightly backups (do this before real users)
 
 The VM image has no `cron`, so the backup runs from a systemd timer (Ubuntu's built-in
-scheduler). The script and both unit files live in `backend/deploy/`: `backup.sh`,
-`snookit-backup.service` and `snookit-backup.timer`. They reach the VM with the backend folder
-(Step 2), or copy just those three into `~/snookit-backend/deploy/`.
+scheduler). The scripts and unit files live in `backend/deploy/`: `backup.sh`, `restore.sh`,
+`backup.env.example`, `snookit-backup.service` and `snookit-backup.timer`. They reach the VM
+with the backend folder (Step 2).
 
-Install the timer, then run one backup straight away to prove it works:
+Each backup is encrypted (gpg, AES-256) and copied off the VM with rclone, so losing the VM
+loses neither the data nor its privacy.
+
+**11a. Passphrase and settings:**
+
+```bash
+sudo apt-get install -y rclone gnupg
+openssl rand -base64 48 > ~/.snookit-backup-pass
+chmod 600 ~/.snookit-backup-pass
+cat ~/.snookit-backup-pass
+cd ~/snookit-backend/deploy
+cp backup.env.example backup.env
+chmod 600 backup.env
+```
+
+Save the printed passphrase in your password manager now: without it no backup can be opened.
+
+**11b. Off-VM destination** (Oracle Object Storage, S3-compatible). In the Oracle console:
+create a private bucket `snookit-backups` (Storage > Object Storage > Buckets), note the
+**Object Storage namespace** (Profile > Tenancy) and your **region id** (for example
+`ap-mumbai-1`), and generate a **Customer secret key** (Profile > My profile > Customer secret
+keys). Then on the VM (the keys are typed, not left in the shell history):
+
+```bash
+read -r -p "Access key: " AK
+read -r -s -p "Secret key: " SK; echo
+rclone config create offsite s3 provider Other access_key_id "$AK" secret_access_key "$SK" endpoint "https://NAMESPACE.compat.objectstorage.REGION.oraclecloud.com" region REGION acl private
+unset AK SK
+rclone lsd offsite:
+```
+
+`rclone lsd offsite:` must list `snookit-backups`. Then set `BACKUP_REMOTE=offsite:snookit-backups`
+in `backup.env`.
+
+**11c. Install the timer**, then run one backup straight away to prove it works:
 
 ```bash
 cd ~/snookit-backend/deploy
-chmod 755 backup.sh
+chmod 755 backup.sh restore.sh
 sudo install -m 644 snookit-backup.service snookit-backup.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now snookit-backup.timer
@@ -281,14 +315,15 @@ sudo systemctl start snookit-backup.service
 journalctl -u snookit-backup.service --no-pager -n 5
 systemctl list-timers snookit-backup.timer --no-pager
 ls -lh ~/backups
+./restore.sh ~/backups/snookit-$(date -u +%F).sql.gz.gpg
 ```
 
-Expected: the journal shows `backup written: /home/ubuntu/backups/snookit-<date>.sql.gz`, the
-timer list shows the next run at 03:00, and `~/backups` holds a file of a few KB or more.
+Expected: the journal shows `backup written: /home/ubuntu/backups/snookit-<date>.sql.gz.gpg` and
+`copied off the VM: offsite:snookit-backups/...`, the timer list shows the next run at 03:00,
+and the restore check prints a row with user and document counts.
 
-This keeps 7 days of dumps on the VM. A failed dump fails the job (it shows in the journal)
-instead of leaving an empty file that looks like a backup. A copy stored off the VM is still to
-do, because a backup on the same disk does not survive losing the VM.
+A failed dump, encryption or upload fails the job (it shows in the journal) instead of leaving
+a file that looks like a backup. Without a passphrase file the job refuses to run at all.
 
 ---
 
@@ -298,7 +333,7 @@ do, because a backup on the same disk does not survive losing the VM.
 - [ ] Step 8 showed four `PASS` lines
 - [ ] Step 10 table matches, including `429` after 20 tries
 - [ ] IronCoach still answers
-- [ ] A backup file exists in `~/backups`
+- [ ] An encrypted backup exists in `~/backups` and on the off-VM remote, and `restore.sh` checked it
 
 ## If something goes wrong
 

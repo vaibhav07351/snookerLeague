@@ -49,7 +49,7 @@ func TestClaimLinksHandOverAGuestCardOnce(t *testing.T) {
 		}
 	}
 	// Looking first changes nothing and names the card and league.
-	preview, err := svc.PreviewClaimLink(ctx, token)
+	preview, err := svc.PreviewClaimLink(ctx, "u_claimer", token)
 	if err != nil || preview.PlayerName != "Guest" || preview.LeagueName != "Club" {
 		t.Fatalf("preview: %+v %v", preview, err)
 	}
@@ -69,7 +69,7 @@ func TestClaimLinksHandOverAGuestCardOnce(t *testing.T) {
 	if _, _, err := svc.RedeemClaimLink(ctx, "someone", token); !errors.Is(err, ErrClaimInvalid) {
 		t.Fatalf("a used link must be refused, got %v", err)
 	}
-	if _, err := svc.PreviewClaimLink(ctx, token); !errors.Is(err, ErrClaimInvalid) {
+	if _, err := svc.PreviewClaimLink(ctx, "u_claimer", token); !errors.Is(err, ErrClaimInvalid) {
 		t.Fatalf("a used link has nothing to preview, got %v", err)
 	}
 	if _, err := svc.CreateClaimLink(ctx, "member", "g1"); !errors.Is(err, ErrCardTaken) {

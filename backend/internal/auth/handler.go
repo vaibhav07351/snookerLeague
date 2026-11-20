@@ -109,6 +109,7 @@ func (h *Handler) Middleware(next http.Handler) http.Handler {
 			httpx.WriteError(w, r, err)
 			return
 		}
+		httpx.SetUserID(r.Context(), claims.Subject)
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, claims)))
 	})
 }

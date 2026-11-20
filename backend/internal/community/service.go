@@ -99,6 +99,11 @@ func (s *Service) Put(ctx context.Context, userID string, kind Kind, id string, 
 		return fmt.Errorf("save %s: %w", kind, err)
 	}
 	s.announce(userID, kind, body, current)
+	if kind == KindUser {
+		if err := s.refreshProfileDivision(ctx, userID, body); err != nil {
+			return err
+		}
+	}
 	if kind == KindProfile && doc.CityID != "" && s.hubs != nil && (current == nil || current.CityID != doc.CityID) {
 		if err := s.hubs.MarkDirty(ctx, "city_"+doc.CityID); err != nil {
 			return fmt.Errorf("refresh city rank: %w", err)
@@ -507,6 +512,49 @@ func (s *Service) savedDivision(ctx context.Context, userID string) (string, err
 		return "", fmt.Errorf("decode settings: %w", err)
 	}
 	return divisionFromDOB(f.str("dateOfBirth"), s.now()), nil
+}
+
+// refreshProfileDivision brings the public profile's age band in line with the date of birth
+// just saved in the private settings, so an under-18 player leaves the public city board at
+// once instead of on their next profile save.
+func (s *Service) refreshProfileDivision(ctx context.Context, userID string, settings fields) error {
+	division := divisionFromDOB(settings.str("dateOfBirth"), s.now())
+	if division == "" {
+		return nil
+	}
+	profile, err := s.repo.Get(ctx, KindProfile, userID)
+	if errors.Is(err, ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("load profile: %w", err)
+	}
+	var body fields
+	if err := json.Unmarshal(profile.Data, &body); err != nil {
+		return fmt.Errorf("decode profile: %w", err)
+	}
+	city := body.str("cityId")
+	if slices.Contains(minorDivisions, division) {
+		city = ""
+	}
+	if body.str("division") == division && profile.CityID == city {
+		return nil
+	}
+	body["division"] = division
+	joinedBoard := city != "" && profile.CityID != city
+	profile.CityID = city
+	if profile.Data, err = json.Marshal(body); err != nil {
+		return fmt.Errorf("encode profile: %w", err)
+	}
+	if err := s.repo.Put(ctx, profile); err != nil {
+		return fmt.Errorf("save profile: %w", err)
+	}
+	if joinedBoard && s.hubs != nil {
+		if err := s.hubs.MarkDirty(ctx, "city_"+city); err != nil {
+			return fmt.Errorf("refresh city rank: %w", err)
+		}
+	}
+	return nil
 }
 
 // divisionFromDOB is the snooker age band on the given day for a YYYY-MM-DD date of birth, or
