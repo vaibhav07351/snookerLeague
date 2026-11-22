@@ -8,7 +8,7 @@ module.exports = ({ config }) => ({
   name: 'Snookit',
   slug: 'snooker-league',
   owner: 'vaibhav07351',
-  version: '4.0.0',
+  version: '4.1.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
   scheme: 'snooker',
@@ -82,6 +82,9 @@ module.exports = ({ config }) => ({
     '@sentry/react-native/expo',
     'expo-updates',
     'expo-notifications',
+    // Portrait lock and Wi-Fi state permission imply required hardware; mark both optional so
+    // Play does not restrict which devices can install the app.
+    './plugins/with-optional-hardware-features',
     [
       'expo-location',
       {

@@ -13,6 +13,7 @@ export default [
       'dist/**',
       'dist-web/**',
       'app.config.js',
+      'plugins/**',
       'babel.config.js',
       'metro.config.js',
     ],
